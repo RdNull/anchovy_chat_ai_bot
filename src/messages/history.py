@@ -19,9 +19,9 @@ async def push_history(chat_id: int, message: Message):
     await db.messages.insert_one(data)
 
 
-async def get_history(chat_id: int) -> list[Message]:
-    cursor = db.messages.find({'chat_id': chat_id}).sort('created_at', -1).limit(20)
-    messages = await cursor.to_list(length=20)
+async def get_history(chat_id: int, size:int=50) -> list[Message]:
+    cursor = db.messages.find({'chat_id': chat_id}).sort('created_at', -1).limit(size)
+    messages = await cursor.to_list(length=size)
     result = []
     for m in reversed(messages):
         reply = None
