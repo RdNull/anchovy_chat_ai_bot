@@ -1,0 +1,41 @@
+name: shizo_ded_bot
+
+x-environment-vars: &environment-vars
+  TERM: linux
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    environment:
+      <<: *environment-vars
+    env_file:
+      - .env
+    volumes:
+      - .:/proj
+    depends_on:
+      - mongo
+    command: hupper -m src.bot
+    restart: always
+    stdin_open: true
+    tty: true
+
+  mongo:
+    image: mongo
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - 27019:27017
+    volumes:
+      - type: volume
+        source: shizo_ded_bot
+        target: /data/mongo/shizo_ded_bot_db
+networks:
+  default:
+    name: shizo_ded_bot
+
+volumes:
+  shizo_ded_bot:
+    external: true

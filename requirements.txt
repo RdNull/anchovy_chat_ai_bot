@@ -1,0 +1,8 @@
+hupper
+pymongo
+pyyaml
+python-telegram-bot
+aiohttp
+langchain
+langchain-ollama
+langchain-openrouter
