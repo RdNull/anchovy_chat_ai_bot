@@ -43,9 +43,13 @@ async def get_history(chat_id: int, size:int=50) -> list[Message]:
     return result
 
 
-async def get_last_message(chat_id: int) -> Message | None:
-    logger.debug(f"Fetching last message for chat {chat_id}")
-    message = await db.messages.find_one({'chat_id': chat_id}, sort=[('created_at', -1)])
+async def get_last_message(chat_id: int, role: UserRole | None = None) -> Message | None:
+    logger.debug(f"Fetching last message for chat {chat_id} (role={role})")
+    query = {'chat_id': chat_id}
+    if role:
+        query['role'] = role.value
+
+    message = await db.messages.find_one(query, sort=[('created_at', -1)])
     if not message:
         return None
 

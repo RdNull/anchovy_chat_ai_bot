@@ -88,16 +88,17 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     logger.debug(f"Handling conversation in chat {chat_id} from {user_message.nickname}")
 
     if random.random() < settings.RANDOM_REPLY_CHANCE:
-        last_message = await get_last_message(chat_id)
-        if last_message and last_message.role == UserRole.AI:
+        last_any_message = await get_last_message(chat_id)
+        if last_any_message and last_any_message.role == UserRole.AI:
             logger.info(f"Skipping random reply in chat {chat_id}: last message was from AI")
             return
 
-        if last_message and last_message.created_at:
+        last_bot_message = await get_last_message(chat_id, role=UserRole.AI)
+        if last_bot_message and last_bot_message.created_at:
             cooldown_threshold = datetime.now(timezone.utc) - timedelta(
                 minutes=settings.RANDOM_REPLY_COOLDOWN_MINUTES)
-            if last_message.created_at > cooldown_threshold:
-                logger.info(f"Skipping random reply in chat {chat_id}: cooldown not passed")
+            if last_bot_message.created_at > cooldown_threshold:
+                logger.info(f"Skipping random reply in chat {chat_id}: bot cooldown not passed")
                 return
 
         logger.info(f"Triggering random reply in chat {chat_id}")
