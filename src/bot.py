@@ -1,7 +1,7 @@
 import logging
 
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, PicklePersistence, filters,
+    ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, PicklePersistence, filters,
 )
 
 from src import settings
@@ -35,9 +35,15 @@ def main() -> None:
     )
     start_handler = CommandHandler('start', handlers.start)
     info_handler = CommandHandler('info', handlers.info)
+    list_handler = CommandHandler('list', handlers.list_characters)
+    random_handler = CommandHandler('random', handlers.random_character)
+    select_callback_handler = CallbackQueryHandler(handlers.select_character, pattern="^select_char:")
 
     app.add_handler(start_handler)
     app.add_handler(info_handler)
+    app.add_handler(list_handler)
+    app.add_handler(random_handler)
+    app.add_handler(select_callback_handler)
     app.add_handler(mention_handler)
     app.add_handler(conversation_handler)
 

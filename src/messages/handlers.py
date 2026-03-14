@@ -1,13 +1,17 @@
 import logging
+import random
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
-from telegram.ext import (CallbackContext, ContextTypes, filters)
+from telegram.ext import (CallbackContext, CallbackQueryHandler, ContextTypes, filters)
 
 from src import settings
+from src.characters.repository import CHARACTERS
 from src.models import Message, MessageReply, UserRole
 from .history import get_history, push_history
-from .utils import escape_markdown_v2, get_chat_character, send_action
+from .utils import (
+    escape_markdown_v2, get_chat_character, send_action, set_chat_character,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,35 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*Описание:* {description}",
         parse_mode="MarkdownV2"
     )
+
+
+async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton(character.name, callback_data=f"select_char:{code}")]
+        for code, character in CHARACTERS.items()
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Выберите персонажа:", reply_markup=reply_markup)
+
+
+async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    character_code = query.data.split(":")[1]
+    set_chat_character(character_code, context)
+    character = CHARACTERS[character_code]
+
+    await query.edit_message_text(f"Персонаж изменён на: {character.name}")
+
+
+async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    character_code = random.choice(list(CHARACTERS.keys()))
+    set_chat_character(character_code, context)
+    character = CHARACTERS[character_code]
+
+    await update.message.reply_text(f"Выпал персонаж: {character.name}")
 
 
 async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
