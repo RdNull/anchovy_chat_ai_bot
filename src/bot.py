@@ -34,10 +34,14 @@ def main() -> None:
         handlers.handle_conversation
     )
     start_handler = CommandHandler('start', handlers.start)
+    info_handler = CommandHandler('info', handlers.info)
 
     app.add_handler(start_handler)
+    app.add_handler(info_handler)
     app.add_handler(mention_handler)
     app.add_handler(conversation_handler)
+
+    app.add_error_handler(handlers.error_handler)
 
     app.run_polling()
 

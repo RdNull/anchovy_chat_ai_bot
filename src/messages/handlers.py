@@ -7,7 +7,7 @@ from telegram.ext import (CallbackContext, ContextTypes, filters)
 from src import settings
 from src.models import Message, MessageReply, UserRole
 from .history import get_history, push_history
-from .utils import get_chat_character, send_action
+from .utils import escape_markdown_v2, get_chat_character, send_action
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,23 @@ logger = logging.getLogger(__name__)
 async def start(update: Update, context: CallbackContext):
     logger.info('started')
     await update.message.reply_text('Дарова, чорт!')
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Exception while handling an update:", exc_info=context.error)
+    if isinstance(update, Update) and update.effective_message:
+        await update.effective_message.reply_text("Чёт пошло не так, сорян.")
+
+
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    character = get_chat_character(context)
+    name = escape_markdown_v2(character.name)
+    description = escape_markdown_v2(character.description)
+    await update.message.reply_text(
+        f"*Персонаж:* {name}\n"
+        f"*Описание:* {description}",
+        parse_mode="MarkdownV2"
+    )
 
 
 async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):

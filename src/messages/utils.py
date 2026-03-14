@@ -19,6 +19,12 @@ def get_chat_character(context: ContextTypes.DEFAULT_TYPE, last_messages_recap: 
     return character
 
 
+def escape_markdown_v2(text: str) -> str:
+    """Escapes Telegram MarkdownV2 special characters."""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return "".join(f"\\{c}" if c in escape_chars else c for c in text)
+
+
 def send_action(action):
     """Sends `action` while processing func command."""
 
