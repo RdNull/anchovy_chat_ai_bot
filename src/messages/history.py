@@ -32,6 +32,25 @@ async def get_history(chat_id: int, size:int=50) -> list[Message]:
             role=UserRole(m['role']),
             text=m['text'],
             reply=reply,
-            nickname=m.get('nickname', 'unknown')
+            nickname=m.get('nickname', 'unknown'),
+            created_at=datetime.fromtimestamp(m['created_at'], tz=timezone.utc)
         ))
     return result
+
+
+async def get_last_message(chat_id: int) -> Message | None:
+    message = await db.messages.find_one({'chat_id': chat_id}, sort=[('created_at', -1)])
+    if not message:
+        return None
+
+    reply = None
+    if 'reply_text' in message:
+        reply = MessageReply(text=message['reply_text'], nickname=message['reply_nickname'])
+
+    return Message(
+        role=UserRole(message['role']),
+        text=message['text'],
+        reply=reply,
+        nickname=message.get('nickname', 'unknown'),
+        created_at=datetime.fromtimestamp(message['created_at'], tz=timezone.utc)
+    )

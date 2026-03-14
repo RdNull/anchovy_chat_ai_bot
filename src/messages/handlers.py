@@ -5,10 +5,12 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import (CallbackContext, CallbackQueryHandler, ContextTypes, filters)
 
+from datetime import datetime, timedelta, timezone
+
 from src import settings
 from src.characters.repository import CHARACTERS
 from src.models import Message, MessageReply, UserRole
-from .history import get_history, push_history
+from .history import get_history, push_history, get_last_message
 from .utils import (
     escape_markdown_v2, get_chat_character, send_action, set_chat_character, restricted,
 )
@@ -75,6 +77,24 @@ async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_message = _parse_user_message(update)
+
+    if random.random() < settings.RANDOM_REPLY_CHANCE:
+        last_message = await get_last_message(chat_id)
+        if last_message and last_message.role == UserRole.AI:
+            logger.info(f"Skipping random reply in chat {chat_id}: last message was from AI")
+            return
+
+        if last_message and last_message.created_at:
+            cooldown_threshold = datetime.now(timezone.utc) - timedelta(
+                minutes=settings.RANDOM_REPLY_COOLDOWN_MINUTES)
+            if last_message.created_at > cooldown_threshold:
+                logger.info(f"Skipping random reply in chat {chat_id}: cooldown not passed")
+                return
+
+        logger.info(f"Triggering random reply in chat {chat_id}")
+        await _generate_answer(update, context)
+        return
+
     await push_history(chat_id, user_message)
 
 
