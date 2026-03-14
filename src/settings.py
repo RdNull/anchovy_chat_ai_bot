@@ -2,7 +2,7 @@ import os
 
 APP_NAME = 'shizo_ded_bot'
 TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
-BOT_NICKNAME = 'rdnull_test_bot'
+BOT_NICKNAME = 'ShizoDedAnchovyBot'
 DATABASE_URL = os.environ['DATABASE_URL']
 
 AI_INIT_PARAMS = {
