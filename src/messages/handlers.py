@@ -31,6 +31,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 @restricted
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Info requested in chat {chat_id}")
     character = get_chat_character(context)
     name = escape_markdown_v2(character.name)
     description = escape_markdown_v2(character.description)
@@ -43,6 +45,8 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted
 async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Characters list requested in chat {chat_id}")
     keyboard = [
         [InlineKeyboardButton(character.name, callback_data=f"select_char:{code}")]
         for code, character in CHARACTERS.items()
@@ -55,9 +59,11 @@ async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @restricted
 async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    chat_id = update.effective_chat.id
     await query.answer()
 
     character_code = query.data.split(":")[1]
+    logger.info(f"Character {character_code} selected in chat {chat_id}")
     set_chat_character(character_code, context)
     character = CHARACTERS[character_code]
 
@@ -66,7 +72,9 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted
 async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
     character_code = random.choice(list(CHARACTERS.keys()))
+    logger.info(f"Random character {character_code} chosen for chat {chat_id}")
     set_chat_character(character_code, context)
     character = CHARACTERS[character_code]
 
@@ -77,6 +85,7 @@ async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_message = _parse_user_message(update)
+    logger.debug(f"Handling conversation in chat {chat_id} from {user_message.nickname}")
 
     if random.random() < settings.RANDOM_REPLY_CHANCE:
         last_message = await get_last_message(chat_id)
@@ -100,6 +109,8 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 @restricted
 async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Bot mentioned or replied to in chat {chat_id}")
     # Check if this is a reply to another user (not the bot) in a group
     if update.message.reply_to_message and not update.message.chat.type == "private":
         bot_user = await context.bot.get_me()
@@ -116,6 +127,7 @@ async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_message = _parse_user_message(update)
+    logger.info(f"Generating answer for chat {chat_id} (user: {user_message.nickname})")
 
     await push_history(chat_id, user_message)
 

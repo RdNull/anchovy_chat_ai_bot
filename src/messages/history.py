@@ -1,10 +1,14 @@
+import logging
 from datetime import datetime, timezone
 
 from src import db
 from src.models import Message, MessageReply, UserRole
 
+logger = logging.getLogger(__name__)
+
 
 async def push_history(chat_id: int, message: Message):
+    logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message.text[:50]}...")
     data = {
         'chat_id': chat_id,
         'role': message.role.value,
@@ -20,6 +24,7 @@ async def push_history(chat_id: int, message: Message):
 
 
 async def get_history(chat_id: int, size:int=50) -> list[Message]:
+    logger.debug(f"Fetching history for chat {chat_id} (size={size})")
     cursor = db.messages.find({'chat_id': chat_id}).sort('created_at', -1).limit(size)
     messages = await cursor.to_list(length=size)
     result = []
@@ -39,6 +44,7 @@ async def get_history(chat_id: int, size:int=50) -> list[Message]:
 
 
 async def get_last_message(chat_id: int) -> Message | None:
+    logger.debug(f"Fetching last message for chat {chat_id}")
     message = await db.messages.find_one({'chat_id': chat_id}, sort=[('created_at', -1)])
     if not message:
         return None

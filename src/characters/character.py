@@ -1,9 +1,12 @@
+import logging
 from typing import Generator
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src.ai import llm
 from src.models import Message, UserRole
+
+logger = logging.getLogger(__name__)
 
 BASIC_SETUP_PROMPT = f"""
 Ты развлекательный бот-персонаж в групповом чате Telegram.
@@ -79,5 +82,7 @@ class Character:
             *_format_previous_messages(last_messages),
             HumanMessage(_format_message_text(user_message)),
         ]
+        logger.debug(f"Invoking LLM for character {self.name} with {len(messages)} messages")
         response = await llm.ainvoke(messages)
-        return response.text
+        logger.info(f"LLM response from {self.name}: {response.content[:50]}...")
+        return response.content
