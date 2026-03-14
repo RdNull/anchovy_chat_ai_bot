@@ -10,7 +10,7 @@ from src.characters.repository import CHARACTERS
 from src.models import Message, MessageReply, UserRole
 from .history import get_history, push_history
 from .utils import (
-    escape_markdown_v2, get_chat_character, send_action, set_chat_character,
+    escape_markdown_v2, get_chat_character, send_action, set_chat_character, restricted,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.effective_message.reply_text("Чёт пошло не так, сорян.")
 
 
+@restricted
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     character = get_chat_character(context)
     name = escape_markdown_v2(character.name)
@@ -38,6 +39,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@restricted
 async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton(character.name, callback_data=f"select_char:{code}")]
@@ -48,6 +50,7 @@ async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Выберите персонажа:", reply_markup=reply_markup)
 
 
+@restricted
 async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -59,6 +62,7 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(f"Персонаж изменён на: {character.name}")
 
 
+@restricted
 async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     character_code = random.choice(list(CHARACTERS.keys()))
     set_chat_character(character_code, context)
@@ -67,12 +71,14 @@ async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Выпал персонаж: {character.name}")
 
 
+@restricted
 async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_message = _parse_user_message(update)
     await push_history(chat_id, user_message)
 
 
+@restricted
 async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if this is a reply to another user (not the bot) in a group
     if update.message.reply_to_message and not update.message.chat.type == "private":

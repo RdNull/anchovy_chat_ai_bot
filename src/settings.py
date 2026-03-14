@@ -14,3 +14,5 @@ AI_INIT_PARAMS = {
 }
 
 CHARACTERS_DIRECTORY = 'src/characters/repository'
+ALLOWED_CHAT_IDS = [int(i) for i in os.environ.get('ALLOWED_CHAT_IDS', '').split(',') if i]
+ALLOWED_USER_IDS = [int(i) for i in os.environ.get('ALLOWED_USER_IDS', '').split(',') if i]

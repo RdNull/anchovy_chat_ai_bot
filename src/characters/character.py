@@ -31,7 +31,7 @@ def _format_message_text(message: Message) -> str:
 
 
 def _format_previous_messages(last_messages: list[Message]) -> Generator[
-    HumanMessage | AIMessage, None]:
+    HumanMessage | AIMessage, None, None]:
     for message in last_messages:
         if message.role == UserRole.USER:
             yield HumanMessage(_format_message_text(message))
