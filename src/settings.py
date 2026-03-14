@@ -9,8 +9,7 @@ AI_INIT_PARAMS = {
     'model': 'deepseek-r1',
     # 'model': 'llama3.2',
     'base_url': os.environ['AI_API_BASE_URL'],
-    'think': False,
-    'model_provider': 'ollama'
+    'model_provider': 'ollama',
 }
 
 CHARACTERS_DIRECTORY = 'src/characters/repository'
