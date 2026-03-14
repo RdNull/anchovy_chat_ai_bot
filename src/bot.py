@@ -1,4 +1,3 @@
-import logging
 
 from telegram.ext import (
     ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, PicklePersistence, filters,
@@ -7,14 +6,6 @@ from telegram.ext import (
 from src import settings
 from src.messages import handlers
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 
 def main() -> None:

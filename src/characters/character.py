@@ -1,12 +1,10 @@
-import logging
 from typing import Generator
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from src.logs import logger
 from src.ai import llm
 from src.models import Message, UserRole
-
-logger = logging.getLogger(__name__)
 
 BASIC_SETUP_PROMPT = f"""
 Ты развлекательный бот-персонаж в групповом чате Telegram.

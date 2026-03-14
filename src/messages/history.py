@@ -1,10 +1,8 @@
-import logging
 from datetime import datetime, timezone
 
+from src.logs import logger
 from src import db
 from src.models import Message, MessageReply, UserRole
-
-logger = logging.getLogger(__name__)
 
 
 async def push_history(chat_id: int, message: Message):

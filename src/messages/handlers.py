@@ -1,21 +1,18 @@
-import logging
 import random
+from datetime import datetime, timedelta, timezone
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
-from telegram.ext import (CallbackContext, CallbackQueryHandler, ContextTypes, filters)
+from telegram.ext import (CallbackContext, ContextTypes, filters)
 
-from datetime import datetime, timedelta, timezone
-
+from src.logs import logger
 from src import settings
 from src.characters.repository import CHARACTERS
 from src.models import Message, MessageReply, UserRole
-from .history import get_history, push_history, get_last_message
+from .history import get_history, get_last_message, push_history
 from .utils import (
-    escape_markdown_v2, get_chat_character, send_action, set_chat_character, restricted,
+    escape_markdown_v2, get_chat_character, restricted, send_action, set_chat_character,
 )
-
-logger = logging.getLogger(__name__)
 
 
 async def start(update: Update, context: CallbackContext):

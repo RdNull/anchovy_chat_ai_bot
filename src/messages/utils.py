@@ -1,14 +1,14 @@
 import asyncio
-import logging
 from functools import wraps
 
 from telegram import Update
 from telegram.ext import (ContextTypes)
 
+from src.logs import logger
 from src import settings
 from src.characters.repository import get_character
 
-logger = logging.getLogger(__name__)
+
 def set_chat_character(character_code: str, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data['character_code'] = character_code
 
