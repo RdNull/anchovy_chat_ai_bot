@@ -15,7 +15,7 @@ AI_LOCAL_INIT_PARAMS = {
 
 AI_CLOUD_INIT_PARAMS = {
     'model_provider': 'openrouter',
-    'model': os.environ.get('OPENROUTER_MODEL', 'z-ai/glm-4.5-air:free'),
+    'model': os.environ.get('OPENROUTER_MODEL_NAME', 'z-ai/glm-4.5-air:free'),
     'api_key': os.environ.get('OPENROUTER_API_KEY'),
     'max_tokens': 1024,
     'stream': False,
@@ -30,3 +30,5 @@ ALLOWED_USER_IDS = [str(i) for i in os.environ.get('ALLOWED_USER_IDS', '').split
 
 RANDOM_REPLY_CHANCE = float(os.environ.get('RANDOM_REPLY_CHANCE', 0.5))
 RANDOM_REPLY_COOLDOWN_MINUTES = int(os.environ.get('RANDOM_REPLY_COOLDOWN_MINUTES', 1))
+
+AI_TIMEOUT = int(os.environ.get('AI_TIMEOUT', 30))

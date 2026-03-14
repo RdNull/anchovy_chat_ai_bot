@@ -1,7 +1,9 @@
+import asyncio
 from typing import Generator
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from src import settings
 from src.logs import logger
 from src.ai import llm
 from src.models import Message, UserRole
@@ -81,6 +83,17 @@ class Character:
             HumanMessage(_format_message_text(user_message)),
         ]
         logger.debug(f"Invoking LLM for character {self.name} with {len(messages)} messages")
-        response = await llm.ainvoke(messages)
+        try:
+            response = await asyncio.wait_for(
+                llm.ainvoke(messages),
+                timeout=settings.AI_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"LLM request timed out after {settings.AI_TIMEOUT}s for {self.name}")
+            return "Чё-то я призадумался и забыл, че хотел сказать..."
+        except Exception as e:
+            logger.error(f"Error invoking LLM for {self.name}: {e}", exc_info=True)
+            return "Голова чё-то разболелась, давай потом..."
+
         logger.info(f"LLM response from {self.name}: {response.content[:50]}...")
         return response.content
