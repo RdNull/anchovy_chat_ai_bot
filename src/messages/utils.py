@@ -35,10 +35,10 @@ def restricted(func):
         chat_id = update.effective_chat.id
 
         is_allowed = False
-        if user_id in settings.ALLOWED_USER_IDS:
+        if str(user_id) in settings.ALLOWED_USER_IDS:
             is_allowed = True
 
-        if chat_id in settings.ALLOWED_CHAT_IDS:
+        if str(chat_id) in settings.ALLOWED_CHAT_IDS:
             is_allowed = True
 
 
