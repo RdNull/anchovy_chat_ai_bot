@@ -34,18 +34,19 @@ def restricted(func):
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
 
-        if settings.ALLOWED_USER_IDS and user_id not in settings.ALLOWED_USER_IDS:
-            is_allowed = False
-        elif settings.ALLOWED_CHAT_IDS and chat_id not in settings.ALLOWED_CHAT_IDS:
-            is_allowed = False
-        else:
+        is_allowed = False
+        if user_id in settings.ALLOWED_USER_IDS:
             is_allowed = True
+
+        if chat_id in settings.ALLOWED_CHAT_IDS:
+            is_allowed = True
+
 
         if not is_allowed:
             logger.warning(f"Unauthorized access: user {user_id}, chat {chat_id}")
             if update.effective_message:
                 await update.effective_message.reply_text(
-                    f"Сорян, тебе нельзя пользоваться этим ботом.\n"
+                    f"Сорян, тебе нельзя пользоваться этим ботом\n"
                     f"Твой ID: `{user_id}`\n"
                     f"ID чата: `{chat_id}`",
                     parse_mode="MarkdownV2"
