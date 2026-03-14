@@ -69,15 +69,20 @@ def send_action(action):
             *args,
             **kwargs
         ):
-            chat_id = update.effective_message.chat_id
+            chat_id = update.effective_chat.id
+            bot = context.bot
 
             async def send_action_loop():
                 try:
                     while True:
-                        await context.bot.send_chat_action(chat_id=chat_id, action=action)
+                        # Schedule the action and immediately sleep, allowing other tasks to continue.
+                        # This avoids waiting for the network round-trip of the action itself.
+                        asyncio.create_task(bot.send_chat_action(chat_id=chat_id, action=action))
                         await asyncio.sleep(5)
                 except asyncio.CancelledError:
                     pass
+                except Exception as e:
+                    logger.error(f"Error in send_action_loop: {e}")
 
             action_task = asyncio.create_task(send_action_loop())
             try:
