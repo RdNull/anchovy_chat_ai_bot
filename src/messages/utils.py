@@ -74,11 +74,14 @@ def send_action(action):
 
             async def send_action_loop():
                 try:
+                    count = 0
                     while True:
-                        # Schedule the action and immediately sleep, allowing other tasks to continue.
-                        # This avoids waiting for the network round-trip of the action itself.
-                        asyncio.create_task(bot.send_chat_action(chat_id=chat_id, action=action))
-                        await asyncio.sleep(5)
+                        if count % 5 == 0:
+                            asyncio.create_task(
+                                bot.send_chat_action(chat_id=chat_id, action=action)
+                            )
+                        await asyncio.sleep(1)
+                        count += 1
                 except asyncio.CancelledError:
                     pass
                 except Exception as e:
