@@ -44,10 +44,12 @@ class Character:
 
     def __init__(
         self,
+        code:str,
         name: str,
         description: str,
         style_prompt: str,
     ):
+        self.code = code
         self.name = name
         self.description = description
         self.style_prompt = style_prompt

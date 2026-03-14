@@ -14,7 +14,9 @@ def set_chat_character(character_code: str, context: ContextTypes.DEFAULT_TYPE):
 
 def get_chat_character(context: ContextTypes.DEFAULT_TYPE, last_messages_recap: str | None = None):
     character_code = context.chat_data.get('character_code')
-    return get_character(character_code, last_messages_recap)
+    character =  get_character(character_code, last_messages_recap)
+    set_chat_character(character.code, context)
+    return character
 
 
 def send_action(action):
