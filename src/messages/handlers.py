@@ -147,7 +147,7 @@ async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     else:
         messages_count = await get_messages_count(chat_id)
 
-    if messages_count >= settings.MESSAGES_RECAP_SIZE:
+    if messages_count >= settings.LAST_MESSAGES_SIZE:
         logger.info(f"Triggering periodic recap for chat {chat_id} (count since last: {messages_count})")
         model_code = get_chat_model(context)
         await generate_and_save_recap(chat_id, model_code)
