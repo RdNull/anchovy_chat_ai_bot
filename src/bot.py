@@ -27,14 +27,18 @@ def main() -> None:
     start_handler = CommandHandler('start', handlers.start)
     info_handler = CommandHandler('info', handlers.info)
     list_handler = CommandHandler('list', handlers.list_characters)
+    model_handler = CommandHandler('model', handlers.list_models)
     random_handler = CommandHandler('random', handlers.random_character)
     select_callback_handler = CallbackQueryHandler(handlers.select_character, pattern="^select_char:")
+    select_model_callback_handler = CallbackQueryHandler(handlers.select_model, pattern="^select_model:")
 
     app.add_handler(start_handler)
     app.add_handler(info_handler)
     app.add_handler(list_handler)
+    app.add_handler(model_handler)
     app.add_handler(random_handler)
     app.add_handler(select_callback_handler)
+    app.add_handler(select_model_callback_handler)
     app.add_handler(mention_handler)
     app.add_handler(conversation_handler)
 

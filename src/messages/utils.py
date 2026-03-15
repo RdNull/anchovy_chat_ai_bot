@@ -15,9 +15,18 @@ def set_chat_character(character_code: str, context: ContextTypes.DEFAULT_TYPE):
 
 def get_chat_character(context: ContextTypes.DEFAULT_TYPE, last_messages_recap: str | None = None):
     character_code = context.chat_data.get('character_code')
-    character =  get_character(character_code, last_messages_recap)
+    character = get_character(character_code, last_messages_recap)
     set_chat_character(character.code, context)
     return character
+
+
+def set_chat_model(model_code: str, context: ContextTypes.DEFAULT_TYPE):
+    if model_code in settings.AI_MODELS:
+        context.chat_data['ai_model_code'] = model_code
+
+
+def get_chat_model(context: ContextTypes.DEFAULT_TYPE) -> str:
+    return context.chat_data.get('ai_model_code', settings.DEFAULT_AI_MODEL)
 
 
 def escape_markdown_v2(text: str) -> str:

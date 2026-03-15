@@ -5,7 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src import settings
 from src.logs import logger
-from src.ai import llm
+from src import ai
 from src.models import Message, UserRole
 
 BASIC_SETUP_PROMPT = f"""
@@ -75,7 +75,7 @@ class Character:
         return SystemMessage(setup_prompt)
 
     async def respond(
-        self, user_message: Message, last_messages: list[Message] = None
+        self, user_message: Message, last_messages: list[Message] = None, llm=None
     ) -> str:
         messages = [
             self.system_message,
@@ -84,6 +84,8 @@ class Character:
         ]
         logger.debug(f"Invoking LLM for character {self.name} with {len(messages)} messages")
         try:
+            if not llm:
+                llm = ai.get_model()
             response = await asyncio.wait_for(
                 llm.ainvoke(messages),
                 timeout=settings.AI_TIMEOUT

@@ -8,22 +8,46 @@ DATABASE_URL = os.environ['DATABASE_URL']
 
 IS_LOCAL = os.environ.get('IS_LOCAL', 'false').lower() == 'true'
 
-AI_LOCAL_INIT_PARAMS = {
-    'model': 'deepseek-r1',
-    'base_url': os.environ['AI_API_BASE_URL'],
-    'model_provider': 'ollama',
-}
-
-AI_CLOUD_INIT_PARAMS = {
-    'model_provider': 'openrouter',
-    'model': os.environ.get('OPENROUTER_MODEL_NAME', 'z-ai/glm-4.5-air:free'),
-    'api_key': os.environ.get('OPENROUTER_API_KEY'),
-    'max_tokens': 1024,
-    'stream': False,
-    'reasoning': {
-        'enabled': False
+AI_MODELS_LOCAL = {
+    'deepseek-r1': {
+        'model': 'deepseek-r1',
+        'base_url': os.environ.get('AI_API_BASE_URL'),
+        'model_provider': 'ollama',
+    },
+    'qwen3.5': {
+        'model': 'qwen3.5:9b',
+        'base_url': os.environ.get('AI_API_BASE_URL'),
+        'model_provider': 'ollama',
+    },
+    'llama3.2': {
+        'model': 'llama3.2',
+        'base_url': os.environ.get('AI_API_BASE_URL'),
+        'model_provider': 'ollama',
     }
 }
+
+AI_MODELS_CLOUD = {
+    'glm-4.5': {
+        'model_provider': 'openrouter',
+        'model': 'z-ai/glm-4.5-air:free',
+        'api_key': os.environ.get('OPENROUTER_API_KEY'),
+        'max_tokens': 1024,
+        'stream': False,
+        'reasoning': {
+            'enabled': False
+        }
+    },
+    'hunter-alpha': {
+        'model_provider': 'openrouter',
+        'model': 'openrouter/hunter-alpha',
+        'api_key': os.environ.get('OPENROUTER_API_KEY'),
+        'max_tokens': 1024,
+        'stream': False,
+    },
+}
+
+AI_MODELS = AI_MODELS_LOCAL if IS_LOCAL else AI_MODELS_CLOUD
+DEFAULT_AI_MODEL = list(AI_MODELS.keys())[0]
 
 CHARACTERS_DIRECTORY = 'src/characters/repository'
 ALLOWED_CHAT_IDS = [str(i) for i in os.environ.get('ALLOWED_CHAT_IDS', '').split(',') if i]
