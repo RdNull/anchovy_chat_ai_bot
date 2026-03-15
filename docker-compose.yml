@@ -16,7 +16,7 @@ services:
       - .:/proj
     depends_on:
       - mongo
-    command: hupper -m src.bot
+    command: python -m src.bot
     restart: always
     stdin_open: true
     tty: true
