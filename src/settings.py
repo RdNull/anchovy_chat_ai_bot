@@ -47,36 +47,6 @@ AI_MODELS_CLOUD = {
             'enabled': False
         }
     },
-    'mistral-small-3.1': {
-        'model_provider': 'openrouter',
-        'model': 'mistralai/mistral-small-3.1-24b-instruct:free',
-        'api_key': os.environ.get('OPENROUTER_API_KEY'),
-        'max_tokens': 2048,
-        'stream': False,
-        'reasoning': {
-            'enabled': False
-        }
-    },
-    'gemma-3': {
-        'model_provider': 'openrouter',
-        'model': 'google/gemma-3-27b-it:free',
-        'api_key': os.environ.get('OPENROUTER_API_KEY'),
-        'max_tokens': 2048,
-        'stream': False,
-        'reasoning': {
-            'enabled': False
-        }
-    },
-    'qwen3': {
-        'model_provider': 'openrouter',
-        'model': 'qwen/qwen3-4b:free',
-        'api_key': os.environ.get('OPENROUTER_API_KEY'),
-        'max_tokens': 2048,
-        'stream': False,
-        'reasoning': {
-            'enabled': False
-        }
-    },
     'hunter-alpha': {
         'model_provider': 'openrouter',
         'model': 'openrouter/hunter-alpha',
