@@ -33,14 +33,7 @@ AI_MODELS_CLOUD = {
         'api_key': os.environ.get('OPENROUTER_API_KEY'),
         'max_tokens': 2048,
         'stream': False,
-        'extra_body': {
-            'reasoning': {
-                'enabled': False
-            }
-        },
-        'reasoning': {
-            'enabled': False
-        }
+        'reasoning': 'none',
     },
     'arcee-ai': {
         'model_provider': 'openrouter',
@@ -48,9 +41,7 @@ AI_MODELS_CLOUD = {
         'api_key': os.environ.get('OPENROUTER_API_KEY'),
         'max_tokens': 2048,
         'stream': False,
-        'reasoning': {
-            'enabled': False
-        }
+        'reasoning': 'none',
     },
     'hunter-alpha': {
         'model_provider': 'openrouter',
