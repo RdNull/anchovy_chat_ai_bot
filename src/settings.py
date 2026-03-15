@@ -31,7 +31,27 @@ AI_MODELS_CLOUD = {
         'model_provider': 'openrouter',
         'model': 'z-ai/glm-4.5-air:free',
         'api_key': os.environ.get('OPENROUTER_API_KEY'),
-        'max_tokens': 1024,
+        'max_tokens': 2048,
+        'stream': False,
+        'reasoning': {
+            'enabled': False
+        }
+    },
+    'arcee-ai': {
+        'model_provider': 'openrouter',
+        'model': 'arcee-ai/trinity-large-preview:free',
+        'api_key': os.environ.get('OPENROUTER_API_KEY'),
+        'max_tokens': 2048,
+        'stream': False,
+        'reasoning': {
+            'enabled': False
+        }
+    },
+    'gpt-oss': {
+        'model_provider': 'openrouter',
+        'model': 'openai/gpt-oss-120b:free',
+        'api_key': os.environ.get('OPENROUTER_API_KEY'),
+        'max_tokens': 2048,
         'stream': False,
         'reasoning': {
             'enabled': False
@@ -41,7 +61,7 @@ AI_MODELS_CLOUD = {
         'model_provider': 'openrouter',
         'model': 'openrouter/hunter-alpha',
         'api_key': os.environ.get('OPENROUTER_API_KEY'),
-        'max_tokens': 1024,
+        'max_tokens': 2048,
         'stream': False,
     },
 }
