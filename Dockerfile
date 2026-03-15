@@ -15,5 +15,5 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 RUN useradd -m -d /proj -s /bin/bash app
 COPY . /proj
 WORKDIR /proj
-RUN chown -R app:app /proj/*
+RUN mkdir -p data && chown -R app:app /proj/data
 USER app

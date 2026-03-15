@@ -1,7 +1,7 @@
 import os
 
 APP_NAME = 'shizo_ded_bot'
-BOT_PERSISTENCE_FILE = f'src/{APP_NAME}.tg'
+BOT_PERSISTENCE_FILE = f'data/{APP_NAME}.tg'
 TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
 BOT_NICKNAME = 'ShizoDedAnchovyBot'
 DATABASE_URL = os.environ['DATABASE_URL']

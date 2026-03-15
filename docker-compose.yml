@@ -14,6 +14,7 @@ services:
       - .env
     volumes:
       - .:/proj
+      - bot_data:/proj/data
     depends_on:
       - mongo
     command: python -m src.bot
@@ -39,3 +40,4 @@ networks:
 volumes:
   shizo_ded_bot:
     external: true
+  bot_data:
