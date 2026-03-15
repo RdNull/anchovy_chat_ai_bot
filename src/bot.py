@@ -9,7 +9,7 @@ from src.messages import handlers
 
 
 def main() -> None:
-    persistence = PicklePersistence(filepath=f'./{settings.APP_NAME}.tg')
+    persistence = PicklePersistence(filepath=settings.BOT_PERSISTENCE_FILE)
     app = ApplicationBuilder().token(settings.TELEGRAM_TOKEN).persistence(persistence).build()
 
     mention_handler = MessageHandler(
