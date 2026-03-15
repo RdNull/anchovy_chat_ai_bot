@@ -47,9 +47,29 @@ AI_MODELS_CLOUD = {
             'enabled': False
         }
     },
-    'gpt-oss': {
+    'mistral-small-3.1': {
         'model_provider': 'openrouter',
-        'model': 'openai/gpt-oss-120b:free',
+        'model': 'mistralai/mistral-small-3.1-24b-instruct:free',
+        'api_key': os.environ.get('OPENROUTER_API_KEY'),
+        'max_tokens': 2048,
+        'stream': False,
+        'reasoning': {
+            'enabled': False
+        }
+    },
+    'gemma-3': {
+        'model_provider': 'openrouter',
+        'model': 'google/gemma-3-27b-it:free',
+        'api_key': os.environ.get('OPENROUTER_API_KEY'),
+        'max_tokens': 2048,
+        'stream': False,
+        'reasoning': {
+            'enabled': False
+        }
+    },
+    'qwen3': {
+        'model_provider': 'openrouter',
+        'model': 'qwen/qwen3-4b:free',
         'api_key': os.environ.get('OPENROUTER_API_KEY'),
         'max_tokens': 2048,
         'stream': False,
