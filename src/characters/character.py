@@ -53,12 +53,14 @@ class Character:
     def __init__(
         self,
         code:str,
+        display_name: str,
         name: str,
         description: str,
         style_prompt: str,
     ):
         self.code = code
         self.name = name
+        self.display_name = display_name
         self.description = description
         self.style_prompt = style_prompt
 
@@ -82,7 +84,8 @@ class Character:
             *_format_previous_messages(last_messages),
             HumanMessage(_format_message_text(user_message)),
         ]
-        logger.debug(f"Invoking LLM for character {self.name} with {len(messages)} messages")
+        logger.debug(
+            f"Invoking LLM for character {self.name} with {len(messages)} messages")
         try:
             if not llm:
                 llm = ai.get_model()
@@ -91,7 +94,8 @@ class Character:
                 timeout=settings.AI_TIMEOUT
             )
         except asyncio.TimeoutError:
-            logger.error(f"LLM request timed out after {settings.AI_TIMEOUT}s for {self.name}")
+            logger.error(
+                f"LLM request timed out after {settings.AI_TIMEOUT}s for {self.name}")
             return "Чё-то я призадумался и забыл, че хотел сказать..."
         except Exception as e:
             logger.error(f"Error invoking LLM for {self.name}: {e}", exc_info=True)

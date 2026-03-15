@@ -37,7 +37,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f"Info requested in chat {chat_id}")
     character = get_chat_character(context)
-    name = escape_markdown_v2(character.name)
+    name = escape_markdown_v2(character.display_name)
     description = escape_markdown_v2(character.description)
     model_code = get_chat_model(context)
     await update.message.reply_text(
@@ -53,7 +53,7 @@ async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f"Characters list requested in chat {chat_id}")
     keyboard = [
-        [InlineKeyboardButton(character.name, callback_data=f"select_char:{code}")]
+        [InlineKeyboardButton(character.display_name, callback_data=f"select_char:{code}")]
         for code, character in CHARACTERS.items()
     ]
 
@@ -72,7 +72,7 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     set_chat_character(character_code, context)
     character = CHARACTERS[character_code]
 
-    await query.edit_message_text(f"Персонаж изменён на: {character.name}")
+    await query.edit_message_text(f"Персонаж изменён на: {character.display_name}")
 
 
 @restricted
@@ -109,7 +109,7 @@ async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     set_chat_character(character_code, context)
     character = CHARACTERS[character_code]
 
-    await update.message.reply_text(f"Выпал персонаж: {character.name}")
+    await update.message.reply_text(f"Выпал персонаж: {character.display_name}")
 
 
 @restricted
@@ -191,7 +191,7 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             role=UserRole.AI,
             text=response,
             reply=MessageReply(text=user_message.text, nickname=user_message.nickname),
-            nickname=settings.BOT_NICKNAME,
+            nickname=f'{settings.BOT_NICKNAME}({character.name})',
         )
     )
     asyncio.create_task(_check_recap(chat_id, context))

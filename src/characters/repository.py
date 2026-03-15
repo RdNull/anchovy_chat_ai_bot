@@ -15,6 +15,7 @@ for path in Path(settings.CHARACTERS_DIRECTORY).rglob('*.yaml'):
     CHARACTERS[character_code] = Character(
         code=character_code,
         name=character_data['name'],
+        display_name=character_data['display_name'],
         description=character_data['description'],
         style_prompt=character_data['prompt']
     )
