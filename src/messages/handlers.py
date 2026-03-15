@@ -1,3 +1,4 @@
+import asyncio
 import random
 from datetime import datetime, timedelta, timezone
 
@@ -9,11 +10,15 @@ from src.logs import logger
 from src import settings, ai as llm_module
 from src.characters.repository import CHARACTERS
 from src.models import Message, MessageReply, UserRole
-from .history import get_history, get_last_message, push_history
+from .history import (
+    get_history, get_last_message, get_messages_count, get_last_recap,
+    get_last_recap_timestamp, get_messages_count_since, push_history,
+)
 from .utils import (
     escape_markdown_v2, get_chat_character, get_chat_model, restricted, send_action,
     set_chat_character, set_chat_model,
 )
+from .recap import generate_and_save_recap
 
 
 async def start(update: Update, context: CallbackContext):
@@ -132,6 +137,20 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     await push_history(chat_id, user_message)
+    asyncio.create_task(_check_recap(chat_id, context))
+
+
+async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    last_recap_timestamp = await get_last_recap_timestamp(chat_id)
+    if last_recap_timestamp:
+        messages_count = await get_messages_count_since(chat_id, last_recap_timestamp)
+    else:
+        messages_count = await get_messages_count(chat_id)
+
+    if messages_count >= settings.MESSAGES_RECAP_SIZE:
+        logger.info(f"Triggering periodic recap for chat {chat_id} (count since last: {messages_count})")
+        model_code = get_chat_model(context)
+        await generate_and_save_recap(chat_id, model_code)
 
 
 @restricted
@@ -158,8 +177,9 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await push_history(chat_id, user_message)
 
-    character = get_chat_character(context)
-    last_messages = await get_history(chat_id)
+    last_recap = await get_last_recap(chat_id)
+    character = get_chat_character(context, last_messages_recap=last_recap)
+    last_messages = await get_history(chat_id, size=settings.LAST_MESSAGES_SIZE)
     model_code = get_chat_model(context)
     llm = llm_module.get_model(model_code)
     response = await character.respond(user_message, last_messages, llm=llm)
@@ -174,6 +194,7 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             nickname=settings.BOT_NICKNAME,
         )
     )
+    asyncio.create_task(_check_recap(chat_id, context))
 
 
 def _parse_user_message(update: Update):

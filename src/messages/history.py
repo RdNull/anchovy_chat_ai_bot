@@ -62,3 +62,40 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
         nickname=message.get('nickname', 'unknown'),
         created_at=datetime.fromtimestamp(message['created_at'], tz=timezone.utc)
     )
+
+
+async def get_last_recap_timestamp(chat_id: int) -> float | None:
+    logger.debug(f"Fetching last recap timestamp for chat {chat_id}")
+    recap = await db.recaps.find_one({'chat_id': chat_id}, sort=[('created_at', -1)])
+    if not recap:
+        return None
+    return recap['created_at']
+
+
+async def get_messages_count_since(chat_id: int, timestamp: float) -> int:
+    logger.debug(f"Counting messages for chat {chat_id} since {timestamp}")
+    return await db.messages.count_documents({
+        'chat_id': chat_id,
+        'created_at': {'$gt': timestamp}
+    })
+
+
+async def get_messages_count(chat_id: int) -> int:
+    logger.debug(f"Counting messages for chat {chat_id}")
+    return await db.messages.count_documents({'chat_id': chat_id})
+
+
+async def get_last_recap(chat_id: int) -> str | None:
+    logger.debug(f"Fetching last recap for chat {chat_id}")
+    recap = await db.recaps.find_one({'chat_id': chat_id}, sort=[('created_at', -1)])
+    return recap['text'] if recap else None
+
+
+async def save_recap(chat_id: int, text: str):
+    logger.debug(f"Saving recap for chat {chat_id}")
+    data = {
+        'chat_id': chat_id,
+        'text': text,
+        'created_at': datetime.now(timezone.utc).timestamp()
+    }
+    await db.recaps.insert_one(data)
