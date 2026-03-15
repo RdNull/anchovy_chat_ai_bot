@@ -34,7 +34,7 @@ AI_MODELS_CLOUD = {
         'max_tokens': 2048,
         'stream': False,
         'reasoning': {
-            'effort': 'none'
+            'effort': 'minimal'
         }
     },
     'arcee-ai': {
@@ -44,7 +44,7 @@ AI_MODELS_CLOUD = {
         'max_tokens': 2048,
         'stream': False,
         'reasoning': {
-            'effort': 'none'
+            'effort': 'minimal'
         }
     },
     'hunter-alpha': {
