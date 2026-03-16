@@ -1,24 +1,25 @@
 import asyncio
 import random
+import re
 from datetime import datetime, timedelta, timezone
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import (CallbackContext, ContextTypes, filters)
 
-from src.logs import logger
-from src import settings, ai as llm_module
+from src import ai as llm_module, settings
 from src.characters.repository import CHARACTERS
+from src.logs import logger
 from src.models import Message, MessageReply, UserRole
 from .history import (
-    get_history, get_last_message, get_messages_count, get_last_recap,
-    get_last_recap_timestamp, get_messages_count_since, push_history,
+    get_history, get_last_message, get_last_recap, get_last_recap_timestamp, get_messages_count,
+    get_messages_count_since, push_history,
 )
+from .recap import generate_and_save_recap
 from .utils import (
     escape_markdown_v2, get_chat_character, get_chat_model, restricted, send_action,
     set_chat_character, set_chat_model,
 )
-from .recap import generate_and_save_recap
 
 
 async def start(update: Update, context: CallbackContext):
@@ -73,6 +74,27 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     character = CHARACTERS[character_code]
 
     await query.edit_message_text(f"Персонаж изменён на: {character.display_name}")
+
+
+@restricted
+@send_action(ChatAction.TYPING)
+async def send_recap(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Recap requested in chat {chat_id}")
+    recap = await get_last_recap(chat_id)
+    if not recap:
+        await update.message.reply_text("Сводки пока нет.")
+        return
+
+    recap_text = recap.text.strip()
+    if recap_text:
+        sentences = [s.strip() for s in re.split(r'\.\s*', recap_text) if s.strip()]
+        recap_text = "\n".join([f"- {s}." for s in sentences])
+
+    await update.message.reply_text(
+        f"*Последняя сводка:*\n{escape_markdown_v2(recap_text)}",
+        parse_mode="MarkdownV2"
+    )
 
 
 @restricted
