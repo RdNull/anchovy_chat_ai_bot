@@ -1,12 +1,11 @@
-
 from telegram.ext import (
-    ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, PicklePersistence, filters,
+    ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, PicklePersistence,
+    filters,
 )
 
-from messages.utils import ReplyToBotFilter
 from src import settings
 from src.messages import handlers
-
+from src.messages.utils import ReplyToBotFilter
 
 
 def main() -> None:
@@ -31,8 +30,14 @@ def main() -> None:
     recap_handler = CommandHandler('recap', handlers.send_recap)
     model_handler = CommandHandler('model', handlers.list_models)
     random_handler = CommandHandler('random', handlers.random_character)
-    select_callback_handler = CallbackQueryHandler(handlers.select_character, pattern="^select_char:")
-    select_model_callback_handler = CallbackQueryHandler(handlers.select_model, pattern="^select_model:")
+    select_callback_handler = CallbackQueryHandler(
+        handlers.select_character,
+        pattern="^select_char:"
+    )
+    select_model_callback_handler = CallbackQueryHandler(
+        handlers.select_model,
+        pattern="^select_model:"
+    )
 
     app.add_handler(start_handler)
     app.add_handler(info_handler)
