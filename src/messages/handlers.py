@@ -178,8 +178,15 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await push_history(chat_id, user_message)
 
     last_recap = await get_last_recap(chat_id)
-    character = get_chat_character(context, last_messages_recap=last_recap)
-    last_messages = await get_history(chat_id, size=settings.LAST_MESSAGES_SIZE)
+    character = get_chat_character(
+        context=context,
+        last_messages_recap=last_recap.text if last_recap else None
+    )
+    last_messages = await get_history(
+        chat_id,
+        size=settings.LAST_MESSAGES_SIZE,
+        from_date=last_recap.created_at if last_recap else None
+    )
     model_code = get_chat_model(context)
     llm = llm_module.get_model(model_code)
     response = await character.respond(user_message, last_messages, llm=llm)

@@ -6,3 +6,4 @@ aiohttp
 langchain
 langchain-ollama
 langchain-openrouter
+pydantic

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from src.logs import logger
 from src import db
-from src.models import Message, MessageReply, UserRole
+from src.models import Message, MessageReply, RecapData, UserRole
 
 
 async def push_history(chat_id: int, message: Message):
@@ -21,9 +21,15 @@ async def push_history(chat_id: int, message: Message):
     await db.messages.insert_one(data)
 
 
-async def get_history(chat_id: int, size:int=50) -> list[Message]:
-    logger.debug(f"Fetching history for chat {chat_id} (size={size})")
-    cursor = db.messages.find({'chat_id': chat_id}).sort('created_at', -1).limit(size)
+async def get_history(
+    chat_id: int, size: int = 50, from_date: datetime | None = None
+) -> list[Message]:
+    logger.debug(f"Fetching history for chat {chat_id} ({size=} {from_date=})")
+    search_query = {'chat_id': chat_id}
+    if from_date:
+        search_query['created_at'] = {'$gte': from_date.timestamp()}
+
+    cursor = db.messages.find(search_query).sort('created_at', -1).limit(size)
     messages = await cursor.to_list(length=size)
     result = []
     for m in reversed(messages):
@@ -85,10 +91,10 @@ async def get_messages_count(chat_id: int) -> int:
     return await db.messages.count_documents({'chat_id': chat_id})
 
 
-async def get_last_recap(chat_id: int) -> str | None:
+async def get_last_recap(chat_id: int) -> RecapData | None:
     logger.debug(f"Fetching last recap for chat {chat_id}")
     recap = await db.recaps.find_one({'chat_id': chat_id}, sort=[('created_at', -1)])
-    return recap['text'] if recap else None
+    return RecapData(**recap) if recap else None
 
 
 async def save_recap(chat_id: int, text: str):
