@@ -34,7 +34,7 @@ AI_MODELS_CLOUD = {
         'max_tokens': 2048,
         'stream': False,
         'reasoning': {
-            'effort': 'minimal'
+            'effort': 'low'
         }
     },
     'arcee-ai': {
@@ -44,7 +44,7 @@ AI_MODELS_CLOUD = {
         'max_tokens': 2048,
         'stream': False,
         'reasoning': {
-            'effort': 'minimal'
+            'effort': 'low'
         }
     },
     'hunter-alpha': {
@@ -54,6 +54,16 @@ AI_MODELS_CLOUD = {
         'max_tokens': 2048,
         'stream': False,
     },
+    'openrouter-preset': {
+        'model_provider': 'openrouter',
+        'model': '@preset/shizo-ded-bot-preset',
+        'api_key': os.environ.get('OPENROUTER_API_KEY'),
+        'max_tokens': 2048,
+        'stream': False,
+        'reasoning': {
+            'effort': 'low'
+        }
+    }
 }
 
 AI_MODELS = AI_MODELS_LOCAL if IS_LOCAL else AI_MODELS_CLOUD
