@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
-from telegram.ext import (CallbackContext, ContextTypes, filters)
+from telegram.ext import CallbackContext, ContextTypes
 
 from src import ai as llm_module, settings
 from src.characters.repository import CHARACTERS
@@ -135,6 +135,12 @@ async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @restricted
+async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Bot mentioned or replied to in chat {chat_id}")
+    await _generate_answer(update, context)
+
+@restricted
 async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_message = _parse_user_message(update)
@@ -174,21 +180,6 @@ async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
         model_code = get_chat_model(context)
         await generate_and_save_recap(chat_id, model_code)
 
-
-@restricted
-async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    logger.info(f"Bot mentioned or replied to in chat {chat_id}")
-    # Check if this is a reply to another user (not the bot) in a group
-    if update.message.reply_to_message and not update.message.chat.type == "private":
-        bot_user = await context.bot.get_me()
-        if update.message.reply_to_message.from_user.id != bot_user.id:
-            # If it's a reply but NOT to the bot, and there's no mention, don't handle it here
-            if not filters.Mention(settings.BOT_NICKNAME).filter(update.message):
-                await handle_conversation(update, context)
-                return
-
-    await _generate_answer(update, context)
 
 
 @send_action(ChatAction.TYPING)

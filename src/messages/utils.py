@@ -1,12 +1,22 @@
 import asyncio
 from functools import wraps
 
-from telegram import Update
-from telegram.ext import (ContextTypes)
+from telegram import Update, Message
+from telegram.ext import (ContextTypes, filters)
 
 from src.logs import logger
 from src import settings
 from src.characters.repository import get_character
+
+
+class ReplyToBotFilter(filters.MessageFilter):
+    def filter(self, message: Message) -> bool:
+        return bool(
+            message.reply_to_message and
+            message.reply_to_message.from_user and
+            message.reply_to_message.from_user.is_bot and
+            message.reply_to_message.from_user.username == settings.BOT_NICKNAME
+        )
 
 
 def set_chat_character(character_code: str, context: ContextTypes.DEFAULT_TYPE):
@@ -49,7 +59,6 @@ def restricted(func):
 
         if str(chat_id) in settings.ALLOWED_CHAT_IDS:
             is_allowed = True
-
 
         if not is_allowed:
             logger.warning(f"Unauthorized access: user {user_id}, chat {chat_id}")

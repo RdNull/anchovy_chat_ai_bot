@@ -3,6 +3,7 @@ from telegram.ext import (
     ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, PicklePersistence, filters,
 )
 
+from messages.utils import ReplyToBotFilter
 from src import settings
 from src.messages import handlers
 
@@ -14,9 +15,9 @@ def main() -> None:
 
     mention_handler = MessageHandler(
         filters.TEXT & (
-            (filters.Mention(settings.BOT_NICKNAME) & filters.REPLY) |
+            filters.ChatType.PRIVATE |
             filters.Mention(settings.BOT_NICKNAME) |
-            filters.ChatType.PRIVATE
+            ReplyToBotFilter()
         ),
         handlers.handle_mention
     )
