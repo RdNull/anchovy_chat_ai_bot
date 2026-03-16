@@ -14,9 +14,8 @@ def main() -> None:
 
     mention_handler = MessageHandler(
         filters.TEXT & (
-            filters.Mention(settings.BOT_NICKNAME) |
-            filters.ChatType.PRIVATE |
-            filters.REPLY
+            (filters.Mention(settings.BOT_NICKNAME) & filters.REPLY) |
+            filters.ChatType.PRIVATE
         ),
         handlers.handle_mention
     )
