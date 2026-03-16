@@ -140,10 +140,14 @@ async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Bot mentioned or replied to in chat {chat_id}")
     await _generate_answer(update, context)
 
+
 @restricted
 async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_message = _parse_user_message(update)
+    if not user_message:
+        return
+
     logger.debug(f"Handling conversation in chat {chat_id} from {user_message.nickname}")
 
     if random.random() < settings.RANDOM_REPLY_CHANCE:
@@ -176,16 +180,20 @@ async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
         messages_count = await get_messages_count(chat_id)
 
     if messages_count >= settings.LAST_MESSAGES_SIZE:
-        logger.info(f"Triggering periodic recap for chat {chat_id} (count since last: {messages_count})")
+        logger.info(
+            f"Triggering periodic recap for chat {chat_id} (count since last: {messages_count})"
+        )
         model_code = get_chat_model(context)
         await generate_and_save_recap(chat_id, model_code)
 
 
-
 @send_action(ChatAction.TYPING)
 async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
     user_message = _parse_user_message(update)
+    if not user_message:
+        return
+
+    chat_id = update.effective_chat.id
     logger.info(f"Generating answer for chat {chat_id} (user: {user_message.nickname})")
 
     await push_history(chat_id, user_message)
@@ -217,7 +225,10 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(_check_recap(chat_id, context))
 
 
-def _parse_user_message(update: Update):
+def _parse_user_message(update: Update) -> Message | None:
+    if not update.message:
+        return None
+
     message_text = update.message.text
     reply = None
     if update.message.reply_to_message:
