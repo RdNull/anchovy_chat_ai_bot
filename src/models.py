@@ -1,7 +1,11 @@
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel as _BaseModel, ConfigDict
 from datetime import datetime
+
+
+class BaseModel(_BaseModel):
+    model_config = ConfigDict(coerce_numbers_to_str=True)
 
 class UserRole(str, Enum):
     USER = 'user'

@@ -43,7 +43,7 @@ def _format_message_for_recap(message: Message) -> str:
 async def generate_and_save_recap(chat_id: int, model_code: str = None):
     logger.info(f"Generating recap for chat {chat_id}")
 
-    previous_recap = await get_last_recap(chat_id) or "Нет предыдущей сводки."
+    previous_recap = await get_last_recap(chat_id)
 
     last_recap_timestamp = await get_last_recap_timestamp(chat_id)
     if last_recap_timestamp:
@@ -58,7 +58,7 @@ async def generate_and_save_recap(chat_id: int, model_code: str = None):
     formatted_messages = "\n".join([_format_message_for_recap(m) for m in last_messages])
     data_prompt = (
         "Предыдущая сводка:\n"
-        f"{previous_recap.text})\n"
+        f"{previous_recap.text if previous_recap else 'Нет предыдущей сводки.'})\n"
         "Новые сообщения:\n"
         f"{formatted_messages}"
     )
