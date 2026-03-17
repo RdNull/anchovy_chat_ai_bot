@@ -50,7 +50,7 @@ def main() -> None:
     app.add_handler(mention_handler)
     app.add_handler(conversation_handler)
 
-    # app.add_error_handler(handlers.error_handler)
+    app.add_error_handler(handlers.error_handler)
 
     app.run_polling()
 
