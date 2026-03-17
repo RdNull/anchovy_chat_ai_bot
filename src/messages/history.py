@@ -135,12 +135,15 @@ async def get_active_chats() -> list[int]:
     return [c['chat_id'] for c in chats]
 
 
-async def save_recap(chat_id: int, text: str, recap_type: RecapType = RecapType.PERIODIC):
+async def save_recap(
+    chat_id: int, text: str, recap_type: RecapType = RecapType.PERIODIC, created_at: datetime | None = None
+):
     logger.debug(f"Saving {recap_type.value} recap for chat {chat_id}")
+    created_at = created_at.timestamp() if created_at else datetime.now(timezone.utc).timestamp()
     data = {
         'chat_id': chat_id,
         'text': text,
         'type': recap_type.value,
-        'created_at': datetime.now(timezone.utc).timestamp()
+        'created_at': created_at
     }
     await db.recaps.insert_one(data)

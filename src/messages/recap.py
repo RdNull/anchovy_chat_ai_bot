@@ -1,38 +1,28 @@
 from datetime import datetime
+from time import timezone
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src import ai, settings
 from src.logs import logger
 from src.messages.history import (
-    get_history, get_last_recap, get_last_recap_timestamp, get_last_recaps,
-    get_messages_count_since, save_recap,
+    get_history, get_last_recap, get_last_recaps, save_recap,
 )
 from src.models import RecapType
 
 RECAP_PROMPT = """
 Ты создаёшь краткую сводку сообщений для персонажа Telegram-бота.
-Задача: объединить предыдущую сводку и новые сообщения в одну короткую сводку.
+Задача: объединить предыдущую сводку и новые сообщения или несколько сводок в одну короткую сводку.
 
 Правила:
 * Пиши 1–5 предложений.
 * Передавай только факты из сообщений и их эмоции, если они явно выражены.
 * Упоминай важные вопросы, события и конфликты.
-* Не добавляй ничего, чего нет в сообщениях.
 * Не делай предположений и не добавляй события.
 * Если информация неясна — пропусти её.
 * Игнорируй формат чата: не используй кавычки, скобки, двоеточия и метки.
-* Если бот пишет как `<имя>(персонаж)`, используй имя персонажа.
-
-Пример:
-Вход:
-Антон: Привет, кто идёт на встречу?
-Ирина (в ответ на "Привет, кто идёт на встречу?"): Я не приду, занята
-Алексей: Я буду
-ShizoDedBot(Агафон): А мы на мусорку собираемся?
-
-Сводка:
-`Антон спрашивает о встрече, Ирина отказывается, Алексей соглашается, Агафон спрашивает идут ли они на мусорку.`
+* Если в сообщениях бот пишет как `<имя>(персонаж)`, используй имя персонажа.
+* Если ничего не происходило - верни в ответе `(нет данных)` 
 
 Ответ должен содержать только сводку.
 """
@@ -43,12 +33,17 @@ async def generate_and_save_recap(
 ):
     logger.info(f"Generating {recap_type.value} recap for chat {chat_id}")
 
+    recap_started_at = datetime.now(timezone.utc)
     previous_recap = await _get_previous_recap_data(chat_id, recap_type)
     recap_text = await _get_recap_text(chat_id, recap_type)
 
+    if not recap_text and not recap_text.strip():
+        logger.info(f"No new messages for {recap_type.value} recap in chat {chat_id}")
+        return
+
     data_prompt = (
-        "Контекст:\n"
-        f"{previous_recap})\n"
+        "Предыдущий контекст:\n"
+        f"{previous_recap or 'НЕТ ДАННЫХ'}\n"
         "Материал для сводки:\n"
         f"{recap_text}"
     )
@@ -63,17 +58,19 @@ async def generate_and_save_recap(
     try:
         response = await llm.ainvoke(messages)
         recap_text = response.content
-        await save_recap(chat_id, recap_text, recap_type=recap_type)
+        if recap_text.strip() == '(нет данных)':
+            logger.info(f"Empty recap for {recap_type.value} recap in chat {chat_id}")
+            return
+
+        await save_recap(chat_id, recap_text, recap_type=recap_type, created_at=recap_started_at)
         logger.info(f"{recap_type.value.capitalize()} recap saved for chat {chat_id}")
-        return recap_text
     except Exception as e:
         logger.error(f"Error generating recap for chat {chat_id}: {e}", exc_info=True)
-        return None
 
 
 async def _get_previous_recap_data(chat_id: int, recap_type: RecapType) -> str:
     recap = await get_last_recap(chat_id, recap_type=recap_type)
-    return recap.text if recap else 'НЕТ ДАННЫХ'
+    return recap.text if recap else None
 
 
 async def _get_recap_text(chat_id: int, recap_type: RecapType) -> str | None:
@@ -89,14 +86,10 @@ async def _get_recap_text(chat_id: int, recap_type: RecapType) -> str | None:
 
 
 async def _get_new_messages(chat_id: int) -> str:
-    last_recap_timestamp = await get_last_recap_timestamp(chat_id, recap_type=RecapType.PERIODIC)
-    if last_recap_timestamp:
-        messages_count = await get_messages_count_since(chat_id, last_recap_timestamp)
-        size = max(settings.MESSAGES_RECAP_SIZE, messages_count)
-    else:
-        size = settings.MESSAGES_RECAP_SIZE
-
-    last_messages = await get_history(chat_id, size=size)
+    last_recap = await get_last_recap(chat_id, recap_type=RecapType.PERIODIC)
+    last_messages = await get_history(
+        chat_id, size=settings.MESSAGES_RECAP_MAX_SIZE, from_date=last_recap.created_at
+    )
 
     return "\n".join([m.ai_format() for m in last_messages])
 
