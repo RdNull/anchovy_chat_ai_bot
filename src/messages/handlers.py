@@ -77,16 +77,24 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @restricted
 @send_action(ChatAction.TYPING)
 async def send_recap(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    logger.info(f"Recap requested in chat {chat_id}")
+    await _send_recap_by_type(update, context, RecapType.PERIODIC)
 
-    recap_type = RecapType.PERIODIC
-    if context.args:
-        arg = context.args[0].lower()
-        if arg == 'hourly':
-            recap_type = RecapType.HOURLY
-        elif arg == 'daily':
-            recap_type = RecapType.DAILY
+
+@restricted
+@send_action(ChatAction.TYPING)
+async def send_recap_hour(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _send_recap_by_type(update, context, RecapType.HOURLY)
+
+
+@restricted
+@send_action(ChatAction.TYPING)
+async def send_recap_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _send_recap_by_type(update, context, RecapType.DAILY)
+
+
+async def _send_recap_by_type(update: Update, context: ContextTypes.DEFAULT_TYPE, recap_type: RecapType):
+    chat_id = update.effective_chat.id
+    logger.info(f"Recap {recap_type} requested in chat {chat_id}")
 
     recap = await get_last_recap(chat_id, recap_type=recap_type)
     if not recap:
