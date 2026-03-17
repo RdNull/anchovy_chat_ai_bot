@@ -5,7 +5,6 @@ from src import settings
 
 _llm_cache = {}
 
-
 def get_model(model_code: str = None):
     if not model_code or model_code not in settings.AI_MODELS:
         model_code = settings.DEFAULT_AI_MODEL
@@ -20,4 +19,8 @@ def get_model(model_code: str = None):
     return llm
 
 def get_recap_model():
-    return get_model(settings.AI_RECAP_MODEL)
+    if cache_model := _llm_cache['recap']:
+        return cache_model
+
+    _llm_cache['recap'] = init_chat_model(**settings.AI_RECAP_MODEL)
+    return _llm_cache['recap']
