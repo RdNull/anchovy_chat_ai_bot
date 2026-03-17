@@ -1,16 +1,42 @@
+import asyncio
+import datetime as dt
+
+from scheduler.asyncio import Scheduler
 from telegram.ext import (
     ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, PicklePersistence,
     filters,
 )
 
-from src import settings
+from src import const, settings, tasks
 from src.messages import handlers
 from src.messages.utils import ReplyToBotFilter
+from src.models import RecapType
+
+
+async def setup_scheduler():
+    schedule = Scheduler(tzinfo=const.TIMEZONE_ALMATY)
+    schedule.hourly(
+        dt.time(minute=0, tzinfo=const.TIMEZONE_ALMATY),
+        tasks.generate_all_chats_recap, args=(RecapType.HOURLY,)
+    )
+    schedule.daily(
+        dt.time(hour=0, minute=0, tzinfo=const.TIMEZONE_ALMATY),
+        tasks.generate_all_chats_recap,
+        args=(RecapType.DAILY,)
+    )
+    while True:
+        await asyncio.sleep(1)
+
 
 
 def main() -> None:
     persistence = PicklePersistence(filepath=settings.BOT_PERSISTENCE_FILE)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)  # so that both tg app and scheduler run on a single loop
+
+    loop.create_task(setup_scheduler())
     app = ApplicationBuilder().token(settings.TELEGRAM_TOKEN).persistence(persistence).build()
+
 
     mention_handler = MessageHandler(
         filters.TEXT & (

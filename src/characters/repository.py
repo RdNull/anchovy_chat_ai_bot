@@ -24,7 +24,11 @@ for path in Path(settings.CHARACTERS_DIRECTORY).rglob('*.yaml'):
 def get_character(
     character_name: str = None,
     last_messages_recap: str | None = None,
+    daily_recap: str | None = None,
+    hourly_recap: str | None = None,
 ) -> Character:
     character = CHARACTERS[character_name or random.choice(list(CHARACTERS.keys()))]
     character.last_messages_recap = last_messages_recap
+    character.daily_recap = daily_recap
+    character.hourly_recap = hourly_recap
     return character

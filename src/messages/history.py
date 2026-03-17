@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from src.logs import logger
 from src import db
-from src.models import Message, MessageReply, RecapData, UserRole
+from src.models import Message, MessageReply, RecapData, RecapType, UserRole
 
 
 async def push_history(chat_id: int, message: Message):
@@ -70,9 +70,13 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
     )
 
 
-async def get_last_recap_timestamp(chat_id: int) -> float | None:
-    logger.debug(f"Fetching last recap timestamp for chat {chat_id}")
-    recap = await db.recaps.find_one({'chat_id': chat_id}, sort=[('created_at', -1)])
+async def get_last_recap_timestamp(
+    chat_id: int, recap_type: RecapType = RecapType.PERIODIC
+) -> float | None:
+    logger.debug(f"Fetching last {recap_type.value} recap timestamp for chat {chat_id}")
+    recap = await db.recaps.find_one(
+        {'chat_id': chat_id, 'type': recap_type.value}, sort=[('created_at', -1)]
+    )
     if not recap:
         return None
     return recap['created_at']
@@ -91,17 +95,55 @@ async def get_messages_count(chat_id: int) -> int:
     return await db.messages.count_documents({'chat_id': chat_id})
 
 
-async def get_last_recap(chat_id: int) -> RecapData | None:
-    logger.debug(f"Fetching last recap for chat {chat_id}")
-    recap = await db.recaps.find_one({'chat_id': chat_id}, sort=[('created_at', -1)])
+async def get_last_recap(
+    chat_id: int, recap_type: RecapType = RecapType.PERIODIC
+) -> RecapData | None:
+    logger.debug(f"Fetching last {recap_type.value} recap for chat {chat_id}")
+    recap = await db.recaps.find_one(
+        {'chat_id': chat_id, 'type': recap_type.value}, sort=[('created_at', -1)]
+    )
     return RecapData(**recap) if recap else None
 
 
-async def save_recap(chat_id: int, text: str):
-    logger.debug(f"Saving recap for chat {chat_id}")
+async def get_last_recaps(
+    chat_id: int, recap_type: RecapType = RecapType.PERIODIC, from_date: datetime | None = None,
+    size: int = 20
+) -> list[RecapData]:
+    logger.debug(f"Fetching last {recap_type.value} {size} recaps for chat {chat_id}")
+    search_params = {
+        'chat_id': chat_id,
+        'type': recap_type.value,
+    }
+    if from_date:
+        search_params['created_at'] = {'$gte': from_date.timestamp()}
+
+    recaps = await db.recaps.find(search_params).sort([('created_at', -1)]).to_list(length=size)
+    return [RecapData(**r) for r in recaps]
+
+
+async def register_chat(chat_id: int):
+    await db.chats.update_one(
+        {'chat_id': chat_id},
+        {'$set': {'last_active': datetime.now(timezone.utc).timestamp()}},
+        upsert=True
+    )
+
+
+async def get_active_chats() -> list[int]:
+    cursor = db.chats.find({})
+    chats = await cursor.to_list(length=1000)
+    return [c['chat_id'] for c in chats]
+
+
+async def save_recap(
+    chat_id: int, text: str, recap_type: RecapType = RecapType.PERIODIC, created_at: datetime | None = None
+):
+    logger.debug(f"Saving {recap_type.value} recap for chat {chat_id}")
+    created_at = created_at.timestamp() if created_at else datetime.now(timezone.utc).timestamp()
     data = {
         'chat_id': chat_id,
         'text': text,
-        'created_at': datetime.now(timezone.utc).timestamp()
+        'type': recap_type.value,
+        'created_at': created_at
     }
     await db.recaps.insert_one(data)

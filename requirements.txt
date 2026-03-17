@@ -7,3 +7,4 @@ langchain
 langchain-ollama
 langchain-openrouter
 pydantic
+scheduler
