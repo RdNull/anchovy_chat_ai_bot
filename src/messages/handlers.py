@@ -183,8 +183,7 @@ async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
         logger.info(
             f"Triggering periodic recap for chat {chat_id} (count since last: {messages_count})"
         )
-        model_code = get_chat_model(context)
-        await generate_and_save_recap(chat_id, model_code)
+        await generate_and_save_recap(chat_id)
 
 
 @send_action(ChatAction.TYPING)

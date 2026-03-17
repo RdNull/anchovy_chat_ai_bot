@@ -40,7 +40,7 @@ def _format_message_for_recap(message: Message) -> str:
     return f'{message.nickname}: {message.text}'
 
 
-async def generate_and_save_recap(chat_id: int, model_code: str = None):
+async def generate_and_save_recap(chat_id: int):
     logger.info(f"Generating recap for chat {chat_id}")
 
     previous_recap = await get_last_recap(chat_id)
@@ -63,7 +63,7 @@ async def generate_and_save_recap(chat_id: int, model_code: str = None):
         f"{formatted_messages}"
     )
 
-    llm = ai.get_model(model_code)
+    llm = ai.get_recap_model()
 
     messages = [
         SystemMessage(content=RECAP_PROMPT),

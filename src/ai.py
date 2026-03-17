@@ -18,3 +18,6 @@ def get_model(model_code: str = None):
     llm = init_chat_model(**ai_settings)
     _llm_cache[model_code] = llm
     return llm
+
+def get_recap_model():
+    return get_model(settings.AI_RECAP_MODEL)
