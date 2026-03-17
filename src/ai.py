@@ -19,7 +19,7 @@ def get_model(model_code: str = None):
     return llm
 
 def get_recap_model():
-    if cache_model := _llm_cache['recap']:
+    if cache_model := _llm_cache.get('recap'):
         return cache_model
 
     _llm_cache['recap'] = init_chat_model(**settings.AI_RECAP_MODEL)
