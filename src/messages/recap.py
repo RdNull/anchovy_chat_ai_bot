@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -25,6 +26,8 @@ RECAP_PROMPT = """
 
 Ответ должен содержать только сводку.
 """
+
+EMPTY_DATA_PATTERN = re.compile(r'^\s*\(?\s*нет\s+данных\s*\)?[\s.]*$', re.IGNORECASE)
 
 
 async def generate_and_save_recap(
@@ -57,7 +60,7 @@ async def generate_and_save_recap(
     try:
         response = await llm.ainvoke(messages)
         recap_text = response.content
-        if recap_text.strip() == '(нет данных)':
+        if EMPTY_DATA_PATTERN.match(recap_text):
             logger.info(f"Empty recap for {recap_type.value} recap in chat {chat_id}")
             return
 
