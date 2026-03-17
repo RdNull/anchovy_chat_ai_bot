@@ -23,9 +23,19 @@ def set_chat_character(character_code: str, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data['character_code'] = character_code
 
 
-def get_chat_character(context: ContextTypes.DEFAULT_TYPE, last_messages_recap: str | None = None):
+def get_chat_character(
+    context: ContextTypes.DEFAULT_TYPE,
+    last_messages_recap: str | None = None,
+    daily_recap: str | None = None,
+    hourly_recap: str | None = None,
+):
     character_code = context.chat_data.get('character_code')
-    character = get_character(character_code, last_messages_recap)
+    character = get_character(
+        character_code,
+        last_messages_recap=last_messages_recap,
+        daily_recap=daily_recap,
+        hourly_recap=hourly_recap,
+    )
     set_chat_character(character.code, context)
     return character
 

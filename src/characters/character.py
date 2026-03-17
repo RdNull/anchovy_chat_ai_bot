@@ -37,28 +37,24 @@ BASIC_SETUP_PROMPT = f"""
 """
 
 
-def _format_message_text(message: Message) -> str:
-    if message.reply:
-        return f'{message.nickname} (в ответ на "{message.reply.text}"): {message.text}'
-
-    return f'{message.nickname}: {message.text}'
-
 
 def _format_previous_messages(last_messages: list[Message]) -> Generator[
     HumanMessage | AIMessage, None, None]:
     for message in last_messages:
         if message.role == UserRole.USER:
-            yield HumanMessage(_format_message_text(message))
+            yield HumanMessage(message.ai_format())
         else:
             yield AIMessage(message.text)
 
 
 class Character:
     last_messages_recap: str | None = None
+    daily_recap: str | None = None
+    hourly_recap: str | None = None
 
     def __init__(
         self,
-        code:str,
+        code: str,
         display_name: str,
         name: str,
         description: str,
@@ -73,12 +69,18 @@ class Character:
     @property
     def system_message(self):
         setup_prompt = f"{BASIC_SETUP_PROMPT}\nОписание твоего персонажа:\n{self.style_prompt}"
+        context_str = ""
+        if self.daily_recap:
+            context_str += f"\nКонтекст дня: {self.daily_recap}"
+
+        if self.hourly_recap:
+            context_str += f"\nКонтекст часа: {self.hourly_recap}"
+
         if self.last_messages_recap:
-            return SystemMessage(
-                f'{setup_prompt}\n'
-                'Сводка последних сообщений:\n'
-                f'{self.last_messages_recap}'
-            )
+            context_str += f"\nНедавние события: {self.last_messages_recap}"
+
+        if context_str:
+            return SystemMessage(f"{setup_prompt}\n{context_str}")
 
         return SystemMessage(setup_prompt)
 
@@ -88,7 +90,7 @@ class Character:
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
-            HumanMessage(_format_message_text(user_message)),
+            HumanMessage(user_message.ai_format()),
         ]
         logger.debug(
             f"Invoking LLM for character {self.name} with {len(messages)} messages")

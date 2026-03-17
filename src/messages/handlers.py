@@ -10,10 +10,10 @@ from telegram.ext import CallbackContext, ContextTypes
 from src import ai as llm_module, settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
-from src.models import Message, MessageReply, UserRole
+from src.models import Message, MessageReply, RecapType, UserRole
 from .history import (
-    get_history, get_last_message, get_last_recap, get_last_recap_timestamp, get_messages_count,
-    get_messages_count_since, push_history,
+    get_history, get_last_message, get_last_recap, get_last_recap_timestamp,
+    get_messages_count, get_messages_count_since, push_history, register_chat,
 )
 from .recap import generate_and_save_recap
 from .utils import (
@@ -79,7 +79,16 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_recap(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f"Recap requested in chat {chat_id}")
-    recap = await get_last_recap(chat_id)
+
+    recap_type = RecapType.PERIODIC
+    if context.args:
+        arg = context.args[0].lower()
+        if arg == 'hourly':
+            recap_type = RecapType.HOURLY
+        elif arg == 'daily':
+            recap_type = RecapType.DAILY
+
+    recap = await get_last_recap(chat_id, recap_type=recap_type)
     if not recap:
         await update.message.reply_text("Сводки пока нет.")
         return
@@ -89,8 +98,14 @@ async def send_recap(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sentences = [s.strip() for s in re.split(r'\.\s*', recap_text) if s.strip()]
         recap_text = "\n".join([f"- {s}." for s in sentences])
 
+    title = {
+        RecapType.PERIODIC: "Последняя сводка",
+        RecapType.HOURLY: "Сводка за час",
+        RecapType.DAILY: "Сводка за день",
+    }[recap_type]
+
     await update.message.reply_text(
-        f"*Последняя сводка:*\n{escape_markdown_v2(recap_text)}",
+        f"*{title}:*\n{escape_markdown_v2(recap_text)}",
         parse_mode="MarkdownV2"
     )
 
@@ -166,12 +181,13 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
         await _generate_answer(update, context)
         return
 
+    await register_chat(chat_id)
     await push_history(chat_id, user_message)
     asyncio.create_task(_check_recap(chat_id, context))
 
 
 async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    last_recap_timestamp = await get_last_recap_timestamp(chat_id)
+    last_recap_timestamp = await get_last_recap_timestamp(chat_id, RecapType.PERIODIC)
     if last_recap_timestamp:
         messages_count = await get_messages_count_since(chat_id, last_recap_timestamp)
     else:
@@ -181,7 +197,7 @@ async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
         logger.info(
             f"Triggering periodic recap for chat {chat_id} (count since last: {messages_count})"
         )
-        await generate_and_save_recap(chat_id)
+        await generate_and_save_recap(chat_id, RecapType.PERIODIC)
 
 
 @send_action(ChatAction.TYPING)
@@ -193,12 +209,18 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f"Generating answer for chat {chat_id} (user: {user_message.nickname})")
 
+    await register_chat(chat_id)
     await push_history(chat_id, user_message)
 
-    last_recap = await get_last_recap(chat_id)
+    last_recap = await get_last_recap(chat_id, RecapType.PERIODIC)
+    hourly_recap = await get_last_recap(chat_id, RecapType.HOURLY)
+    daily_recap = await get_last_recap(chat_id, RecapType.DAILY)
+
     character = get_chat_character(
         context=context,
-        last_messages_recap=last_recap.text if last_recap else None
+        last_messages_recap=last_recap.text if last_recap else None,
+        hourly_recap=hourly_recap.text if hourly_recap else None,
+        daily_recap=daily_recap.text if daily_recap else None,
     )
     last_messages = await get_history(
         chat_id,
