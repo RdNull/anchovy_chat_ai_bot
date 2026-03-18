@@ -79,9 +79,10 @@ async def _get_recap_text(chat_id: int, recap_type: RecapType) -> str | None:
     if recap_type == RecapType.PERIODIC:
         return await _get_new_messages(chat_id)
 
-    recap_target = RecapType.HOURLY if recap_type == RecapType.DAILY else RecapType.PERIODIC
-    recap = await get_last_recap(chat_id, recap_type=recap_target)
+    recap = await get_last_recap(chat_id, recap_type=recap_type)
     last_recap_date = recap.created_at if recap else None
+
+    recap_target = RecapType.HOURLY if recap_type == RecapType.DAILY else RecapType.PERIODIC
     last_recaps = await _get_last_recaps_data(chat_id, recap_target, from_date=last_recap_date)
 
     return "\n".join(last_recaps) if last_recaps else None
