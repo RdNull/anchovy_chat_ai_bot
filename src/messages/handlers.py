@@ -15,7 +15,7 @@ from .history import (
     get_history, get_last_message, get_last_recap, get_last_recap_timestamp,
     get_messages_count, get_messages_count_since, push_history, register_chat,
 )
-from .recap import generate_and_save_recap
+from src.processors.recap import generate_and_save_recap
 from .utils import (
     escape_markdown_v2, get_chat_character, get_chat_model, restricted, send_action,
     set_chat_character, set_chat_model,
