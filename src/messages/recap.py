@@ -39,7 +39,7 @@ async def generate_and_save_recap(
     previous_recap = await _get_previous_recap_data(chat_id, recap_type)
     recap_text = await _get_recap_text(chat_id, recap_type)
 
-    if not recap_text and not recap_text.strip():
+    if not recap_text or not recap_text.strip():
         logger.info(f"No new messages for {recap_type.value} recap in chat {chat_id}")
         return
 
@@ -87,13 +87,13 @@ async def _get_recap_text(chat_id: int, recap_type: RecapType) -> str | None:
     return "\n".join(last_recaps) if last_recaps else None
 
 
-async def _get_new_messages(chat_id: int) -> str:
+async def _get_new_messages(chat_id: int) -> str | None:
     last_recap = await get_last_recap(chat_id, recap_type=RecapType.PERIODIC)
     last_messages = await get_history(
         chat_id, size=settings.MESSAGES_RECAP_MAX_SIZE, from_date=last_recap.created_at
     )
 
-    return "\n".join([m.ai_format() for m in last_messages])
+    return "\n".join([m.ai_format() for m in last_messages]) if last_messages else None
 
 
 async def _get_last_recaps_data(
