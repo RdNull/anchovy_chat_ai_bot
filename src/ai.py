@@ -24,3 +24,11 @@ def get_recap_model():
 
     _llm_cache['recap'] = init_chat_model(**settings.AI_RECAP_MODEL)
     return _llm_cache['recap']
+
+
+def get_image_descriptor_model():
+    if cache_model := _llm_cache.get('image_descriptor'):
+        return cache_model
+
+    _llm_cache['image_descriptor'] = init_chat_model(**settings.AI_IMAGE_DESCRIPTOR_MODEL)
+    return _llm_cache['image_descriptor']
