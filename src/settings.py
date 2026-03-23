@@ -19,6 +19,11 @@ AI_MODELS_LOCAL = {
         'base_url': os.environ.get('AI_API_BASE_URL'),
         'model_provider': 'ollama',
     },
+    'qwen3-vl': {
+        'model': 'qwen3-vl:2b',
+        'base_url': os.environ.get('AI_API_BASE_URL'),
+        'model_provider': 'ollama',
+    },
     'llama3.2': {
         'model': 'llama3.2',
         'base_url': os.environ.get('AI_API_BASE_URL'),
@@ -29,7 +34,7 @@ AI_RECAP_MODEL_LOCAL = AI_MODELS_LOCAL[
     os.environ.get('AI_RECAP_MODEL_LOCAL', 'deepseek-r1')
 ]
 AI_IMAGE_DESCRIPTOR_MODEL_LOCAL = AI_MODELS_LOCAL[
-    os.environ.get('AI_IMAGE_DESCRIPTOR_MODEL_LOCAL', 'deepseek-r1')
+    os.environ.get('AI_IMAGE_DESCRIPTOR_MODEL_LOCAL', 'qwen3-vl')
 ]
 
 AI_MODELS_CLOUD = {

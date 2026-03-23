@@ -39,12 +39,11 @@ class MessageMedia(BaseModel):
     status: MessageMediaStatus = MessageMediaStatus.PROCESSING
     media_id: str | None = None
     description: str | None = None
-    tags: list[str] | None = None
     ocr_text: str | None = None
 
 
 class Message(BaseModel):
-    id: str | None = Field(alias='_id')
+    id: str | None = Field(default=None, alias='_id')
     nickname: str
     role: UserRole
     text: str | None = None
@@ -61,10 +60,6 @@ class Message(BaseModel):
 
             if self.media.status == MessageMediaStatus.READY:
                 image_description = f'{self.media.description}'
-                if self.media.tags:
-                    tags = ','.join(self.media.tags)
-                    image_description = f'{image_description}|tags: {tags}'
-
                 if self.media.ocr_text:
                     image_description = f'{image_description}|ocr: {self.media.ocr_text}'
 
@@ -95,5 +90,4 @@ class ImageDetectionData(BaseModel):
 
 class ImageDetectionResult(BaseModel):
     description: str
-    tags: list[str]
     ocr_text: str | None = None

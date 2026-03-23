@@ -6,7 +6,8 @@ from src.models import Message, MessageMedia, MessageReply, RecapData, RecapType
 
 
 async def push_history(chat_id: int, message: Message):
-    logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message.text[:50]}...")
+    message_text = message.text[:50] if message.text else '<media>'
+    logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message_text}...")
     data = {
         'chat_id': chat_id,
         'role': message.role.value,
@@ -23,7 +24,6 @@ async def push_history(chat_id: int, message: Message):
         data['media_status'] = message.media.status
         data['media_id'] = message.media.media_id
         data['media_description'] = message.media.description
-        data['media_tags'] = message.media.tags
         data['media_ocr_text'] = message.media.ocr_text
 
     await db.messages.insert_one(data)
@@ -51,7 +51,6 @@ async def get_history(
                 status=message['media_status'],
                 media_id=message['media_id'],
                 description=message['media_description'],
-                tags=message['media_tags'],
                 ocr_text=message['media_ocr_text']
             )
 
@@ -74,7 +73,6 @@ async def update_history_media(message_id: str, media: MessageMedia):
         {'$set': {
             'media_status': media.status,
             'media_description': media.description,
-            'media_tags': media.tags,
             'media_ocr_text': media.ocr_text,
         }}
     )

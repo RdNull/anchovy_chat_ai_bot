@@ -288,7 +288,6 @@ def _parse_user_message(update: Update) -> Message | None:
     user_nickname = update.message.from_user.username or update.message.from_user.first_name
     message_media = _get_message_media(update)
     return Message(
-        telegram_id=update.message.id,
         role=UserRole.USER,
         text=message_text,
         reply=reply,

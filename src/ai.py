@@ -1,11 +1,12 @@
 from langchain.chat_models import init_chat_model
+from langchain_core.language_models import BaseChatModel
 
 from src.logs import logger
 from src import settings
 
 _llm_cache = {}
 
-def get_model(model_code: str = None):
+def get_model(model_code: str = None)-> BaseChatModel:
     if not model_code or model_code not in settings.AI_MODELS:
         model_code = settings.DEFAULT_AI_MODEL
 
@@ -18,7 +19,7 @@ def get_model(model_code: str = None):
     _llm_cache[model_code] = llm
     return llm
 
-def get_recap_model():
+def get_recap_model() -> BaseChatModel:
     if cache_model := _llm_cache.get('recap'):
         return cache_model
 
@@ -26,7 +27,7 @@ def get_recap_model():
     return _llm_cache['recap']
 
 
-def get_image_descriptor_model():
+def get_image_descriptor_model()-> BaseChatModel:
     if cache_model := _llm_cache.get('image_descriptor'):
         return cache_model
 

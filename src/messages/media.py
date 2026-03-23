@@ -14,6 +14,7 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
     if not message.media:
         return
 
+    logger.info(f"Generating image recap for message {message.id}")
     image_detection_data = await _get_message_image(
         message.media.media_id, context
     )
@@ -24,7 +25,8 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
     message.media.status = MessageMediaStatus.READY
     message.media.description = image_description.description
     message.media.ocr_text = image_description.ocr_text
-    message.media.tags = image_description.tags
+
+    logger.info(f"Image recap generated for message {message.id}")
     await update_history_media(message.id, message.media)
 
 
