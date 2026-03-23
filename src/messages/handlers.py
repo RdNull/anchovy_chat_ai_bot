@@ -1,21 +1,29 @@
 import asyncio
+import base64
+import io
+import os
 import random
 import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, PhotoSize, Update
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
 from src import ai as llm_module, settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
-from src.models import Message, MessageReply, RecapType, UserRole
+from src.models import (
+    Message, ImageDetectionData, MessageMedia, MessageMediaTypes, MessageReply,
+    RecapType, UserRole,
+)
 from .history import (
     get_history, get_last_message, get_last_recap, get_last_recap_timestamp,
     get_messages_count, get_messages_count_since, push_history, register_chat,
 )
 from src.processors.recap import generate_and_save_recap
+from .media import handle_media_message
 from .utils import (
     escape_markdown_v2, get_chat_character, get_chat_model, restricted, send_action,
     set_chat_character, set_chat_model,
@@ -191,8 +199,22 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await register_chat(chat_id)
     await push_history(chat_id, user_message)
+    if user_message.media:
+        asyncio.create_task(handle_media_message(user_message, context))
+
     asyncio.create_task(_check_recap(chat_id, context))
 
+
+@restricted
+async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_message = _parse_user_message(update)
+    if not user_message:
+        return
+
+    await push_history(chat_id, user_message)
+    if user_message.media:
+        asyncio.create_task(handle_media_message(user_message, context))
 
 async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     last_recap_timestamp = await get_last_recap_timestamp(chat_id, RecapType.PERIODIC)
@@ -264,9 +286,32 @@ def _parse_user_message(update: Update) -> Message | None:
         reply = MessageReply(text=reply_msg.text or "", nickname=reply_nickname)
 
     user_nickname = update.message.from_user.username or update.message.from_user.first_name
+    message_media = _get_message_media(update)
     return Message(
+        telegram_id=update.message.id,
         role=UserRole.USER,
         text=message_text,
         reply=reply,
-        nickname=user_nickname
+        nickname=user_nickname,
+        media=message_media
+    )
+
+
+def _get_message_media(update: Update) -> MessageMedia | None:
+    photo_sizes: tuple[PhotoSize, ...] = update.message.photo
+    sticker = update.message.sticker
+    if not photo_sizes and not sticker:
+        return None
+
+    if photo_sizes:
+        # selecting the biggest photo size that is less than 300_000 pixels ("magic number")
+        photo_size = next(s for s in reversed(photo_sizes) if s.height * s.width <= 300_000)
+        file_id = photo_size.file_id
+    else:
+        # sticker max dimensions are 512x512 - that's fine for detection
+        file_id = sticker.file_id
+
+    return MessageMedia(
+        type=MessageMediaTypes.IMAGE,
+        media_id=file_id
     )

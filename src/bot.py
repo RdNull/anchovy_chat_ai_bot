@@ -50,6 +50,7 @@ def main() -> None:
         filters.TEXT & (~filters.COMMAND),
         handlers.handle_conversation
     )
+    image_handler = MessageHandler(filters.PHOTO | filters.Sticker.STATIC, handlers.handle_image)
     start_handler = CommandHandler('start', handlers.start)
     info_handler = CommandHandler('info', handlers.info)
     list_handler = CommandHandler('list', handlers.list_characters)
@@ -79,6 +80,7 @@ def main() -> None:
     app.add_handler(select_model_callback_handler)
     app.add_handler(mention_handler)
     app.add_handler(conversation_handler)
+    app.add_handler(image_handler)
 
     app.add_error_handler(handlers.error_handler)
 
