@@ -41,13 +41,6 @@ IMAGE_DESCRIBE_PROMPT = '''
 
 
 async def describe_image(image: ImageDetectionData) -> ImageDetectionResult | None:
-
-    if media_description := await _get_media_description(image):
-        logger.info(
-            f"Image description found for {image.content_hash}: {media_description.description}"
-        )
-        return media_description
-
     llm = ai.get_image_descriptor_model()
     model_with_structure = llm.with_structured_output(ImageDetectionResult)
 
@@ -68,7 +61,7 @@ async def describe_image(image: ImageDetectionData) -> ImageDetectionResult | No
             "Image description generated for "
             f"{image.content_hash}: {response.description}; {response.ocr_text}"
         )
-        await _save_media_description(image, response.description, response.ocr_text)
+        return response
     except Exception as e:
         logger.error(
             f"Error generating image description for image {image.content_hash}: {e}",
@@ -77,24 +70,3 @@ async def describe_image(image: ImageDetectionData) -> ImageDetectionResult | No
     return None
 
 
-async def _get_media_description(image_data: ImageDetectionData) -> ImageDetectionResult | None:
-    media_description = await media_descriptions.find_one({'hash': image_data.content_hash})
-    if not media_description:
-        return None
-
-    return ImageDetectionResult(
-        description=media_description['description'],
-        ocr_text=media_description['ocr_text']
-    )
-
-
-async def _save_media_description(
-    image_data: ImageDetectionData,
-    description: str,
-    ocr_text: str | None = None,
-):
-    await media_descriptions.insert_one({
-        'hash': image_data.content_hash,
-        'description': description,
-        'ocr_text': ocr_text
-    })
