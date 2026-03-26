@@ -50,7 +50,13 @@ def main() -> None:
         filters.TEXT & (~filters.COMMAND),
         handlers.handle_conversation
     )
-    image_handler = MessageHandler(filters.PHOTO | filters.Sticker.STATIC, handlers.handle_image)
+    image_handler = MessageHandler(
+        (filters.PHOTO | filters.Sticker.STATIC) & (
+            filters.ChatType.PRIVATE |
+            filters.Mention(settings.BOT_NICKNAME) |
+            ReplyToBotFilter()
+        ), handlers.handle_image
+    )
     start_handler = CommandHandler('start', handlers.start)
     info_handler = CommandHandler('info', handlers.info)
     list_handler = CommandHandler('list', handlers.list_characters)

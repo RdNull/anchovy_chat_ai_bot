@@ -207,12 +207,10 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 @restricted
 @send_action(ChatAction.TYPING)
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
     user_message = await _parse_user_message(update)
     if not user_message:
         return
 
-    await push_history(chat_id, user_message)
     if user_message.media:
         await handle_media_message(user_message, context)
         await _generate_answer(update, context)
@@ -266,10 +264,14 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await push_history(
         chat_id, Message(
+            nickname=f'{settings.BOT_NICKNAME}({character.name})',
             role=UserRole.AI,
             text=response,
-            reply=MessageReply(text=user_message.text, nickname=user_message.nickname),
-            nickname=f'{settings.BOT_NICKNAME}({character.name})',
+            reply=MessageReply(
+                text=user_message.text,
+                nickname=user_message.nickname,
+                media=user_message.media
+            ),
         )
     )
     asyncio.create_task(_check_recap(chat_id, context))
