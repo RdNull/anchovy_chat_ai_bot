@@ -279,27 +279,31 @@ async def _parse_user_message(update: Update) -> Message | None:
     if not update.message:
         return None
 
-    message_text = update.message.text
     reply = None
     if update.message.reply_to_message:
         reply_msg = update.message.reply_to_message
         reply_nickname = reply_msg.from_user.username or reply_msg.from_user.first_name if reply_msg.from_user else "unknown"
-        reply = MessageReply(text=reply_msg.text or "", nickname=reply_nickname)
+        reply_media = None
+        if reply_media_id := _get_message_media(reply_msg):
+            reply_media = await get_message_media_data(reply_media_id)
+
+        reply = MessageReply(text=reply_msg.text, nickname=reply_nickname, media=reply_media)
 
     user_nickname = update.message.from_user.username or update.message.from_user.first_name
-    media_type, media_id = _get_message_media(update.message)
-    media = await get_message_media_data(media_id)
+    media = None
+    if media_id := _get_message_media(update.message):
+        media = await get_message_media_data(media_id)
 
     return Message(
         role=UserRole.USER,
-        text=message_text,
+        text=update.message.text,
         reply=reply,
         nickname=user_nickname,
         media=media
     )
 
 
-def _get_message_media(tg_message: TgMessage) -> tuple[MessageMediaTypes, str] | None:
+def _get_message_media(tg_message: TgMessage) -> str | None:
     photo_sizes: tuple[PhotoSize, ...] = tg_message.photo
     sticker = tg_message.sticker
     if not photo_sizes and not sticker:
@@ -313,4 +317,4 @@ def _get_message_media(tg_message: TgMessage) -> tuple[MessageMediaTypes, str] |
         # sticker max dimensions are 512x512 - that's fine for detection
         file_id = sticker.file_id
 
-    return MessageMediaTypes.IMAGE, file_id
+    return file_id

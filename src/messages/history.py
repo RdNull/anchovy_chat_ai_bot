@@ -3,7 +3,10 @@ from datetime import datetime, timezone
 from src import db
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
-from src.models import Message, MessageMedia, MessageReply, RecapData, RecapType, UserRole
+from src.models import (
+    Message, MessageMedia, MessageMediaTypes, MessageReply, RecapData,
+    RecapType, UserRole,
+)
 
 
 async def push_history(chat_id: int, message: Message):
@@ -142,7 +145,6 @@ async def get_message_media_data(media_id: str):
     if media_description := await get_media_description_by_media_id(media_id):
         media.description = media_description.description
         media.ocr_text = media_description.ocr_text
-        media.type = media_description.type
         media.status = media_description.status
 
     return media
