@@ -17,13 +17,13 @@ async def push_history(chat_id: int, message: Message):
         'role': message.role.value,
         'text': message.text,
         'nickname': message.nickname,
-        'media_id': message.media.media_id,
+        'media_id': message.media.media_id if message.media else None,
         'created_at': datetime.now(timezone.utc).timestamp()
     }
     if message.reply:
         data['reply_text'] = message.reply.text
         data['reply_nickname'] = message.reply.nickname
-        data['reply_media_id'] = message.reply.media.media_id
+        data['reply_media_id'] = message.reply.media.media_id if message.reply.media else None
 
     result = await db.messages.insert_one(data)
     message.id = result.inserted_id
