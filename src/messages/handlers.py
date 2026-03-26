@@ -1,13 +1,11 @@
 import asyncio
-import base64
-import io
-import os
 import random
 import re
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, PhotoSize, Update
+from telegram import (
+    InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage, PhotoSize, Update,
+)
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
@@ -15,14 +13,15 @@ from src import ai as llm_module, settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
 from src.models import (
-    Message, ImageDetectionData, MessageMedia, MessageMediaTypes, MessageReply,
+    Message, MessageMediaStatus, MessageMediaTypes, MessageReply,
     RecapType, UserRole,
 )
+from src.processors.recap import generate_and_save_recap
 from .history import (
     get_history, get_last_message, get_last_recap, get_last_recap_timestamp,
-    get_messages_count, get_messages_count_since, push_history, register_chat,
+    get_message_media_data, get_messages_count, get_messages_count_since, push_history,
+    register_chat,
 )
-from src.processors.recap import generate_and_save_recap
 from .media import handle_media_message
 from .utils import (
     escape_markdown_v2, get_chat_character, get_chat_model, restricted, send_action,
@@ -173,7 +172,7 @@ async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @restricted
 async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    user_message = _parse_user_message(update)
+    user_message = await _parse_user_message(update)
     if not user_message:
         return
 
@@ -199,22 +198,24 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await register_chat(chat_id)
     await push_history(chat_id, user_message)
-    if user_message.media:
+    if user_message.media and user_message.media.status == MessageMediaStatus.PENDING:
         asyncio.create_task(handle_media_message(user_message, context))
 
     asyncio.create_task(_check_recap(chat_id, context))
 
 
 @restricted
+@send_action(ChatAction.TYPING)
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    user_message = _parse_user_message(update)
+    user_message = await _parse_user_message(update)
     if not user_message:
         return
 
     await push_history(chat_id, user_message)
     if user_message.media:
-        asyncio.create_task(handle_media_message(user_message, context))
+        await handle_media_message(user_message, context)
+        await _generate_answer(update, context)
 
 async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     last_recap_timestamp = await get_last_recap_timestamp(chat_id, RecapType.PERIODIC)
@@ -232,7 +233,7 @@ async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 @send_action(ChatAction.TYPING)
 async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = _parse_user_message(update)
+    user_message = await _parse_user_message(update)
     if not user_message:
         return
 
@@ -274,7 +275,7 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(_check_recap(chat_id, context))
 
 
-def _parse_user_message(update: Update) -> Message | None:
+async def _parse_user_message(update: Update) -> Message | None:
     if not update.message:
         return None
 
@@ -286,19 +287,21 @@ def _parse_user_message(update: Update) -> Message | None:
         reply = MessageReply(text=reply_msg.text or "", nickname=reply_nickname)
 
     user_nickname = update.message.from_user.username or update.message.from_user.first_name
-    message_media = _get_message_media(update)
+    media_type, media_id = _get_message_media(update.message)
+    media = await get_message_media_data(media_id)
+
     return Message(
         role=UserRole.USER,
         text=message_text,
         reply=reply,
         nickname=user_nickname,
-        media=message_media
+        media=media
     )
 
 
-def _get_message_media(update: Update) -> MessageMedia | None:
-    photo_sizes: tuple[PhotoSize, ...] = update.message.photo
-    sticker = update.message.sticker
+def _get_message_media(tg_message: TgMessage) -> tuple[MessageMediaTypes, str] | None:
+    photo_sizes: tuple[PhotoSize, ...] = tg_message.photo
+    sticker = tg_message.sticker
     if not photo_sizes and not sticker:
         return None
 
@@ -310,7 +313,4 @@ def _get_message_media(update: Update) -> MessageMedia | None:
         # sticker max dimensions are 512x512 - that's fine for detection
         file_id = sticker.file_id
 
-    return MessageMedia(
-        type=MessageMediaTypes.IMAGE,
-        media_id=file_id
-    )
+    return MessageMediaTypes.IMAGE, file_id

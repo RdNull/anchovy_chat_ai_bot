@@ -6,55 +6,116 @@ from telegram.ext import ContextTypes
 
 from src.db import media_descriptions
 from src.logs import logger
-from src.messages.history import update_history_media
 from src.models import ImageDetectionData, ImageDetectionResult, Message, MessageMediaStatus
 from src.processors.media_descriptor import describe_image
 
 
 async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_TYPE):
-    if not message.media:
+    if not message.media.media_id or _skip_media_description_generation(message.media.status):
         return
 
-    image_description = await _get_media_description(message, context)
+    media_description = await get_media_description_by_media_id(message.media.media_id)
+    if media_description:
+        if _skip_media_description_generation(media_description.status):
+            logger.info(
+                f"Image description found for {message.media.media_id}: {media_description.description}"
+            )
+            return
+    else:
+        media_description = await create_media_description(message.media.media_id)
+
+    image_detection_data = await _get_message_image(media_description.media_id, context)
+    if not image_detection_data:
+        await update_media_description_status(media_description.id, MessageMediaStatus.ERROR)
+        logger.warning(f"Failed to get image data for message {message.id}")
+        return
+
+    await update_media_description_status(media_description.id, MessageMediaStatus.PROCESSING)
+    image_description = await _generate_media_description(message, image_detection_data)
+
     if not image_description:
         logger.warning(f"Failed to generate image description for message {message.id}")
+        await update_media_description_status(media_description.id, MessageMediaStatus.ERROR)
         return
 
-
-    message.media.status = MessageMediaStatus.READY
-    message.media.description = image_description.description
-    message.media.ocr_text = image_description.ocr_text
-
-    logger.info(f"Image recap generated for message {message.id}")
-    await update_history_media(message.id, message.media)
-
-
-async def _get_media_description(
-    message: Message,
-    context: ContextTypes.DEFAULT_TYPE
-) -> ImageDetectionResult | None:
-    if media_description := await _get_message_description_by_media_id(message.media.media_id):
-        logger.info(
-            f"Image description found for {message.media.media_id}: {media_description.description}"
-        )
-        return media_description
-
-    image_detection_data = await _get_message_image(message.media.media_id, context)
-    if media_description := await _get_media_description_by_hash(image_detection_data):
-        logger.info(
-            f"Image description found for {message.media.media_id}: {media_description.description}"
-        )
-        return media_description
-
-    logger.info(f"Generating image description for image {message.media.media_id}")
-    image_description = await describe_image(image_detection_data)
-    await _save_media_description(
-        message.media.media_id,
-        image_detection_data.content_hash,
-        image_description.description,
-        image_description.ocr_text
+    await update_media_description(
+        description_id=media_description.id,
+        content_hash=image_detection_data.content_hash,
+        description=image_description.description,
+        ocr_text=image_description.ocr_text,
+        status=MessageMediaStatus.READY,
     )
 
+
+async def create_media_description(
+    media_id: str,
+    content_hash: str | None = None,
+    description: str | None = None,
+    ocr_text: str | None = None,
+    status: MessageMediaStatus = MessageMediaStatus.PENDING,
+):
+    result = await media_descriptions.insert_one({
+        'hash': content_hash or None,
+        'description': description or None,
+        'ocr_text': ocr_text or None,
+        'media_id': media_id,
+        'type': 'image',
+        'status': status.value,
+    })
+    return await get_media_description(result.inserted_id)
+
+
+async def update_media_description(
+    description_id: str,
+    content_hash: str | None = None,
+    description: str | None = None,
+    ocr_text: str | None = None,
+    status: MessageMediaStatus = MessageMediaStatus.PROCESSING,
+):
+    update = {}
+    if content_hash:
+        update['hash'] = content_hash
+    if description:
+        update['description'] = description
+    if ocr_text:
+        update['ocr_text'] = ocr_text
+    if status:
+        update['status'] = status.value
+
+    if update:
+        await media_descriptions.update_one({'_id': description_id}, {'$set': update})
+
+    return await get_media_description(description_id)
+
+
+async def get_media_description(description_id: str) -> ImageDetectionResult | None:
+    result = await media_descriptions.find_one({'_id': description_id})
+    return _parse_media_description(result) if result else None
+
+
+async def get_media_description_by_media_id(media_id: str) -> ImageDetectionResult | None:
+    result = await media_descriptions.find_one({'media_id': media_id})
+    return _parse_media_description(result) if result else None
+
+
+async def update_media_description_status(description_id: str, status: MessageMediaStatus):
+    await media_descriptions.update_one(
+        {'_id': description_id},
+        {'$set': {'status': status.value}}
+    )
+
+
+def _skip_media_description_generation(status: MessageMediaStatus) -> bool:
+    return status in {MessageMediaStatus.READY, MessageMediaStatus.PROCESSING}
+
+
+async def _generate_media_description(
+    message: Message,
+    image_detection_data: ImageDetectionData,
+) -> ImageDetectionResult | None:
+    logger.info(f"Generating image description for image {message.media.media_id}")
+    image_description = await describe_image(image_detection_data)
+    logger.info(f"Image description generated for image {message.media.media_id}")
     return image_description
 
 
@@ -79,34 +140,12 @@ async def _get_message_image(
     )
 
 
-async def _get_message_description_by_media_id(media_id: str) -> ImageDetectionResult | None:
-    media_description = await media_descriptions.find_one({'media_id': media_id})
-    return _parse_media_description(media_description) if media_description else None
-
-
-async def _get_media_description_by_hash(
-    image_data: ImageDetectionData
-) -> ImageDetectionResult | None:
-    media_description = await media_descriptions.find_one({'hash': image_data.content_hash})
-    return _parse_media_description(media_description) if media_description else None
-
-
-async def _save_media_description(
-    media_id: str,
-    content_hash: str,
-    description: str,
-    ocr_text: str | None = None,
-):
-    await media_descriptions.insert_one({
-        'hash': content_hash,
-        'description': description,
-        'ocr_text': ocr_text,
-        'media_id': media_id,
-    })
-
-
 def _parse_media_description(data: dict) -> ImageDetectionResult:
     return ImageDetectionResult(
+        _id=data['id'],
         description=data['description'],
-        ocr_text=data['ocr_text']
+        ocr_text=data['ocr_text'],
+        type=data['type'],
+        status=data['status'],
+        media_id=data['media_id'],
     )

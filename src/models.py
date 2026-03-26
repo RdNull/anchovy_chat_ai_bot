@@ -6,7 +6,7 @@ from datetime import datetime
 
 
 class RecapType(str, Enum):
-    PERIODIC = 'periodic'  # current logic (by message count)
+    PERIODIC = 'periodic'
     HOURLY = 'hourly'
     DAILY = 'daily'
 
@@ -25,22 +25,37 @@ class MessageMediaTypes(str, Enum):
 
 
 class MessageMediaStatus(str, Enum):
+    PENDING = 'pending'
     PROCESSING = 'processing'
     READY = 'ready'
     ERROR = 'error'
 
 class MessageReply(BaseModel):
-    text: str
+    text: str | None = None
     nickname: str
+    media: MessageMedia | None = None
 
+    def ai_format(self):
+        return f'{self.nickname}: {self.text}'
 
 class MessageMedia(BaseModel):
-    type: MessageMediaTypes
-    status: MessageMediaStatus = MessageMediaStatus.PROCESSING
+    type: MessageMediaTypes | None = None
+    status: MessageMediaStatus = MessageMediaStatus.PENDING
     media_id: str | None = None
     description: str | None = None
     ocr_text: str | None = None
 
+    def ai_format(self):
+        image_description = 'processing...'
+        if self.status == MessageMediaStatus.ERROR:
+            image_description = 'processing_error'
+
+        if self.status == MessageMediaStatus.READY:
+            image_description = f'{self.description}'
+            if self.ocr_text:
+                image_description = f'{image_description}|ocr: {self.ocr_text}'
+
+        return image_description
 
 class Message(BaseModel):
     id: str | None = Field(default=None, alias='_id')
@@ -54,20 +69,10 @@ class Message(BaseModel):
     def ai_format(self):
         message_part = f'TEXT: {self.text}'
         if self.media:
-            image_description = 'processing...'
-            if self.media.status == MessageMediaStatus.ERROR:
-                image_description = 'processing_error'
-
-            if self.media.status == MessageMediaStatus.READY:
-                image_description = f'{self.media.description}'
-                if self.media.ocr_text:
-                    image_description = f'{image_description}|ocr: {self.media.ocr_text}'
-
-            message_part = f'{message_part} [IMAGE: {image_description}]'
-
+            message_part = f'{message_part} [IMAGE: {self.media.ai_format()}]'
 
         if self.reply:
-            return f'{self.nickname} (REPLY_TO "{self.reply.text}"): {message_part}'
+            return f'{self.nickname} (REPLY_TO "{self.reply.ai_format()}"): {message_part}'
 
         return f'{self.nickname}: {message_part}'
 
@@ -89,5 +94,9 @@ class ImageDetectionData(BaseModel):
 
 
 class ImageDetectionResult(BaseModel):
+    id: str | None = Field(default=None, alias='_id')
+    media_id: str | None = None
     description: str
     ocr_text: str | None = None
+    type: MessageMediaTypes
+    status: MessageMediaStatus = MessageMediaStatus.PROCESSING
