@@ -152,19 +152,19 @@ async def get_message_media_data(media_id: str):
 
 async def _parse_message_record(data: dict) -> Message:
     reply, media = None, None
-    if 'reply_text' in data:
+    if reply_text := data.get('reply_text'):
         reply_media = None
-        if 'reply_media_id' in data:
-            reply_media = await get_message_media_data(data['reply_media_id'])
+        if reply_media_id := data.get('reply_media_id'):
+            reply_media = await get_message_media_data(reply_media_id)
 
         reply = MessageReply(
-            text=data['reply_text'],
+            text=reply_text,
             nickname=data['reply_nickname'],
             media=reply_media,
         )
 
-    if 'media_id' in data:
-        media = await get_message_media_data(data['media_id'])
+    if media_id := data.get('media_id'):
+        media = await get_message_media_data(media_id)
 
     return Message(
         _id=str(data['_id']),

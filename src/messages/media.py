@@ -2,11 +2,15 @@ import base64
 import io
 from pathlib import Path
 
+from bson import ObjectId
 from telegram.ext import ContextTypes
 
 from src.db import media_descriptions
 from src.logs import logger
-from src.models import ImageDetectionData, ImageDetectionResult, Message, MessageMediaStatus
+from src.models import (
+    ImageDescription, ImageDetectionData, ImageDetectionResult, Message,
+    MessageMediaStatus,
+)
 from src.processors.media_descriptor import describe_image
 
 
@@ -83,13 +87,13 @@ async def update_media_description(
         update['status'] = status.value
 
     if update:
-        await media_descriptions.update_one({'_id': description_id}, {'$set': update})
+        await media_descriptions.update_one({'_id': ObjectId(description_id)}, {'$set': update})
 
     return await get_media_description(description_id)
 
 
 async def get_media_description(description_id: str) -> ImageDetectionResult | None:
-    result = await media_descriptions.find_one({'_id': description_id})
+    result = await media_descriptions.find_one({'_id': ObjectId(description_id)})
     return _parse_media_description(result) if result else None
 
 
@@ -112,10 +116,9 @@ def _skip_media_description_generation(status: MessageMediaStatus) -> bool:
 async def _generate_media_description(
     message: Message,
     image_detection_data: ImageDetectionData,
-) -> ImageDetectionResult | None:
+) -> ImageDescription | None:
     logger.info(f"Generating image description for image {message.media.media_id}")
     image_description = await describe_image(image_detection_data)
-    logger.info(f"Image description generated for image {message.media.media_id}")
     return image_description
 
 
@@ -142,8 +145,8 @@ async def _get_message_image(
 
 def _parse_media_description(data: dict) -> ImageDetectionResult:
     return ImageDetectionResult(
-        _id=data['id'],
-        description=data['description'],
+        _id=str(data['_id']),
+        description=data['description'] or '',
         ocr_text=data['ocr_text'],
         type=data['type'],
         status=data['status'],

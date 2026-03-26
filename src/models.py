@@ -36,7 +36,11 @@ class MessageReply(BaseModel):
     media: MessageMedia | None = None
 
     def ai_format(self):
-        return f'{self.nickname}: {self.text}'
+        message_part = self.text[:50] if self.text else ''
+        if self.media:
+            message_part = f'{message_part} [img: {self.media.ai_format()}]'
+
+        return f'{self.nickname}| {message_part}'
 
 class MessageMedia(BaseModel):
     type: MessageMediaTypes | None = None
@@ -46,16 +50,16 @@ class MessageMedia(BaseModel):
     ocr_text: str | None = None
 
     def ai_format(self):
-        image_description = 'processing...'
-        if self.status == MessageMediaStatus.ERROR:
-            image_description = 'processing_error'
-
         if self.status == MessageMediaStatus.READY:
-            image_description = f'{self.description}'
-            if self.ocr_text:
-                image_description = f'{image_description}|ocr: {self.ocr_text}'
+            return f'{self.description} | текст: {self.ocr_text or ""}'
 
-        return image_description
+        return 'PROCESSING'
+
+    def ai_short_format(self):
+        if self.status == MessageMediaStatus.READY:
+            return f'{self.description[:50]} | текст: {self.ocr_text[:50] if self.ocr_text else ""}'
+
+        return 'PROCESSING'
 
 class Message(BaseModel):
     id: str | None = Field(default=None, alias='_id')
@@ -67,12 +71,12 @@ class Message(BaseModel):
     created_at: datetime | None = None
 
     def ai_format(self):
-        message_part = f'TEXT: {self.text}'
+        message_part = self.text
         if self.media:
-            message_part = f'{message_part} [IMAGE: {self.media.ai_format()}]'
+            message_part = f'{message_part} [img: {self.media.ai_format()}]'
 
         if self.reply:
-            return f'{self.nickname} (REPLY_TO "{self.reply.ai_format()}"): {message_part}'
+            return f'{self.nickname} (reply: "{self.reply.ai_format()}"): {message_part}'
 
         return f'{self.nickname}: {message_part}'
 
@@ -100,3 +104,7 @@ class ImageDetectionResult(BaseModel):
     ocr_text: str | None = None
     type: MessageMediaTypes
     status: MessageMediaStatus = MessageMediaStatus.PROCESSING
+
+class ImageDescription(BaseModel):
+    description: str
+    ocr_text: str | None = None

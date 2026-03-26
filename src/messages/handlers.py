@@ -279,6 +279,7 @@ async def _parse_user_message(update: Update) -> Message | None:
     if not update.message:
         return None
 
+
     reply = None
     if update.message.reply_to_message:
         reply_msg = update.message.reply_to_message
@@ -287,16 +288,19 @@ async def _parse_user_message(update: Update) -> Message | None:
         if reply_media_id := _get_message_media(reply_msg):
             reply_media = await get_message_media_data(reply_media_id)
 
-        reply = MessageReply(text=reply_msg.text, nickname=reply_nickname, media=reply_media)
+        reply_text = reply_msg.text or reply_msg.caption
+        reply = MessageReply(text=reply_text, nickname=reply_nickname, media=reply_media)
+
 
     user_nickname = update.message.from_user.username or update.message.from_user.first_name
     media = None
     if media_id := _get_message_media(update.message):
         media = await get_message_media_data(media_id)
 
+    message_text = update.message.text or update.message.caption
     return Message(
         role=UserRole.USER,
-        text=update.message.text,
+        text=message_text,
         reply=reply,
         nickname=user_nickname,
         media=media
