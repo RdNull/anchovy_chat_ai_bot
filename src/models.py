@@ -45,7 +45,8 @@ class MessageReply(BaseModel):
 class MessageMedia(BaseModel):
     type: MessageMediaTypes | None = None
     status: MessageMediaStatus = MessageMediaStatus.PENDING
-    media_id: str | None = None
+    media_id: str | None = None  # for download
+    unique_id: str | None = None  # for identification
     description: str | None = None
     ocr_text: str | None = None
 

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage, PhotoSize, Update,
 )
+from telegram._files._basemedium import _BaseMedium
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
@@ -13,7 +14,7 @@ from src import ai as llm_module, settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
 from src.models import (
-    Message, MessageMediaStatus, MessageMediaTypes, MessageReply,
+    Message, MessageMediaStatus, MessageReply,
     RecapType, UserRole,
 )
 from src.processors.recap import generate_and_save_recap
@@ -99,7 +100,11 @@ async def send_recap_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_recap_by_type(update, context, RecapType.DAILY)
 
 
-async def _send_recap_by_type(update: Update, context: ContextTypes.DEFAULT_TYPE, recap_type: RecapType):
+async def _send_recap_by_type(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    recap_type: RecapType
+):
     chat_id = update.effective_chat.id
     logger.info(f"Recap {recap_type} requested in chat {chat_id}")
 
@@ -215,6 +220,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_media_message(user_message, context)
         await _generate_answer(update, context)
 
+
 async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     last_recap_timestamp = await get_last_recap_timestamp(chat_id, RecapType.PERIODIC)
     if last_recap_timestamp:
@@ -281,23 +287,23 @@ async def _parse_user_message(update: Update) -> Message | None:
     if not update.message:
         return None
 
-
     reply = None
     if update.message.reply_to_message:
         reply_msg = update.message.reply_to_message
         reply_nickname = reply_msg.from_user.username or reply_msg.from_user.first_name if reply_msg.from_user else "unknown"
         reply_media = None
-        if reply_media_id := _get_message_media(reply_msg):
-            reply_media = await get_message_media_data(reply_media_id)
+        if reply_medium := _get_message_medium(reply_msg):
+            reply_media = await get_message_media_data(
+                reply_medium.file_id, reply_medium.file_unique_id
+            )
 
         reply_text = reply_msg.text or reply_msg.caption
         reply = MessageReply(text=reply_text, nickname=reply_nickname, media=reply_media)
 
-
     user_nickname = update.message.from_user.username or update.message.from_user.first_name
     media = None
-    if media_id := _get_message_media(update.message):
-        media = await get_message_media_data(media_id)
+    if medium := _get_message_medium(update.message):
+        media = await get_message_media_data(medium.file_id, medium.file_unique_id)
 
     message_text = update.message.text or update.message.caption
     return Message(
@@ -309,18 +315,12 @@ async def _parse_user_message(update: Update) -> Message | None:
     )
 
 
-def _get_message_media(tg_message: TgMessage) -> str | None:
+def _get_message_medium(tg_message: TgMessage) -> _BaseMedium | None:
     photo_sizes: tuple[PhotoSize, ...] = tg_message.photo
-    sticker = tg_message.sticker
-    if not photo_sizes and not sticker:
-        return None
 
     if photo_sizes:
         # selecting the biggest photo size that is less than 300_000 pixels ("magic number")
         photo_size = next(s for s in reversed(photo_sizes) if s.height * s.width <= 300_000)
-        file_id = photo_size.file_id
-    else:
-        # sticker max dimensions are 512x512 - that's fine for detection
-        file_id = sticker.file_id
+        return photo_size
 
-    return file_id
+    return tg_message.sticker

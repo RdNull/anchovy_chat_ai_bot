@@ -4,7 +4,7 @@ from src import db
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
 from src.models import (
-    Message, MessageMedia, MessageMediaTypes, MessageReply, RecapData,
+    Message, MessageMedia, MessageReply, RecapData,
     RecapType, UserRole,
 )
 
@@ -18,12 +18,15 @@ async def push_history(chat_id: int, message: Message):
         'text': message.text,
         'nickname': message.nickname,
         'media_id': message.media.media_id if message.media else None,
+        'media_unique_id': message.media.unique_id if message.media else None,
         'created_at': datetime.now(timezone.utc).timestamp()
     }
     if message.reply:
         data['reply_text'] = message.reply.text
         data['reply_nickname'] = message.reply.nickname
         data['reply_media_id'] = message.reply.media.media_id if message.reply.media else None
+        reply_media_unique_id = message.reply.media.unique_id if message.reply.media else None
+        data['reply_media_unique_id'] = reply_media_unique_id
 
     result = await db.messages.insert_one(data)
     message.id = result.inserted_id
@@ -138,11 +141,13 @@ async def save_recap(
     await db.recaps.insert_one(data)
 
 
-async def get_message_media_data(media_id: str):
+async def get_message_media_data(media_id: str, media_unique_id: str):
     media = MessageMedia(
         media_id=media_id,
+        unique_id=media_unique_id,
     )
-    if media_description := await get_media_description_by_media_id(media_id):
+
+    if media_description := await get_media_description_by_media_id(media_unique_id):
         media.description = media_description.description
         media.ocr_text = media_description.ocr_text
         media.status = media_description.status
@@ -155,7 +160,9 @@ async def _parse_message_record(data: dict) -> Message:
     if reply_text := data.get('reply_text'):
         reply_media = None
         if reply_media_id := data.get('reply_media_id'):
-            reply_media = await get_message_media_data(reply_media_id)
+            reply_media = await get_message_media_data(
+                reply_media_id, data.get('reply_media_unique_id')
+            )
 
         reply = MessageReply(
             text=reply_text,
@@ -164,7 +171,7 @@ async def _parse_message_record(data: dict) -> Message:
         )
 
     if media_id := data.get('media_id'):
-        media = await get_message_media_data(media_id)
+        media = await get_message_media_data(media_id, data.get('media_unique_id'))
 
     return Message(
         _id=str(data['_id']),

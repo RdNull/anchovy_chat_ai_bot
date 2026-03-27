@@ -15,20 +15,33 @@ from src.processors.media_descriptor import describe_image
 
 
 async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_TYPE):
-    if not message.media.media_id or _skip_media_description_generation(message.media.status):
+    print('*' * 100)
+    print(message.media.unique_id, message.media.media_id)
+    if not message.media.unique_id or _skip_media_description_generation(message.media.status):
         return
 
-    media_description = await get_media_description_by_media_id(message.media.media_id)
+    media_description = await get_media_description_by_media_id(message.media.unique_id)
     if media_description:
         if _skip_media_description_generation(media_description.status):
             logger.info(
-                f"Image description found for {message.media.media_id}: {media_description.description}"
+                f"Image description found for {message.media.unique_id}: {media_description.description}"
             )
             return
-    else:
-        media_description = await create_media_description(message.media.media_id)
 
-    image_detection_data = await _get_message_image(media_description.media_id, context)
+    image_detection_data = await _get_message_image(message.media.media_id, context)
+    content_hash = image_detection_data.content_hash
+    if not media_description:
+        if media_description := await get_media_descriptions_by_hash(content_hash):
+            if _skip_media_description_generation(media_description.status):
+                logger.info(
+                    f"Image description found for {content_hash}: {media_description.description}"
+                )
+                return
+
+    if not media_description:
+        media_description = await create_media_description(message.media.unique_id)
+
+
     if not image_detection_data:
         await update_media_description_status(media_description.id, MessageMediaStatus.ERROR)
         logger.warning(f"Failed to get image data for message {message.id}")
@@ -44,7 +57,7 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
 
     await update_media_description(
         description_id=media_description.id,
-        content_hash=image_detection_data.content_hash,
+        content_hash=content_hash,
         description=image_description.description,
         ocr_text=image_description.ocr_text,
         status=MessageMediaStatus.READY,
@@ -101,6 +114,10 @@ async def get_media_description_by_media_id(media_id: str) -> ImageDetectionResu
     result = await media_descriptions.find_one({'media_id': media_id})
     return _parse_media_description(result) if result else None
 
+
+async def get_media_descriptions_by_hash(content_hash: str) -> ImageDetectionResult | None:
+    result = await media_descriptions.find_one({'hash': content_hash})
+    return _parse_media_description(result) if result else None
 
 async def update_media_description_status(description_id: str, status: MessageMediaStatus):
     await media_descriptions.update_one(
