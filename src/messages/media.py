@@ -15,8 +15,6 @@ from src.processors.media_descriptor import describe_image
 
 
 async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_TYPE):
-    print('*' * 100)
-    print(message.media.unique_id, message.media.media_id)
     if not message.media.unique_id or _skip_media_description_generation(message.media.status):
         return
 
