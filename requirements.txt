@@ -1,7 +1,7 @@
 hupper
 pymongo
 pyyaml
-python-telegram-bot
+python-telegram-bot[http2]
 aiohttp
 langchain
 langchain-ollama
