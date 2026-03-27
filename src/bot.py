@@ -89,8 +89,9 @@ def main() -> None:
     app.add_handler(select_callback_handler)
     app.add_handler(select_model_callback_handler)
     app.add_handler(mention_handler)
-    app.add_handler(conversation_handler)
     app.add_handler(image_handler)
+
+    app.add_handler(conversation_handler)
 
     app.add_error_handler(handlers.error_handler)
 
