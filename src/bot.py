@@ -51,7 +51,7 @@ def main() -> None:
         handlers.handle_mention
     )
     conversation_handler = MessageHandler(
-        filters.TEXT & (~filters.COMMAND),
+        (filters.TEXT | filters.PHOTO | filters.Sticker.STATIC) & (~filters.COMMAND),
         handlers.handle_conversation
     )
     image_handler = MessageHandler(
