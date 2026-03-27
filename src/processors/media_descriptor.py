@@ -1,9 +1,8 @@
 from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessage
 
 from src import ai
-from src.db import media_descriptions
 from src.logs import logger
-from src.models import ImageDescription, ImageDetectionData, ImageDetectionResult
+from src.models import ImageDescription, ImageDetectionData
 
 IMAGE_DESCRIBE_PROMPT = '''
 Ты — ассистент, который описывает изображения для использования в контексте чата и в сводках.
@@ -49,7 +48,7 @@ async def describe_image(image: ImageDetectionData) -> ImageDescription | None:
         HumanMessage(content_blocks=[
             ImageContentBlock(
                 type="image",
-                mime_type=image.format,
+                mime_type=f'image/{image.format}',
                 base64=image.content
             )
         ])
@@ -65,7 +64,8 @@ async def describe_image(image: ImageDetectionData) -> ImageDescription | None:
     except Exception as e:
         logger.error(
             f"Error generating image description for image {image.content_hash}: {e}",
-            exc_info=True)
+            exc_info=True
+        )
 
     return None
 
