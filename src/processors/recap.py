@@ -90,8 +90,9 @@ async def _get_recap_text(chat_id: int, recap_type: RecapType) -> str | None:
 
 async def _get_new_messages(chat_id: int) -> str | None:
     last_recap = await get_last_recap(chat_id, recap_type=RecapType.PERIODIC)
+    from_date = last_recap.created_at if last_recap else None
     last_messages = await get_history(
-        chat_id, size=settings.MESSAGES_RECAP_MAX_SIZE, from_date=last_recap.created_at
+        chat_id, size=settings.MESSAGES_RECAP_MAX_SIZE, from_date=from_date
     )
 
     return "\n".join([m.ai_format() for m in last_messages]) if last_messages else None

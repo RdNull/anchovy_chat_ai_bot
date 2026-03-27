@@ -1,6 +1,6 @@
 from src.logs import logger
 from src.messages.history import get_active_chats
-from src.messages.recap import generate_and_save_recap
+from src.processors.recap import generate_and_save_recap
 from src.models import RecapType
 
 

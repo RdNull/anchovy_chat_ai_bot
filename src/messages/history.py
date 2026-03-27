@@ -1,24 +1,32 @@
 from datetime import datetime, timezone
 
-from src.logs import logger
 from src import db
-from src.models import Message, MessageReply, RecapData, RecapType, UserRole
+from src.logs import logger
+from src.messages.media import get_media_description_by_media_id
+from src.models import (
+    Message, MessageMedia, MessageMediaTypes, MessageReply, RecapData,
+    RecapType, UserRole,
+)
 
 
 async def push_history(chat_id: int, message: Message):
-    logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message.text[:50]}...")
+    message_text = message.text[:50] if message.text else '<media>'
+    logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message_text}...")
     data = {
         'chat_id': chat_id,
         'role': message.role.value,
         'text': message.text,
         'nickname': message.nickname,
+        'media_id': message.media.media_id if message.media else None,
         'created_at': datetime.now(timezone.utc).timestamp()
     }
     if message.reply:
         data['reply_text'] = message.reply.text
         data['reply_nickname'] = message.reply.nickname
+        data['reply_media_id'] = message.reply.media.media_id if message.reply.media else None
 
-    await db.messages.insert_one(data)
+    result = await db.messages.insert_one(data)
+    message.id = result.inserted_id
 
 
 async def get_history(
@@ -31,20 +39,10 @@ async def get_history(
 
     cursor = db.messages.find(search_query).sort('created_at', -1).limit(size)
     messages = await cursor.to_list(length=size)
-    result = []
-    for m in reversed(messages):
-        reply = None
-        if 'reply_text' in m:
-            reply = MessageReply(text=m['reply_text'], nickname=m['reply_nickname'])
-
-        result.append(Message(
-            role=UserRole(m['role']),
-            text=m['text'],
-            reply=reply,
-            nickname=m.get('nickname', 'unknown'),
-            created_at=datetime.fromtimestamp(m['created_at'], tz=timezone.utc)
-        ))
-    return result
+    return [
+        await _parse_message_record(message)
+        for message in reversed(messages)
+    ]
 
 
 async def get_last_message(chat_id: int, role: UserRole | None = None) -> Message | None:
@@ -57,17 +55,7 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
     if not message:
         return None
 
-    reply = None
-    if 'reply_text' in message:
-        reply = MessageReply(text=message['reply_text'], nickname=message['reply_nickname'])
-
-    return Message(
-        role=UserRole(message['role']),
-        text=message['text'],
-        reply=reply,
-        nickname=message.get('nickname', 'unknown'),
-        created_at=datetime.fromtimestamp(message['created_at'], tz=timezone.utc)
-    )
+    return await _parse_message_record(message)
 
 
 async def get_last_recap_timestamp(
@@ -136,7 +124,8 @@ async def get_active_chats() -> list[int]:
 
 
 async def save_recap(
-    chat_id: int, text: str, recap_type: RecapType = RecapType.PERIODIC, created_at: datetime | None = None
+    chat_id: int, text: str, recap_type: RecapType = RecapType.PERIODIC,
+    created_at: datetime | None = None
 ):
     logger.debug(f"Saving {recap_type.value} recap for chat {chat_id}")
     created_at = created_at.timestamp() if created_at else datetime.now(timezone.utc).timestamp()
@@ -147,3 +136,42 @@ async def save_recap(
         'created_at': created_at
     }
     await db.recaps.insert_one(data)
+
+
+async def get_message_media_data(media_id: str):
+    media = MessageMedia(
+        media_id=media_id,
+    )
+    if media_description := await get_media_description_by_media_id(media_id):
+        media.description = media_description.description
+        media.ocr_text = media_description.ocr_text
+        media.status = media_description.status
+
+    return media
+
+
+async def _parse_message_record(data: dict) -> Message:
+    reply, media = None, None
+    if reply_text := data.get('reply_text'):
+        reply_media = None
+        if reply_media_id := data.get('reply_media_id'):
+            reply_media = await get_message_media_data(reply_media_id)
+
+        reply = MessageReply(
+            text=reply_text,
+            nickname=data['reply_nickname'],
+            media=reply_media,
+        )
+
+    if media_id := data.get('media_id'):
+        media = await get_message_media_data(media_id)
+
+    return Message(
+        _id=str(data['_id']),
+        role=UserRole(data['role']),
+        text=data['text'],
+        reply=reply,
+        media=media,
+        nickname=data.get('nickname', 'unknown'),
+        created_at=datetime.fromtimestamp(data['created_at'], tz=timezone.utc)
+    )

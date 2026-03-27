@@ -19,6 +19,11 @@ AI_MODELS_LOCAL = {
         'base_url': os.environ.get('AI_API_BASE_URL'),
         'model_provider': 'ollama',
     },
+    'qwen3-vl': {
+        'model': 'qwen3-vl:2b',
+        'base_url': os.environ.get('AI_API_BASE_URL'),
+        'model_provider': 'ollama',
+    },
     'llama3.2': {
         'model': 'llama3.2',
         'base_url': os.environ.get('AI_API_BASE_URL'),
@@ -28,6 +33,10 @@ AI_MODELS_LOCAL = {
 AI_RECAP_MODEL_LOCAL = AI_MODELS_LOCAL[
     os.environ.get('AI_RECAP_MODEL_LOCAL', 'deepseek-r1')
 ]
+AI_IMAGE_DESCRIPTOR_MODEL_LOCAL = AI_MODELS_LOCAL[
+    os.environ.get('AI_IMAGE_DESCRIPTOR_MODEL_LOCAL', 'qwen3-vl')
+]
+
 AI_MODELS_CLOUD = {
     'glm-4.5': {
         'model_provider': 'openrouter',
@@ -77,8 +86,18 @@ AI_RECAP_MODEL_CLOUD = {
         'effort': 'low'
     }
 }
+AI_IMAGE_DESCRIPTOR_MODEL_CLOUD = {
+    'model_provider': 'openrouter',
+    'model': '@preset/shizo-ded-bot-image-descriptor-preset',
+    'api_key': os.environ.get('OPENROUTER_API_KEY'),
+    'max_tokens': 2048,
+    'stream': False,
+}
+
 AI_MODELS = AI_MODELS_LOCAL if IS_LOCAL else AI_MODELS_CLOUD
 AI_RECAP_MODEL = AI_RECAP_MODEL_LOCAL if IS_LOCAL else AI_RECAP_MODEL_CLOUD
+AI_IMAGE_DESCRIPTOR_MODEL = AI_IMAGE_DESCRIPTOR_MODEL_LOCAL if IS_LOCAL else AI_IMAGE_DESCRIPTOR_MODEL_CLOUD
+
 DEFAULT_AI_MODEL = list(AI_MODELS.keys())[0]
 
 CHARACTERS_DIRECTORY = 'src/characters/repository'
