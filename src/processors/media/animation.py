@@ -1,5 +1,7 @@
 import base64
 import io
+from operator import index, inv
+
 import math
 import os
 import tempfile
@@ -37,7 +39,7 @@ ANIMATION_DESCRIBE_PROMPT = '''
 - ocr_text: любой читаемый текст (или пустая строка)
 
 Особые случаи:
-- Мем → опиши и анимацию, и смысл шутки
+- Мем → ОБЯЗАТЕЛЬНО добавь смысл шутки и название мема (если есть)
 - NSFW → просто напиши "nsfw content" в description
 
 Важно:
@@ -104,8 +106,8 @@ def _extract_gif_frames(gif_bytes: bytes) -> List[str]:
             num_frames = getattr(img, "n_frames", 1)
             # Short animations (up to 5 frames) -> 1 key frame
             # Long animations -> up to 4 key frames
-            if num_frames <= 5:
-                indices = [0, num_frames - 1]
+            if num_frames <= 10:
+                indices = [0]
             else:
                 indices = [0, num_frames // 3, 2 * num_frames // 3, num_frames - 1]
 
@@ -140,7 +142,7 @@ def _extract_video_frames(video_bytes: bytes) -> List[str]:
             return []
 
         if total_frames <= 10:
-            indices = [0, total_frames - 1]
+            indices = [0]
         else:
             indices = [0, total_frames // 3, 2 * total_frames // 3, total_frames - 1]
 
