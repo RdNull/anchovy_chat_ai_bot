@@ -2,6 +2,7 @@ import base64
 import io
 from itertools import chain
 from pathlib import Path
+from statistics import median
 
 from bson import ObjectId
 from telegram.ext import ContextTypes
@@ -9,10 +10,12 @@ from telegram.ext import ContextTypes
 from src.db import media_descriptions
 from src.logs import logger
 from src.models import (
-    ImageDetectionData, MediaDescription, MediaDescriptionData, MediaDetectionData, Message,
+    AnimationDetectionData, ImageDetectionData, MediaDescription, MediaDescriptionData,
+    MediaDetectionData, Message,
     MessageMediaStatus, MessageMediaTypes,
 )
-from src.processors.media_descriptor import describe_image
+from src.processors.media.animation import describe_animation
+from src.processors.media.image import describe_image
 
 FILE_FORMATS = {
     MessageMediaTypes.IMAGE: {"jpg", "jpeg", "png", "webp"},
@@ -43,7 +46,11 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
                 return
 
     if not media_description:
-        media_description = await create_media_description(message.media.unique_id)
+        media_description = await create_media_description(
+            media_id=message.media.unique_id,
+            type=message.media.type,
+            content_hash=content_hash,
+        )
 
     if not media_detection_data:
         await update_media_description_status(media_description.id, MessageMediaStatus.ERROR)
@@ -136,11 +143,15 @@ def _skip_media_description_generation(status: MessageMediaStatus) -> bool:
 
 async def _generate_media_description(
     message: Message,
-    image_detection_data: MediaDetectionData,
+    media_detection_data: MediaDetectionData,
 ) -> MediaDescriptionData | None:
-    if isinstance(image_detection_data, ImageDetectionData):
+    if isinstance(media_detection_data, ImageDetectionData):
         logger.info(f"Generating image description for image {message.media.media_id}")
-        return await describe_image(image_detection_data)
+        return await describe_image(media_detection_data)
+
+    if isinstance(media_detection_data, AnimationDetectionData):
+        logger.info(f"Generating animation description for animation {message.media.media_id}")
+        return await describe_animation(media_detection_data)
 
     return None
 

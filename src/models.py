@@ -1,4 +1,5 @@
 import hashlib
+import io
 from enum import Enum
 
 from pydantic import BaseModel as _BaseModel, ConfigDict, Field
@@ -109,6 +110,10 @@ class ImageDetectionData(MediaDetectionData):
     @property
     def content_hash(self):
         return hashlib.md5(self.content.encode('utf-8')).hexdigest()
+
+
+class AnimationDetectionData(MediaDetectionData):
+    content: io.BytesIO
 
 
 class MediaDescription(BaseModel):

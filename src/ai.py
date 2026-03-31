@@ -33,3 +33,11 @@ def get_image_descriptor_model()-> BaseChatModel:
 
     _llm_cache['image_descriptor'] = init_chat_model(**settings.AI_IMAGE_DESCRIPTOR_MODEL)
     return _llm_cache['image_descriptor']
+
+
+def get_animation_descriptor_model() -> BaseChatModel:
+    if cache_model := _llm_cache.get('animation_descriptor'):
+        return cache_model
+
+    _llm_cache['animation_descriptor'] = init_chat_model(**settings.AI_ANIMATION_DESCRIPTOR_MODEL)
+    return _llm_cache['animation_descriptor']
