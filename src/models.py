@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 import hashlib
-import io
+from datetime import datetime
 from enum import Enum
+from typing import ClassVar
 
 from pydantic import BaseModel as _BaseModel, ConfigDict, Field
-from datetime import datetime
 
 
 class RecapType(str, Enum):
@@ -99,6 +100,7 @@ class RecapData(BaseModel):
 
 class MediaDetectionData(BaseModel):
     format: str
+    type: ClassVar[MessageMediaTypes]
 
     @property
     def content_hash(self):
@@ -107,6 +109,7 @@ class MediaDetectionData(BaseModel):
 
 class ImageDetectionData(MediaDetectionData):
     content: str
+    type: ClassVar[MessageMediaTypes] = MessageMediaTypes.IMAGE
 
     @property
     def content_hash(self):
@@ -114,8 +117,12 @@ class ImageDetectionData(MediaDetectionData):
 
 
 class AnimationDetectionData(MediaDetectionData):
-    content: io.BytesIO
+    content: bytes
+    type: ClassVar[MessageMediaTypes] = MessageMediaTypes.GIF
 
+    @property
+    def content_hash(self):
+        return hashlib.md5(self.content).hexdigest()
 
 class MediaDescription(BaseModel):
     id: str | None = Field(default=None, alias='_id')

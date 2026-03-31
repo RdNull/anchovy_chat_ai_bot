@@ -2,7 +2,6 @@ import base64
 import io
 from itertools import chain
 from pathlib import Path
-from statistics import median
 
 from bson import ObjectId
 from telegram.ext import ContextTypes
@@ -19,7 +18,7 @@ from src.processors.media.image import describe_image
 
 FILE_FORMATS = {
     MessageMediaTypes.IMAGE: {"jpg", "jpeg", "png", "webp"},
-    MessageMediaTypes.GIF: {'gif', },
+    MessageMediaTypes.GIF: {'gif', 'webm', 'mp4'},
 }
 SUPPORTED_FORMATS = set(chain(*FILE_FORMATS.values()))
 
@@ -36,6 +35,10 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
             return
 
     media_detection_data = await _get_message_media(message.media.media_id, context)
+    if not media_detection_data:
+        logger.warning(f"Failed to get media data for message {message.id}")
+        return
+
     content_hash = media_detection_data.content_hash
     if not media_description:
         if media_description := await get_media_descriptions_by_hash(content_hash):
@@ -48,7 +51,7 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
     if not media_description:
         media_description = await create_media_description(
             media_id=message.media.unique_id,
-            type=message.media.type,
+            type=media_detection_data.type,
             content_hash=content_hash,
         )
 
@@ -164,18 +167,18 @@ async def _get_message_media(
     file_format = Path(media_file.file_path).suffix[1:].lower()
     file_type = _get_file_type(file_format)
     if not file_type:
-        logger.warning(f"Unsupported image format sent: {file_format}")
+        logger.warning(f"Unsupported media sent: {file_format}")
         return None
 
     with io.BytesIO() as file_bytes:
         await media_file.download_to_memory(file_bytes)
         file_bytes.seek(0)
 
-    media_type_parsers = {
-        MessageMediaTypes.IMAGE: _parse_image_file,
-        MessageMediaTypes.GIF: _parse_animation_file,
-    }
-    return media_type_parsers[file_type](file_format, file_bytes)
+        media_type_parsers = {
+            MessageMediaTypes.IMAGE: _parse_image_file,
+            MessageMediaTypes.GIF: _parse_animation_file,
+        }
+        return media_type_parsers[file_type](file_format, file_bytes)
 
 
 def _get_file_type(file_format: str) -> MessageMediaTypes | None:
@@ -192,7 +195,7 @@ def _parse_image_file(file_format: str, file_bytes: io.BytesIO) -> ImageDetectio
 
 def _parse_animation_file(file_format: str, file_bytes: io.BytesIO) -> AnimationDetectionData:
     return AnimationDetectionData(
-        content=file_bytes,
+        content=file_bytes.read(),
         format=file_format,
     )
 
