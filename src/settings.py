@@ -96,9 +96,9 @@ AI_IMAGE_DESCRIPTOR_MODEL_CLOUD = {
 
 AI_ANIMATION_DESCRIPTOR_MODEL_CLOUD = {
     'model_provider': 'openrouter',
-    'model': '@preset/shizo-ded-bot-animation-descriptor-preset',
+    'model': '@preset/shizo-ded-bot-image-descriptor-preset',
     'api_key': os.environ.get('OPENROUTER_API_KEY'),
-    'max_tokens': 2048,
+    'max_tokens': 4096,
     'stream': False,
 }
 AI_ANIMATION_DESCRIPTOR_MODEL_LOCAL = AI_MODELS_LOCAL[
