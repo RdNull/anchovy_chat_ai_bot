@@ -8,3 +8,6 @@ langchain-ollama
 langchain-openrouter
 pydantic
 scheduler
+Pillow
+opencv-python-headless
+numpy

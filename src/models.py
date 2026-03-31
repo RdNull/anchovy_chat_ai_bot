@@ -1,3 +1,4 @@
+from __future__ import annotations
 import hashlib
 import io
 from enum import Enum
@@ -13,7 +14,7 @@ class RecapType(str, Enum):
 
 
 class BaseModel(_BaseModel):
-    model_config = ConfigDict(coerce_numbers_to_str=True)
+    model_config = ConfigDict(coerce_numbers_to_str=True, arbitrary_types_allowed=True)
 
 
 class UserRole(str, Enum):
