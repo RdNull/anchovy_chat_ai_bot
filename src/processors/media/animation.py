@@ -6,7 +6,6 @@ import tempfile
 from typing import List
 
 import cv2
-import numpy as np
 from PIL import Image
 from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessage
 
