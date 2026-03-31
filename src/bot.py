@@ -51,15 +51,17 @@ def main() -> None:
         handlers.handle_mention
     )
     conversation_handler = MessageHandler(
-        (filters.TEXT | filters.PHOTO | filters.Sticker.STATIC) & (~filters.COMMAND),
+        (
+            filters.TEXT | filters.PHOTO | filters.Sticker.ALL | filters.ANIMATION
+        ) & (~filters.COMMAND),
         handlers.handle_conversation
     )
-    image_handler = MessageHandler(
-        (filters.PHOTO | filters.Sticker.STATIC) & (
+    media_handler = MessageHandler(
+        (filters.PHOTO | filters.Sticker.ALL | filters.ANIMATION) & (
             filters.ChatType.PRIVATE |
             filters.Mention(settings.BOT_NICKNAME) |
             ReplyToBotFilter()
-        ), handlers.handle_image
+        ), handlers.handle_media
     )
     start_handler = CommandHandler('start', handlers.start)
     info_handler = CommandHandler('info', handlers.info)
@@ -89,7 +91,7 @@ def main() -> None:
     app.add_handler(select_callback_handler)
     app.add_handler(select_model_callback_handler)
     app.add_handler(mention_handler)
-    app.add_handler(image_handler)
+    app.add_handler(media_handler)
 
     app.add_handler(conversation_handler)
 

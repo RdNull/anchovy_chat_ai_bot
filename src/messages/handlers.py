@@ -211,7 +211,7 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 @restricted
 @send_action(ChatAction.TYPING)
-async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = await _parse_user_message(update)
     if not user_message:
         return
