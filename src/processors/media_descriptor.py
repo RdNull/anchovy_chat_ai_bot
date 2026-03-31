@@ -2,7 +2,7 @@ from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessa
 
 from src import ai
 from src.logs import logger
-from src.models import ImageDescription, ImageDetectionData
+from src.models import MediaDescriptionData, ImageDetectionData
 
 IMAGE_DESCRIBE_PROMPT = '''
 Ты — ассистент, который описывает изображения для использования в контексте чата и в сводках.
@@ -39,9 +39,9 @@ IMAGE_DESCRIBE_PROMPT = '''
 '''
 
 
-async def describe_image(image: ImageDetectionData) -> ImageDescription | None:
+async def describe_image(image: ImageDetectionData) -> MediaDescriptionData | None:
     llm = ai.get_image_descriptor_model()
-    model_with_structure = llm.with_structured_output(ImageDescription)
+    model_with_structure = llm.with_structured_output(MediaDescriptionData)
 
     messages = [
         SystemMessage(content=IMAGE_DESCRIBE_PROMPT),
@@ -55,7 +55,7 @@ async def describe_image(image: ImageDetectionData) -> ImageDescription | None:
     ]
 
     try:
-        response: ImageDescription = await model_with_structure.ainvoke(messages)
+        response: MediaDescriptionData = await model_with_structure.ainvoke(messages)
         logger.info(
             "Image description generated for "
             f"{image.content_hash}: {response.description}; {response.ocr_text}"

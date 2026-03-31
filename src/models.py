@@ -22,6 +22,7 @@ class UserRole(str, Enum):
 
 class MessageMediaTypes(str, Enum):
     IMAGE = 'image'
+    GIF = 'gif'
 
 
 class MessageMediaStatus(str, Enum):
@@ -29,6 +30,7 @@ class MessageMediaStatus(str, Enum):
     PROCESSING = 'processing'
     READY = 'ready'
     ERROR = 'error'
+
 
 class MessageReply(BaseModel):
     text: str | None = None
@@ -38,9 +40,10 @@ class MessageReply(BaseModel):
     def ai_format(self):
         message_part = self.text[:50] if self.text else ''
         if self.media:
-            message_part = f'{message_part} [img: {self.media.ai_format()}]'
+            message_part = f'{message_part} [{self.media.ai_format()}]'
 
         return f'{self.nickname}| {message_part}'
+
 
 class MessageMedia(BaseModel):
     type: MessageMediaTypes | None = None
@@ -51,16 +54,19 @@ class MessageMedia(BaseModel):
     ocr_text: str | None = None
 
     def ai_format(self):
+        media_type_prefix = f'{self.type.value}: ' if self.type else ''
         if self.status == MessageMediaStatus.READY:
-            return f'{self.description} | текст: {self.ocr_text or ""}'
+            return f'{media_type_prefix}{self.description} | текст: {self.ocr_text or ""}'
 
         return 'PROCESSING'
 
     def ai_short_format(self):
         if self.status == MessageMediaStatus.READY:
-            return f'{self.description[:50]} | текст: {self.ocr_text[:50] if self.ocr_text else ""}'
+            media_type_prefix = f'{self.type.value}: ' if self.type else ''
+            return f'{media_type_prefix}{self.description[:50]} | текст: {self.ocr_text[:50] if self.ocr_text else ""}'
 
         return 'PROCESSING'
+
 
 class Message(BaseModel):
     id: str | None = Field(default=None, alias='_id')
@@ -74,7 +80,7 @@ class Message(BaseModel):
     def ai_format(self):
         message_part = self.text
         if self.media:
-            message_part = f'{message_part} [img: {self.media.ai_format()}]'
+            message_part = f'{message_part} [{self.media.ai_format()}]'
 
         if self.reply:
             return f'{self.nickname} (reply: "{self.reply.ai_format()}"): {message_part}'
@@ -89,16 +95,23 @@ class RecapData(BaseModel):
     type: RecapType = RecapType.PERIODIC
 
 
-class ImageDetectionData(BaseModel):
+class MediaDetectionData(BaseModel):
+    format: str
+
+    @property
+    def content_hash(self):
+        raise NotImplementedError()
+
+
+class ImageDetectionData(MediaDetectionData):
     content: str
-    format: str = 'jpg'
 
     @property
     def content_hash(self):
         return hashlib.md5(self.content.encode('utf-8')).hexdigest()
 
 
-class ImageDetectionResult(BaseModel):
+class MediaDescription(BaseModel):
     id: str | None = Field(default=None, alias='_id')
     media_id: str | None = None
     description: str
@@ -106,6 +119,7 @@ class ImageDetectionResult(BaseModel):
     type: MessageMediaTypes
     status: MessageMediaStatus = MessageMediaStatus.PROCESSING
 
-class ImageDescription(BaseModel):
+
+class MediaDescriptionData(BaseModel):
     description: str
     ocr_text: str | None = None
