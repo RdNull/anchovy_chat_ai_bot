@@ -173,6 +173,7 @@ async def _get_message_media(
 
     media_type_parsers = {
         MessageMediaTypes.IMAGE: _parse_image_file,
+        MessageMediaTypes.GIF: _parse_animation_file,
     }
     return media_type_parsers[file_type](file_format, file_bytes)
 
@@ -188,6 +189,12 @@ def _parse_image_file(file_format: str, file_bytes: io.BytesIO) -> ImageDetectio
         format=file_format,
     )
 
+
+def _parse_animation_file(file_format: str, file_bytes: io.BytesIO) -> AnimationDetectionData:
+    return AnimationDetectionData(
+        content=file_bytes,
+        format=file_format,
+    )
 
 def _parse_media_description(data: dict) -> MediaDescription:
     return MediaDescription(

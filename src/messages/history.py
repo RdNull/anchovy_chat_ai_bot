@@ -151,6 +151,7 @@ async def get_message_media_data(media_id: str, media_unique_id: str):
         media.description = media_description.description
         media.ocr_text = media_description.ocr_text
         media.status = media_description.status
+        media.type = media_description.type
 
     return media
 

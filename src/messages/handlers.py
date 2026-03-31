@@ -316,11 +316,16 @@ async def _parse_user_message(update: Update) -> Message | None:
 
 
 def _get_message_medium(tg_message: TgMessage) -> _BaseMedium | None:
-    photo_sizes: tuple[PhotoSize, ...] = tg_message.photo
+    if sticker := tg_message.sticker:
+        return sticker
 
-    if photo_sizes:
+    if photo_sizes := tg_message.photo:  # type: tuple[PhotoSize, ...]
         # selecting the biggest photo size that is less than 300_000 pixels ("magic number")
         photo_size = next(s for s in reversed(photo_sizes) if s.height * s.width <= 300_000)
         return photo_size
 
-    return tg_message.sticker
+    if animation := tg_message.animation:
+        if animation.duration <= 10:  # in seconds; long gifs will be ignored
+            return animation
+
+    return None
