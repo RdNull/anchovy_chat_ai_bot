@@ -4,6 +4,7 @@ pyyaml
 python-telegram-bot[http2]
 aiohttp
 langchain
+langsmith
 langchain-ollama
 langchain-openrouter
 pydantic
