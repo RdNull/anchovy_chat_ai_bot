@@ -2,6 +2,9 @@ import os
 
 APP_NAME = 'shizo_ded_bot'
 BOT_PERSISTENCE_FILE = f'data/{APP_NAME}.tg'
+CHARACTERS_DIRECTORY = 'src/characters/repository'
+PROMPTS_DIR = 'src/prompts'
+
 TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
 BOT_NICKNAME = os.environ.get('BOT_NICKNAME', 'ShizoDedAnchovyBot')
 DATABASE_URL = os.environ['DATABASE_URL']
@@ -112,7 +115,7 @@ AI_ANIMATION_DESCRIPTOR_MODEL = AI_ANIMATION_DESCRIPTOR_MODEL_LOCAL if IS_LOCAL 
 
 DEFAULT_AI_MODEL = list(AI_MODELS.keys())[0]
 
-CHARACTERS_DIRECTORY = 'src/characters/repository'
+
 ALLOWED_CHAT_IDS = [str(i) for i in os.environ.get('ALLOWED_CHAT_IDS', '').split(',') if i]
 ALLOWED_USER_IDS = [str(i) for i in os.environ.get('ALLOWED_USER_IDS', '').split(',') if i]
 
