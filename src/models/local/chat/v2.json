@@ -1,0 +1,5 @@
+{
+  "model": "qwen3.5:9b",
+  "model_provider": "ollama",
+  "base_url": "env:AI_API_BASE_URL"
+}

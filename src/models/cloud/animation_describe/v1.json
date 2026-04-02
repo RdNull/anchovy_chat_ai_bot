@@ -1,0 +1,7 @@
+{
+  "model_provider": "openrouter",
+  "model": "@preset/shizo-ded-bot-image-descriptor-preset",
+  "api_key": "env:OPENROUTER_API_KEY",
+  "max_tokens": 4096,
+  "stream": false
+}

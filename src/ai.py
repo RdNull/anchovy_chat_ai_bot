@@ -2,42 +2,36 @@ from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 
 from src.logs import logger
-from src import settings
+from src.model_manager import model_manager
 
 _llm_cache = {}
 
-def get_model(model_code: str = None)-> BaseChatModel:
-    if not model_code or model_code not in settings.AI_MODELS:
-        model_code = settings.DEFAULT_AI_MODEL
 
-    if model_code in _llm_cache:
-        return _llm_cache[model_code]
+def get_model(version: str = 'v1') -> BaseChatModel:
+    return _get_model('chat', version)
 
-    ai_settings = settings.AI_MODELS[model_code]
-    logger.debug(f"Initializing LLM '{model_code}' with model: {ai_settings.get('model')}")
+
+def get_recap_model(version: str = 'v1') -> BaseChatModel:
+    return _get_model('recap', version)
+
+
+def get_image_descriptor_model(version: str = 'v1') -> BaseChatModel:
+    return _get_model('image_describe', version)
+
+
+def get_animation_descriptor_model(version: str = 'v1') -> BaseChatModel:
+    return _get_model('animation_describe', version)
+
+
+def _get_model(task: str, version: str = 'v1') -> BaseChatModel:
+    cache_key = f"{task}_{version}"
+    if cache_key in _llm_cache:
+        return _llm_cache[cache_key]
+
+    ai_settings = model_manager.get_model_settings(task, version)
+    logger.debug(
+        f"Initializing {task.capitalize()} LLM (version: {version}) with model: {ai_settings.get('model')}"
+    )
     llm = init_chat_model(**ai_settings)
-    _llm_cache[model_code] = llm
+    _llm_cache[cache_key] = llm
     return llm
-
-def get_recap_model() -> BaseChatModel:
-    if cache_model := _llm_cache.get('recap'):
-        return cache_model
-
-    _llm_cache['recap'] = init_chat_model(**settings.AI_RECAP_MODEL)
-    return _llm_cache['recap']
-
-
-def get_image_descriptor_model()-> BaseChatModel:
-    if cache_model := _llm_cache.get('image_descriptor'):
-        return cache_model
-
-    _llm_cache['image_descriptor'] = init_chat_model(**settings.AI_IMAGE_DESCRIPTOR_MODEL)
-    return _llm_cache['image_descriptor']
-
-
-def get_animation_descriptor_model() -> BaseChatModel:
-    if cache_model := _llm_cache.get('animation_descriptor'):
-        return cache_model
-
-    _llm_cache['animation_descriptor'] = init_chat_model(**settings.AI_ANIMATION_DESCRIPTOR_MODEL)
-    return _llm_cache['animation_descriptor']
