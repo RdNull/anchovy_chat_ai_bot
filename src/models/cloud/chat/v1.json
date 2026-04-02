@@ -4,7 +4,8 @@
   "api_key": "env:OPENROUTER_API_KEY",
   "max_tokens": 2048,
   "stream": false,
+  "temperature": 0.9,
   "reasoning": {
-    "effort": "low"
+    "effort": "medium"
   }
 }

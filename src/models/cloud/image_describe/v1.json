@@ -3,5 +3,6 @@
   "model": "@preset/shizo-ded-bot-image-descriptor-preset",
   "api_key": "env:OPENROUTER_API_KEY",
   "max_tokens": 2048,
-  "stream": false
+  "stream": false,
+  "temperature": 0.4
 }
