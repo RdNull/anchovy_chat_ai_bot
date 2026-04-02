@@ -25,8 +25,8 @@ from .history import (
 )
 from .media import handle_media_message
 from .utils import (
-    escape_markdown_v2, get_chat_character, get_chat_model, restricted, send_action,
-    set_chat_character, set_chat_model,
+    escape_markdown_v2, get_chat_character, restricted, send_action,
+    set_chat_character,
 )
 
 
@@ -46,11 +46,9 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     character = get_chat_character(context)
     name = escape_markdown_v2(character.display_name)
     description = escape_markdown_v2(character.description)
-    model_code = get_chat_model(context)
     await update.message.reply_text(
         f"*Персонаж:* {name}\n"
-        f"*Описание:* {description}\n"
-        f"*Модель:* {escape_markdown_v2(model_code)}",
+        f"*Описание:* {description}",
         parse_mode="MarkdownV2"
     )
 
@@ -128,32 +126,6 @@ async def _send_recap_by_type(
         f"*{title}:*\n{escape_markdown_v2(recap_text)}",
         parse_mode="MarkdownV2"
     )
-
-
-@restricted
-async def list_models(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    logger.info(f"Models list requested in chat {chat_id}")
-    keyboard = [
-        [InlineKeyboardButton(model_code, callback_data=f"select_model:{model_code}")]
-        for model_code in settings.AI_MODELS.keys()
-    ]
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выберите модель:", reply_markup=reply_markup)
-
-
-@restricted
-async def select_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    chat_id = update.effective_chat.id
-    await query.answer()
-
-    model_code = query.data.split(":")[1]
-    logger.info(f"Model {model_code} selected in chat {chat_id}")
-    set_chat_model(model_code, context)
-
-    await query.edit_message_text(f"Модель изменена на: {model_code}")
 
 
 @restricted
@@ -263,8 +235,7 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from_date=last_recap.created_at if last_recap else None
     )
     last_messages = last_messages[:-1]  # to trim the current user message from history
-    model_code = get_chat_model(context)
-    llm = llm_module.get_model(model_code)
+    llm = llm_module.get_model()
     response = await character.respond(user_message, last_messages, llm=llm)
 
     await update.message.reply_text(response)

@@ -69,15 +69,10 @@ def main() -> None:
     recap_handler = CommandHandler('recap', handlers.send_recap)
     recap_hour_handler = CommandHandler('recap_hour', handlers.send_recap_hour)
     recap_day_handler = CommandHandler('recap_day', handlers.send_recap_day)
-    model_handler = CommandHandler('model', handlers.list_models)
     random_handler = CommandHandler('random', handlers.random_character)
     select_callback_handler = CallbackQueryHandler(
         handlers.select_character,
         pattern="^select_char:"
-    )
-    select_model_callback_handler = CallbackQueryHandler(
-        handlers.select_model,
-        pattern="^select_model:"
     )
 
     app.add_handler(start_handler)
@@ -86,10 +81,8 @@ def main() -> None:
     app.add_handler(recap_handler)
     app.add_handler(recap_hour_handler)
     app.add_handler(recap_day_handler)
-    app.add_handler(model_handler)
     app.add_handler(random_handler)
     app.add_handler(select_callback_handler)
-    app.add_handler(select_model_callback_handler)
     app.add_handler(mention_handler)
     app.add_handler(media_handler)
 
