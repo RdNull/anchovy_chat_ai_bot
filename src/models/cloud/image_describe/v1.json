@@ -1,6 +1,6 @@
 {
   "model_provider": "openrouter",
-  "model": "@preset/shizo-ded-bot-image-descriptor-preset",
+  "model": "google/gemini-2.5-flash-lite",
   "api_key": "env:OPENROUTER_API_KEY",
   "max_tokens": 2048,
   "stream": false,
