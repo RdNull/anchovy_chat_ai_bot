@@ -11,3 +11,4 @@ pydantic
 scheduler
 Pillow
 opencv-python-headless
+Jinja2
