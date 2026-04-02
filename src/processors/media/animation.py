@@ -14,38 +14,8 @@ from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessa
 from src import ai
 from src.logs import logger
 from src.models import AnimationDetectionData, MediaDescriptionData
+from src.prompt_manager import prompt_manager
 
-ANIMATION_DESCRIBE_PROMPT = '''
-Ты — ассистент, который описывает анимацию (GIF или анимированные стикеры) для использования в контексте чата и в сводках.
-Твоя задача — создавать КОРОТКОЕ, СТРУКТУРИРОВАННОЕ и ИНФОРМАТИВНОЕ описание на основе нескольких кадров из анимации.
-
-Правила:
-- Пиши кратко (максимум 20 слов в description)
-- Используй только полезные и объективные детали
-- Игнорируй художественный стиль, если он не важен
-- НЕ выдумывай и НЕ додумывай детали
-- НЕ добавляй эмоции, если они явно не видны
-- Приоритет: объекты, действия, текст, контекст
-
-Ты должен вернуть JSON строго в следующем формате:
-
-{
-  "description": "...",
-  "ocr_text": "..."
-}
-
-Правила полей:
-- description: короткое естественное описание (≤20 слов)
-- ocr_text: любой читаемый текст (или пустая строка)
-
-Особые случаи:
-- Мем → ОБЯЗАТЕЛЬНО добавь смысл шутки и название мема (если есть)
-- NSFW → просто напиши "nsfw content" в description
-
-Важно:
-- Пиши ТОЛЬКО на русском языке
-- Не добавляй ничего вне JSON
-'''
 
 
 async def describe_animation(animation: AnimationDetectionData) -> MediaDescriptionData | None:
@@ -61,7 +31,7 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
     model_with_structure = llm.with_structured_output(MediaDescriptionData)
 
     messages = [
-        SystemMessage(content=ANIMATION_DESCRIBE_PROMPT),
+        SystemMessage(content=prompt_manager.get_prompt('animation_describe')),
         HumanMessage(content_blocks=[
             ImageContentBlock(
                 type="image",

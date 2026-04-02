@@ -9,23 +9,8 @@ from src.messages.history import (
     get_history, get_last_recap, get_last_recaps, save_recap,
 )
 from src.models import RecapType
+from src.prompt_manager import prompt_manager
 
-RECAP_PROMPT = """
-Ты создаёшь краткую сводку сообщений для персонажа Telegram-бота.
-Задача: объединить предыдущую сводку и новые сообщения или несколько сводок в одну короткую сводку.
-
-Правила:
-* Пиши 1–5 предложений.
-* Передавай только факты из сообщений и их эмоции, если они явно выражены.
-* Упоминай важные вопросы, события и конфликты.
-* Не делай предположений и не добавляй события.
-* Если информация неясна — пропусти её.
-* Игнорируй формат чата: не используй кавычки, скобки, двоеточия и метки.
-* Если в сообщениях бот пишет как `<имя>(персонаж)`, используй имя персонажа.
-* Если ничего не происходило - верни в ответе `(нет данных)` 
-
-Ответ должен содержать только сводку.
-"""
 
 EMPTY_DATA_PATTERN = re.compile(r'^\s*\(?\s*нет\s+данных\s*\)?[\s.]*$', re.IGNORECASE)
 
@@ -43,18 +28,15 @@ async def generate_and_save_recap(
         logger.info(f"No new messages for {recap_type.value} recap in chat {chat_id}")
         return
 
-    data_prompt = (
-        "Предыдущий контекст:\n"
-        f"{previous_recap or 'НЕТ ДАННЫХ'}\n"
-        "Материал для сводки:\n"
-        f"{recap_text}"
-    )
-
     llm = ai.get_recap_model()
 
     messages = [
-        SystemMessage(content=RECAP_PROMPT),
-        HumanMessage(content=data_prompt)
+        SystemMessage(content=prompt_manager.get_prompt(
+            'recap',
+            previous_recap=previous_recap,
+            recap_text=recap_text
+        )),
+        HumanMessage(content="Сгенерируй сводку.")
     ]
 
     try:

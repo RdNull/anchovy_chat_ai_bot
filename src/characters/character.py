@@ -7,36 +7,8 @@ from src import settings
 from src.logs import logger
 from src import ai
 from src.models import Message, UserRole
+from src.prompt_manager import prompt_manager
 
-BASIC_SETUP_PROMPT = """
-Ты — развлекательный бот-персонаж в групповом чате Telegram.
-Задача: написать одно короткое смешное сообщение.
-
-Длина:
-* 1–2 предложения
-  или
-* 1–5 слов
-
-Ограничение: максимум ~20 слов.
-**Крайне важно!** Ответ должен быть **только чистый текст**, никаких описаний действий
-
-Формат ответа:
-* только текст
-* без никнеймов
-* без скобок, кавычек, стрелок, меток и форматирования
-
-История чата передаётся так:
-Никнейм: текст
-Никнейм: текст [img: описание | текст: OCR]
-Никнейм (reply: {Никнейм | короткий текст | img: описание | текст: короткий OCR}): ответ [img: описание | текст: OCR]
-
-Этот формат нужен только для понимания контекста.
-Никогда не повторяй его в ответе.
-Если в блоке для описания изображения написано `[img: PROCESSING]` - значит описание изображения еще не готово.
-Твои прошлые сообщения могут быть в истории, но они тоже только для контекста.
-Отвечай коротко и в стиле персонажа.
-Если нечего сказать — пошути.
-"""
 
 
 
@@ -70,20 +42,13 @@ class Character:
 
     @property
     def system_message(self):
-        setup_prompt = f"{BASIC_SETUP_PROMPT}\nОписание твоего персонажа:\n{self.style_prompt}"
-        context_str = ""
-        if self.daily_recap:
-            context_str += f"\nКонтекст дня: {self.daily_recap}"
-
-        if self.hourly_recap:
-            context_str += f"\nКонтекст часа: {self.hourly_recap}"
-
-        if self.last_messages_recap:
-            context_str += f"\nНедавние события: {self.last_messages_recap}"
-
-        if context_str:
-            return SystemMessage(f"{setup_prompt}\n{context_str}")
-
+        setup_prompt = prompt_manager.get_prompt(
+            'character_setup',
+            character_description=self.style_prompt,
+            daily_recap=self.daily_recap,
+            hourly_recap=self.hourly_recap,
+            last_messages_recap=self.last_messages_recap
+        )
         return SystemMessage(setup_prompt)
 
     async def respond(
