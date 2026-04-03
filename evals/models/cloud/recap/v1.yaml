@@ -1,0 +1,7 @@
+id: openrouter:openai/gpt-5-nano
+config:
+  max_tokens: 4096
+  reasoning:
+    effort: medium
+  temperature: 0.3
+  showThinking: false

@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+
+# Learn more about building a configuration: https://promptfoo.dev/docs/configuration/guide
+
+description: "Recap eval"
+
+prompts:
+  - file://../../src/prompts/recap/v1.j2
+
+
+providers:
+  - file://../models/local/recap/v1.yaml
+  - file://../models/cloud/recap/v1.yaml
+
+defaultTest:
+  assert:
+    - type: javascript # is short enough
+      value: 1 - (output.length / context.vars.recap_text.length)
+
+tests:
+  - vars:
+      recap_text: file://simple_recap.txt
+
+    assert:
+      - type: icontains-all # got all keywords
+        value:
+          - донер
+          - парк
+          - понедельник
+      - type: not-icontains-any # no translated nicknames
+        value:
+          - Бекниязз
+          - Уродчтоли
+          - Имдемур
+          - Рднул
+
+      - type: llm-rubric
+        provider: ollama:completion:llama3
+        value: |
+          You are evaluating a summary.
+          
+          Original conversation:
+          {{input}}
+          
+          Generated summary:
+          {{output}}
+          
+          Evaluate:
+           - Coverage – includes key points
+           - Faithfulness – no hallucinations
+           - Attribution – correct speakers/actions
+           - Relevance – excludes unimportant details
+          
+          Scoring:
+            - 1.0 = perfect
+            - 0.7 = acceptable
+            - 0.4 = major issues
+            - 0.0 = incorrect
+          
+          Return ONLY a number.
