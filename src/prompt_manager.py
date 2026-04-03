@@ -1,7 +1,6 @@
 import os
 from collections import defaultdict
 
-import yaml
 from jinja2 import Template
 from src import settings
 
@@ -15,16 +14,15 @@ class PromptManager:
     def load_prompts(self):
         for root, _, files in os.walk(self.prompts_dir):
             for filename in files:
-                if filename.endswith('.yaml') or filename.endswith('.yml'):
+                if filename.endswith('.j2'):
                     path = os.path.join(root, filename)
                     with open(path, 'r', encoding='utf-8') as f:
-                        data = yaml.safe_load(f)
-                        task, version = data.get('task'), data.get('version')
-                        template_str = data.get('template')
-                        if not (task and version and template_str):
-                            continue
+                        template_str = f.read()
 
-                        self._prompts[task][version] = template_str
+                    task = os.path.basename(root)
+                    version = os.path.splitext(filename)[0]
+
+                    self._prompts[task][version] = template_str
 
     def get_prompt(self, task: str, version: str = 'v1', **kwargs) -> str:
         if task not in self._prompts:
