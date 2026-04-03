@@ -35,21 +35,27 @@ tests:
           - Рднул
 
       - type: llm-rubric
-        provider: ollama:completion:llama3
+        provider:
+          id: ollama:completion:deepseek-r1
+          config:
+            temperature: 0
+            top_p: 0.1
         value: |
           You are evaluating a summary.
           
-          Original conversation:
-          {{input}}
+          1. Context Integrity:
+            - Does the summary avoid merging unrelated events?
+            - Are separate discussions kept separate?
+            - Penalize if independent messages are combined into one plan or idea.
           
-          Generated summary:
-          {{output}}
+          2. Faithfulness:
+            - No hallucinations or incorrect conclusions.
           
-          Evaluate:
-           - Coverage – includes key points
-           - Faithfulness – no hallucinations
-           - Attribution – correct speakers/actions
-           - Relevance – excludes unimportant details
+          3. Coverage:
+            - Important points are included.
+          
+          4. Relevance:
+            - Excludes unimportant details
           
           Scoring:
             - 1.0 = perfect
@@ -58,3 +64,6 @@ tests:
             - 0.0 = incorrect
           
           Return ONLY a number.
+          
+          Original conversation:
+          {{recap_text}}
