@@ -1,5 +1,5 @@
 id: openrouter:openai/gpt-5-nano
-label: temp 0.1
+label: recap-v2
 config:
   max_tokens: 4096
   reasoning:

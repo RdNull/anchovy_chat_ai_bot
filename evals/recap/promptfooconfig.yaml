@@ -5,12 +5,11 @@
 description: "Recap eval"
 
 prompts:
-  - file://../../src/prompts/recap/v1.j2
+  - id: file://../../src/prompts/recap/v2.j2
+    label: "Prompt v2"
 
 providers:
-  - file://../models/cloud/recap/v1.yaml
-  - file://../models/cloud/recap/v1_01.yaml
-  - file://../models/cloud/recap/v1_05.yaml
+  - file://../models/cloud/recap/v3.yaml
 
 defaultTest:
   assert:
@@ -38,10 +37,9 @@ tests:
 
       - type: llm-rubric
         provider:
-          id: ollama:completion:llama3
+          id: openrouter:deepseek/deepseek-v3.2
           config:
-            temperature: 0
-            top_p: 0.1
+            temperature: 0.3
         value: |
           You are evaluating a summary.
           
@@ -64,8 +62,6 @@ tests:
             - 0.7 = acceptable
             - 0.4 = major issues
             - 0.0 = incorrect
-          
-          Return ONLY a number.
           
           Good summary example:
           {{eval_good_sample}}
