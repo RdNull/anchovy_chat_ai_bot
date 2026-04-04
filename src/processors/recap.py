@@ -28,11 +28,12 @@ async def generate_and_save_recap(
         logger.info(f"No new messages for {recap_type.value} recap in chat {chat_id}")
         return
 
-    llm = ai.get_recap_model()
+    llm = ai.get_recap_model(version='v2')
 
     messages = [
         SystemMessage(content=prompt_manager.get_prompt(
             'recap',
+            version='v2',
             previous_recap=previous_recap,
             recap_text=recap_text
         )),
