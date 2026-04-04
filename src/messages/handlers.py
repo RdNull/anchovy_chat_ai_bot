@@ -15,7 +15,7 @@ from src.characters.repository import CHARACTERS
 from src.logs import logger
 from src.models import (
     Message, MessageMediaStatus, MessageReply,
-    RecapType, UserRole,
+    RecapData, RecapType, UserRole,
 )
 from src.processors.recap import generate_and_save_recap
 from .history import (
@@ -98,6 +98,24 @@ async def send_recap_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_recap_by_type(update, context, RecapType.DAILY)
 
 
+async def _is_recap_old(chat_id: int, recap: RecapData | None, recap_type: RecapType) -> bool:
+    if not recap:
+        return True
+
+    messages_count = await get_messages_count_since(chat_id, recap.created_at.timestamp())
+    now = datetime.now(timezone.utc)
+    time_passed = now - recap.created_at
+
+    if recap_type == RecapType.PERIODIC:
+        return messages_count > 5
+    elif recap_type == RecapType.HOURLY:
+        return messages_count > 10 or time_passed > timedelta(minutes=10)
+    elif recap_type == RecapType.DAILY:
+        return messages_count > 30 or time_passed > timedelta(hours=2)
+
+    return False
+
+
 async def _send_recap_by_type(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -107,6 +125,11 @@ async def _send_recap_by_type(
     logger.info(f"Recap {recap_type} requested in chat {chat_id}")
 
     recap = await get_last_recap(chat_id, recap_type=recap_type)
+    if await _is_recap_old(chat_id, recap, recap_type):
+        logger.info(f"Recap {recap_type} for chat {chat_id} is old or missing, regenerating...")
+        await generate_and_save_recap(chat_id, recap_type)
+        recap = await get_last_recap(chat_id, recap_type=recap_type)
+
     if not recap:
         await update.message.reply_text("Сводки пока нет.")
         return
