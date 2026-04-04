@@ -7,10 +7,10 @@ description: "Recap eval"
 prompts:
   - file://../../src/prompts/recap/v1.j2
 
-
 providers:
-  - file://../models/local/recap/v1.yaml
   - file://../models/cloud/recap/v1.yaml
+  - file://../models/cloud/recap/v1_01.yaml
+  - file://../models/cloud/recap/v1_05.yaml
 
 defaultTest:
   assert:
@@ -19,7 +19,9 @@ defaultTest:
 
 tests:
   - vars:
-      recap_text: file://simple_recap.txt
+      recap_text: file://simple_recap/input.txt
+      eval_good_sample: file://simple_recap/good_sample.txt
+      eval_bad_sample: file://simple_recap/bad_sample.txt
 
     assert:
       - type: icontains-all # got all keywords
@@ -36,7 +38,7 @@ tests:
 
       - type: llm-rubric
         provider:
-          id: ollama:completion:deepseek-r1
+          id: ollama:completion:llama3
           config:
             temperature: 0
             top_p: 0.1
@@ -65,5 +67,15 @@ tests:
           
           Return ONLY a number.
           
+          Good summary example:
+          {{eval_good_sample}}
+          
+          ---
+          Bad summary example:
+          {{eval_bad_sample}}
+          
+          ---
           Original conversation:
           {{recap_text}}
+          
+          ---
