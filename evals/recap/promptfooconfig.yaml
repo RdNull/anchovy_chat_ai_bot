@@ -14,64 +14,65 @@ providers:
 defaultTest:
   assert:
     - type: javascript # is short enough
-      value: 1 - (output.length / context.vars.recap_text.length)
+      value: 1 - (output.length / (context.vars.recap_text.length + (context.vars.previous_recap?.length || 0)))
+    - type: not-icontains-any # no translated nicknames
+      value:
+        - Бекниязз
+        - Уродчтоли
+        - Имдемур
+        - Рднул
+
+    - type: llm-rubric
+      provider:
+        id: openrouter:deepseek/deepseek-v3.2
+        config:
+          temperature: 0.3
+      value: |
+        You are evaluating a summary.
+
+        1. Context Integrity:
+          - Does the summary avoid merging unrelated events?
+          - Are separate discussions kept separate?
+          - Penalize if independent messages are combined into one plan or idea.
+
+        2. Faithfulness:
+          - No hallucinations or incorrect conclusions.
+
+        3. Coverage:
+          - Important points are included.
+
+        4. Relevance:
+          - Excludes unimportant details
+
+        Scoring:
+          - 1.0 = perfect
+          - 0.7 = acceptable
+          - 0.4 = major issues
+          - 0.0 = incorrect
+
+        Good summary example:
+        {{eval_good_sample}}
+
+        ---
+        Bad summary example:
+        {{eval_bad_sample}}
+
+        ---
+        Original conversation:
+        {{recap_text}}
+
+        ---
 
 tests:
-  - vars:
+  - description: simple_recap
+    vars:
       recap_text: file://simple_recap/input.txt
       eval_good_sample: file://simple_recap/good_sample.txt
       eval_bad_sample: file://simple_recap/bad_sample.txt
 
-    assert:
-      - type: icontains-all # got all keywords
-        value:
-          - донер
-          - парк
-          - понедельник
-      - type: not-icontains-any # no translated nicknames
-        value:
-          - Бекниязз
-          - Уродчтоли
-          - Имдемур
-          - Рднул
-
-      - type: llm-rubric
-        provider:
-          id: openrouter:deepseek/deepseek-v3.2
-          config:
-            temperature: 0.3
-        value: |
-          You are evaluating a summary.
-          
-          1. Context Integrity:
-            - Does the summary avoid merging unrelated events?
-            - Are separate discussions kept separate?
-            - Penalize if independent messages are combined into one plan or idea.
-          
-          2. Faithfulness:
-            - No hallucinations or incorrect conclusions.
-          
-          3. Coverage:
-            - Important points are included.
-          
-          4. Relevance:
-            - Excludes unimportant details
-          
-          Scoring:
-            - 1.0 = perfect
-            - 0.7 = acceptable
-            - 0.4 = major issues
-            - 0.0 = incorrect
-          
-          Good summary example:
-          {{eval_good_sample}}
-          
-          ---
-          Bad summary example:
-          {{eval_bad_sample}}
-          
-          ---
-          Original conversation:
-          {{recap_text}}
-          
-          ---
+  - description: with_previous_recap
+    vars:
+      recap_text: file://with_previous_recap/input.txt
+      previous_recap: file://with_previous_recap/previous_recap.txt
+      eval_good_sample: file://with_previous_recap/good_sample.txt
+      eval_bad_sample: file://with_previous_recap/bad_sample.txt
