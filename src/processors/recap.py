@@ -11,7 +11,6 @@ from src.messages.history import (
 from src.models import RecapType
 from src.prompt_manager import prompt_manager
 
-
 EMPTY_DATA_PATTERN = re.compile(r'^\s*\(?\s*нет\s+данных\s*\)?[\s.]*$', re.IGNORECASE)
 
 
@@ -31,13 +30,14 @@ async def generate_and_save_recap(
     llm = ai.get_recap_model(version='v2')
 
     messages = [
-        SystemMessage(content=prompt_manager.get_prompt(
-            'recap',
-            version='v2',
-            previous_recap=previous_recap,
-            recap_text=recap_text
-        )),
-        HumanMessage(content="Сгенерируй сводку.")
+        SystemMessage(
+            content=prompt_manager.get_prompt(
+                'recap',
+                version='v2',
+                previous_recap=previous_recap,
+                recap_text=recap_text
+            )
+        )
     ]
 
     try:
