@@ -1,7 +1,8 @@
+import asyncio
 import re
 from datetime import datetime, timezone
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 
 from src import ai, settings
 from src.logs import logger
@@ -13,12 +14,22 @@ from src.prompt_manager import prompt_manager
 
 EMPTY_DATA_PATTERN = re.compile(r'^\s*\(?\s*нет\s+данных\s*\)?[\s.]*$', re.IGNORECASE)
 
+# more than enough for a small project like this; proper redis setup for scaling
+RECAP_LOCK_BY_TYPE = {
+    RecapType.PERIODIC: asyncio.Lock(),
+    RecapType.HOURLY: asyncio.Lock(),
+    RecapType.DAILY: asyncio.Lock(),
+}
 
-async def generate_and_save_recap(
-    chat_id: int, recap_type: RecapType = RecapType.PERIODIC
-):
+
+async def generate_and_save_recap(chat_id: int, recap_type: RecapType = RecapType.PERIODIC):
     logger.info(f"Generating {recap_type.value} recap for chat {chat_id}")
+    task_lock = RECAP_LOCK_BY_TYPE[recap_type]
+    async with task_lock:
+        await _generate_and_save_recap(chat_id, recap_type)
 
+
+async def _generate_and_save_recap(chat_id: int, recap_type: RecapType):
     recap_started_at = datetime.now(timezone.utc)
     previous_recap = await _get_previous_recap_data(chat_id, recap_type)
     recap_text = await _get_recap_text(chat_id, recap_type)
