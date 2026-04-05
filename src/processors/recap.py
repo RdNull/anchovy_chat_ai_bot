@@ -26,7 +26,11 @@ async def generate_and_save_recap(chat_id: int, recap_type: RecapType = RecapTyp
     logger.info(f"Generating {recap_type.value} recap for chat {chat_id}")
     task_lock = RECAP_LOCK_BY_TYPE[recap_type]
     async with task_lock:
-        await _generate_and_save_recap(chat_id, recap_type)
+        try:
+            await _generate_and_save_recap(chat_id, recap_type)
+            logger.info(f"{recap_type.value.capitalize()} recap saved for chat {chat_id}")
+        except Exception as e:
+            logger.error(f"Error generating recap for chat {chat_id}: {e}", exc_info=True)
 
 
 async def _generate_and_save_recap(chat_id: int, recap_type: RecapType):
@@ -51,17 +55,13 @@ async def _generate_and_save_recap(chat_id: int, recap_type: RecapType):
         )
     ]
 
-    try:
-        response = await llm.ainvoke(messages)
-        recap_text = response.content
-        if EMPTY_DATA_PATTERN.match(recap_text):
-            logger.info(f"Empty recap for {recap_type.value} recap in chat {chat_id}")
-            return
+    response = await llm.ainvoke(messages)
+    recap_text = response.content
+    if EMPTY_DATA_PATTERN.match(recap_text) or not recap_text.strip():
+        logger.info(f"Empty recap for {recap_type.value} recap in chat {chat_id}")
+        return
 
-        await save_recap(chat_id, recap_text, recap_type=recap_type, created_at=recap_started_at)
-        logger.info(f"{recap_type.value.capitalize()} recap saved for chat {chat_id}")
-    except Exception as e:
-        logger.error(f"Error generating recap for chat {chat_id}: {e}", exc_info=True)
+    await save_recap(chat_id, recap_text, recap_type=recap_type, created_at=recap_started_at)
 
 
 async def _get_previous_recap_data(chat_id: int, recap_type: RecapType) -> str:
