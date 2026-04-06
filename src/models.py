@@ -101,19 +101,16 @@ class RecapData(BaseModel):
 class Fact(BaseModel):
     text: str
     confidence: float | None = None
-    last_updated: str | None = None
 
 
 class Decision(BaseModel):
     text: str
     status: str
-    timestamp: str | None = None
 
 
 class Topic(BaseModel):
     name: str
     status: str
-    last_active: str | None = None
 
 
 class OpenLoop(BaseModel):

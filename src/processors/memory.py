@@ -1,6 +1,8 @@
-import json
 import asyncio
+from typing import Any
+
 from langchain_core.messages import SystemMessage
+
 from src import ai, settings
 from src.logs import logger
 from src.messages.history import get_history, get_last_memory, save_memory
@@ -44,9 +46,9 @@ async def _update_chat_memory(chat_id: int):
         new_messages=formatted_messages
     )
 
-    messages = [SystemMessage(content=system_prompt)]
-
-    updated_memory: StructuredMemory = await model_with_structure.ainvoke(messages)
+    updated_memory: StructuredMemory | dict[str, Any] = await model_with_structure.ainvoke([
+        SystemMessage(content=system_prompt)
+    ])
 
     try:
         await save_memory(chat_id, updated_memory)
