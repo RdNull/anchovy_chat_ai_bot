@@ -1,5 +1,5 @@
 id: openrouter:openai/gpt-5-mini
-label: recap-v3
+label: memory-v1
 config:
   max_tokens: 6000
   reasoning:

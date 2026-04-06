@@ -29,15 +29,7 @@
 Описание твоего персонажа:
 {{ character_description }}
 
-{% if daily_recap -%}
-Контекст дня:
-{{ daily_recap }}
-{% endif -%}
-{% if hourly_recap -%}
-Контекст часа: 
-{{ hourly_recap }}
-{% endif -%}
-{% if last_messages_recap -%}
-Недавние события:
-{{ last_messages_recap }}
+{% if memory -%}
+Память чата (факты, решения, темы):
+{{ memory }}
 {% endif -%}

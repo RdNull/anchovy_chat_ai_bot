@@ -7,6 +7,7 @@ from telegram.ext import (ContextTypes, filters)
 from src.logs import logger
 from src import settings
 from src.characters.repository import get_character
+from src.models import MemoryData
 
 
 class ReplyToBotFilter(filters.MessageFilter):
@@ -25,16 +26,12 @@ def set_chat_character(character_code: str, context: ContextTypes.DEFAULT_TYPE):
 
 def get_chat_character(
     context: ContextTypes.DEFAULT_TYPE,
-    last_messages_recap: str | None = None,
-    daily_recap: str | None = None,
-    hourly_recap: str | None = None,
+    memory: MemoryData | None = None,
 ):
     character_code = context.chat_data.get('character_code')
     character = get_character(
         character_code,
-        last_messages_recap=last_messages_recap,
-        daily_recap=daily_recap,
-        hourly_recap=hourly_recap,
+        memory=memory,
     )
     set_chat_character(character.code, context)
     return character

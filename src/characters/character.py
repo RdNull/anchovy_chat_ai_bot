@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from src import settings
 from src.logs import logger
 from src import ai
-from src.models import Message, UserRole
+from src.models import MemoryData, Message, UserRole
 from src.prompt_manager import prompt_manager
 
 
@@ -22,9 +22,7 @@ def _format_previous_messages(last_messages: list[Message]) -> Generator[
 
 
 class Character:
-    last_messages_recap: str | None = None
-    daily_recap: str | None = None
-    hourly_recap: str | None = None
+    memory: MemoryData | None = None
 
     def __init__(
         self,
@@ -45,9 +43,7 @@ class Character:
         setup_prompt = prompt_manager.get_prompt(
             'character_setup',
             character_description=self.style_prompt,
-            daily_recap=self.daily_recap,
-            hourly_recap=self.hourly_recap,
-            last_messages_recap=self.last_messages_recap
+            memory=self.memory.content.model_dump_json(indent=2) if self.memory else None
         )
         return SystemMessage(setup_prompt)
 

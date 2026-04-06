@@ -98,6 +98,46 @@ class RecapData(BaseModel):
     type: RecapType = RecapType.PERIODIC
 
 
+class Fact(BaseModel):
+    text: str
+    confidence: float | None = None
+
+
+class Decision(BaseModel):
+    text: str
+    status: str
+
+
+class Topic(BaseModel):
+    name: str
+    status: str
+
+
+class OpenLoop(BaseModel):
+    text: str
+    priority: str | None = None
+
+
+class ParticipantInfo(BaseModel):
+    facts: list[str] = Field(default_factory=list)
+
+
+class StructuredMemory(BaseModel):
+    facts: list[Fact] = Field(default_factory=list)
+    decisions: list[Decision] = Field(default_factory=list)
+    topics: list[Topic] = Field(default_factory=list)
+    open_loops: list[OpenLoop] = Field(default_factory=list)
+    participants: dict[str, ParticipantInfo] = Field(default_factory=dict)
+    constraints: list[str] = Field(default_factory=list)
+    preferences: list[str] = Field(default_factory=list)
+
+
+class MemoryData(BaseModel):
+    chat_id: int
+    created_at: datetime
+    content: StructuredMemory
+
+
 class MediaDetectionData(BaseModel):
     format: str
     type: ClassVar[MessageMediaTypes]
