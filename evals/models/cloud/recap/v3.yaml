@@ -1,8 +1,8 @@
 id: openrouter:openai/gpt-5-mini
 label: recap-v3
 config:
-  max_tokens: 4096
+  max_tokens: 6000
   reasoning:
-    effort: medium
-  temperature: 0.1
+    effort: low
+  temperature: 0.4
   showThinking: false
