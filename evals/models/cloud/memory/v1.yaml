@@ -4,5 +4,5 @@ config:
   max_tokens: 4096
   reasoning:
     effort: medium
-  temperature: 0.1
+  temperature: 0.3
   showThinking: false
