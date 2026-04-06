@@ -17,12 +17,7 @@ async def setup_scheduler():
     schedule = Scheduler(tzinfo=const.TIMEZONE_ALMATY)
     schedule.hourly(
         dt.time(minute=0, tzinfo=const.TIMEZONE_ALMATY),
-        tasks.generate_all_chats_recap, args=(RecapType.HOURLY,)
-    )
-    schedule.daily(
-        dt.time(hour=0, minute=0, tzinfo=const.TIMEZONE_ALMATY),
-        tasks.generate_all_chats_recap,
-        args=(RecapType.DAILY,)
+        tasks.update_all_chats_memory
     )
     while True:
         await asyncio.sleep(1)

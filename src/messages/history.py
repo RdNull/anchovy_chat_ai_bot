@@ -4,8 +4,8 @@ from src import db
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
 from src.models import (
-    Message, MessageMedia, MessageReply, RecapData,
-    RecapType, UserRole,
+    MemoryData, Message, MessageMedia, MessageReply, RecapData,
+    RecapType, StructuredMemory, UserRole,
 )
 
 
@@ -139,6 +139,30 @@ async def save_recap(
         'created_at': created_at
     }
     await db.recaps.insert_one(data)
+
+
+async def save_memory(chat_id: int, memory: StructuredMemory):
+    logger.debug(f"Saving memory for chat {chat_id}")
+    data = {
+        'chat_id': chat_id,
+        'content': memory.model_dump(),
+        'created_at': datetime.now(timezone.utc).timestamp()
+    }
+    await db.memory.insert_one(data)
+
+
+async def get_last_memory(chat_id: int) -> MemoryData | None:
+    logger.debug(f"Fetching last memory for chat {chat_id}")
+    memory = await db.memory.find_one(
+        {'chat_id': chat_id}, sort=[('created_at', -1)]
+    )
+    if not memory:
+        return None
+
+    # MongoDB stores created_at as float (timestamp)
+    # Pydantic MemoryData expects datetime for created_at
+    memory['created_at'] = datetime.fromtimestamp(memory['created_at'], tz=timezone.utc)
+    return MemoryData(**memory)
 
 
 async def get_message_media_data(media_id: str, media_unique_id: str):

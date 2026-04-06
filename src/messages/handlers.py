@@ -17,10 +17,11 @@ from src.models import (
     Message, MessageMediaStatus, MessageReply,
     RecapData, RecapType, UserRole,
 )
+from src.processors.memory import update_chat_memory
 from src.processors.recap import generate_and_save_recap
 from .history import (
-    get_history, get_last_message, get_last_recap, get_last_recap_timestamp,
-    get_message_media_data, get_messages_count, get_messages_count_since, push_history,
+    get_history, get_last_memory, get_last_message, get_last_recap, get_message_media_data,
+    get_messages_count, get_messages_count_since, push_history,
     register_chat,
 )
 from .media import handle_media_message
@@ -217,17 +218,18 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    last_recap_timestamp = await get_last_recap_timestamp(chat_id, RecapType.PERIODIC)
-    if last_recap_timestamp:
-        messages_count = await get_messages_count_since(chat_id, last_recap_timestamp)
+    last_memory = await get_last_memory(chat_id)
+    if last_memory:
+        messages_count = await get_messages_count_since(chat_id,
+                                                        last_memory.created_at.timestamp())
     else:
         messages_count = await get_messages_count(chat_id)
 
     if messages_count >= settings.LAST_MESSAGES_SIZE:
         logger.info(
-            f"Triggering periodic recap for chat {chat_id} (count since last: {messages_count})"
+            f"Triggering periodic memory update for chat {chat_id} (count since last: {messages_count})"
         )
-        await generate_and_save_recap(chat_id, RecapType.PERIODIC)
+        await update_chat_memory(chat_id)
 
 
 @send_action(ChatAction.TYPING)
@@ -242,20 +244,16 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await register_chat(chat_id)
     await push_history(chat_id, user_message)
 
-    last_recap = await get_last_recap(chat_id, RecapType.PERIODIC)
-    hourly_recap = await get_last_recap(chat_id, RecapType.HOURLY)
-    daily_recap = await get_last_recap(chat_id, RecapType.DAILY)
+    last_memory = await get_last_memory(chat_id)
 
     character = get_chat_character(
         context=context,
-        last_messages_recap=last_recap.text if last_recap else None,
-        hourly_recap=hourly_recap.text if hourly_recap else None,
-        daily_recap=daily_recap.text if daily_recap else None,
+        memory=last_memory if last_memory else None,
     )
     last_messages = await get_history(
         chat_id,
         size=settings.LAST_MESSAGES_SIZE,
-        from_date=last_recap.created_at if last_recap else None
+        from_date=last_memory.created_at if last_memory else None
     )
     last_messages = last_messages[:-1]  # to trim the current user message from history
     llm = llm_module.get_model()
