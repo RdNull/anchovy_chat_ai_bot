@@ -1,21 +1,20 @@
 import base64
 import io
-from operator import index, inv
-
-import math
 import os
 import tempfile
 from typing import List
 
 import cv2
+import math
 from PIL import Image
 from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessage
+from lottie.exporters.cairo import PngRenderer
+from lottie.importers.core import import_tgs
 
 from src import ai
 from src.logs import logger
 from src.models import AnimationDetectionData, MediaDescriptionData
 from src.prompt_manager import prompt_manager
-
 
 
 async def describe_animation(animation: AnimationDetectionData) -> MediaDescriptionData | None:
@@ -64,9 +63,45 @@ def _get_animation_key_frames(animation: AnimationDetectionData) -> List[str]:
     The number of frames depends on the animation length: 1 to 4.
     Each frame is resized to max 300,000 pixels and returned as base64-encoded JPEG.
     """
-    if animation.format.lower() in {'gif',}:
-        return _extract_gif_frames(animation.content)
-    return _extract_video_frames(animation.content)
+    file_format = animation.format.lower()
+    match file_format:
+        case 'gif':
+            return _extract_gif_frames(animation.content)
+        case 'tgs':
+            return _extract_tgs_frames(animation.content)
+        case _:
+            return _extract_video_frames(animation.content)
+
+
+def _extract_tgs_frames(tgs_bytes: bytes) -> List[str]:
+    frames = []
+    try:
+        with io.BytesIO(tgs_bytes) as tgs_file:
+            animation = import_tgs(tgs_file)
+
+        start = int(animation.in_point)
+        end = int(animation.out_point)
+        num_frames = end - start + 1
+
+        if num_frames <= 10:
+            indices = [start]
+        else:
+            indices = [start, start + num_frames // 3, start + 2 * num_frames // 3, end]
+
+        indices = sorted(list(set(indices)))
+
+        with PngRenderer(animation, 96) as renderer:
+            for i in indices:
+                png_file = io.BytesIO()
+                renderer.serialize(i, png_file)
+                png_file.seek(0)
+                with Image.open(png_file) as img:
+                    frame = img.convert("RGB")
+                    frame = _resize_frame_if_needed(frame)
+                    frames.append(_image_to_base64(frame))
+    except Exception as e:
+        logger.error(f"Error extracting frames from TGS: {e}", exc_info=True)
+    return frames
 
 
 def _extract_gif_frames(gif_bytes: bytes) -> List[str]:
