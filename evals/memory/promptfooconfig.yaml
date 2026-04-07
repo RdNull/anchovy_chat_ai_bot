@@ -16,32 +16,35 @@ defaultTest:
       provider:
         id: openrouter:deepseek/deepseek-v3.2
         config:
-          temperature: 0.3
+          temperature: 0.5
       value: |
         You are evaluating a structured memory update for a group chat.
         
+        Evaluation criteria:
+        - Accuracy: Does the updated memory accurately reflect the new information in the messages?
+        - No Hallucinations: Does the update contain information not present in either the original memory or the new messages?
+        - Atomicity: Are the facts and entries short and atomic?
+        - Consistency: Does it avoid duplicating existing information if it hasn't changed?
+        - Format: Does it follow the required schema (facts, decisions, topics, open_loops, participants, etc.)?
+        - Carryover: Does the update preserve important information from the original memory that was not mentioned in the new messages?
+        - Cleanup: Does it skips finished entries from `open_loops`?
+        - Humor: Does it correctly detects jokes and irony if they exist in messages? If not sure is something is joke or irony - ignore it.
+        - Language: Is it in Russian as required (except for names/technical terms)?
+        - Participants: Does it correctly attribute facts to participants using their exact nicknames?
+
+        Scoring targets:
+        - 1.0 = perfect update
+        - 0.8 = good update, missed existing jokes or irony
+        - 0.7 = minor issues (e.g., slightly wordy, minor formatting)
+        - 0.3 = major issues (e.g., hallucinations, missing key facts)
+        - 0.0 = completely incorrect or invalid JSON
+        
+        ---
         Original Memory:
         {{current_memory}}
         
         New Messages:
         {{new_messages}}
-        
-        Evaluation criteria:
-        1. Accuracy: Does the updated memory accurately reflect the new information in the messages?
-        2. No Hallucinations: Does the update contain information not present in either the original memory or the new messages?
-        3. Atomicity: Are the facts and entries short and atomic?
-        4. Consistency: Does it avoid duplicating existing information if it hasn't changed?
-        5. Format: Does it follow the required schema (facts, decisions, topics, open_loops, participants, etc.)?
-        6. Humor: Does it detects jokes and irony and marks them appropriately?
-        7. Language: Is it in Russian as required (except for names/technical terms)?
-        8. Participants: Does it correctly attribute facts to participants using their exact nicknames?
-
-        Scoring targets:
-        - 1.0 = perfect update
-        - 0.8 = good update, missed jokes or irony
-        - 0.7 = minor issues (e.g., slightly wordy, minor formatting)
-        - 0.3 = major issues (e.g., hallucinations, missing key facts)
-        - 0.0 = completely incorrect or invalid JSON
 
 tests:
   - description: "new_facts"
