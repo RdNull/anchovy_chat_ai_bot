@@ -17,8 +17,8 @@ from src.processors.media.animation import describe_animation
 from src.processors.media.image import describe_image
 
 FILE_FORMATS = {
-    MessageMediaTypes.IMAGE: {"jpg", "jpeg", "png", "webp"},
-    MessageMediaTypes.GIF: {'gif', 'webm', 'mp4'},
+    MessageMediaTypes.IMAGE: {"jpg", "jpeg", "png", "webp", },
+    MessageMediaTypes.GIF: {'gif', 'webm', 'mp4', 'tgs', },
 }
 SUPPORTED_FORMATS = set(chain(*FILE_FORMATS.values()))
 

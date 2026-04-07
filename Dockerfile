@@ -1,4 +1,5 @@
 FROM python:3.14-slim
+RUN apt-get update && apt-get install -y libcairo2
 
 RUN pip install --upgrade pip
 

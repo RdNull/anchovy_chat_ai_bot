@@ -12,3 +12,5 @@ scheduler
 Pillow
 opencv-python-headless
 Jinja2
+lottie
+cairosvg # for lottie gif export
