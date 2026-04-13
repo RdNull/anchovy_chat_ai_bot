@@ -28,7 +28,8 @@ async def get_messages(
     ]
 
 
-async def push_history(chat_id: int, message: Message):
+async def push_history(message: Message):
+    chat_id = message.chat_id
     message_text = message.text[:50] if message.text else '<media>'
     logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message_text}...")
     data = {
@@ -49,7 +50,6 @@ async def push_history(chat_id: int, message: Message):
 
     result = await db.messages.insert_one(data)
     message.id = result.inserted_id
-    message.chat_id = chat_id
 
 
 async def get_history(

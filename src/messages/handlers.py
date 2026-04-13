@@ -198,7 +198,7 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     await register_chat(chat_id)
-    await push_history(chat_id, user_message)
+    await push_history(user_message)
     if user_message.media and user_message.media.status == MessageMediaStatus.PENDING:
         asyncio.create_task(handle_media_message(user_message, context))
 
@@ -242,7 +242,7 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Generating answer for chat {chat_id} (user: {user_message.nickname})")
 
     await register_chat(chat_id)
-    await push_history(chat_id, user_message)
+    await push_history(user_message)
 
     last_memory = await get_last_memory(chat_id)
 
@@ -262,7 +262,8 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(response)
 
     await push_history(
-        chat_id, Message(
+        Message(
+            chat_id=chat_id,
             nickname=f'{settings.BOT_NICKNAME}({character.name})',
             role=UserRole.AI,
             text=response,
@@ -300,6 +301,7 @@ async def _parse_user_message(update: Update) -> Message | None:
 
     message_text = update.message.text or update.message.caption
     return Message(
+        chat_id=update.effective_chat.id,
         role=UserRole.USER,
         text=message_text,
         reply=reply,
