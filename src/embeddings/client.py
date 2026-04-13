@@ -7,6 +7,7 @@ from qdrant_client.http.models import FieldCondition, Filter, MatchValue, QueryR
 from qdrant_client.models import (Distance, PointStruct, VectorParams)
 
 from src import settings
+from src.logs import logger
 from src.messages.history import get_messages
 from src.models import Message
 from src.settings import QDRANT_URL
@@ -25,7 +26,8 @@ def chunk_messages(messages: list[Message], window=8, overlap=3) -> list[list[Me
 
 
 class EmbeddingsClient:
-    def __init__(self, model_name: str, vector_size: int):
+    def __init__(self, collection_name: str, model_name: str, vector_size: int):
+        self.collection_name = collection_name
         self.model_name = model_name
         self.vector_size = vector_size
         self.qdrant_client: AsyncQdrantClient = AsyncQdrantClient(QDRANT_URL)
@@ -34,22 +36,20 @@ class EmbeddingsClient:
             "Content-Type": "application/json",
         })
 
-    async def _check_collection(self, collection_name: str, ):
-        if await self.qdrant_client.collection_exists(collection_name):
+    async def _check_collection(self):
+        if await self.qdrant_client.collection_exists(self.collection_name):
             return
 
         await self.qdrant_client.create_collection(
-            collection_name=collection_name,
+            collection_name=self.collection_name,
             vectors_config=VectorParams(
                 size=self.vector_size,
                 distance=Distance.COSINE
             ),
         )
 
-    async def search(self, chat_id: int, query, collection_name: str, limit=5) -> list[dict]:
-        message_search = await self._search_related_message_ids(
-            chat_id, query, collection_name, limit
-        )
+    async def search(self, chat_id: int, query, limit=5) -> list[dict]:
+        message_search = await self._search_related_message_ids(chat_id, query, limit)
         if not message_search:
             return []
 
@@ -63,8 +63,8 @@ class EmbeddingsClient:
 
         return result
 
-    async def save_embeddings(self, messages: list[Message], collection_name: str) -> None:
-        await self._check_collection(collection_name)
+    async def save_embeddings(self, messages: list[Message]) -> None:
+        await self._check_collection()
         chunks = chunk_messages(messages)
         chat_id = messages[0].chat_id
 
@@ -72,31 +72,35 @@ class EmbeddingsClient:
             key = f'{chat_id}-{"-".join(str(m.id) for m in _chunk)}'
             return hashlib.md5(key.encode()).hexdigest()
 
+        logger.info(
+            f"Saving embedding for chat {chat_id} with {len(messages)} in {len(chunks)} chunks"
+        )
         for chunk in chunks:
             compressed_messages = '\n'.join([c.ai_format() for c in chunk])
             embedding = await self._get_embedding_vectors(compressed_messages)
+            chunk_id = get_chunk_id(chunk)
             await self.qdrant_client.upsert(
-                collection_name=collection_name,
+                collection_name=self.collection_name,
                 points=[
                     PointStruct(
-                        id=get_chunk_id(chunk),
+                        id=chunk_id,
                         vector=embedding,
                         payload={
                             'message_ids': [str(m.id) for m in chunk],
                             'chat_id': chat_id,
-                            'timestamp': messages[0].created_at.timestamp()
+                            'timestamp': chunk[-1].created_at.timestamp(),
+                            'participants': list({m.nickname for m in chunk}),
                         }
                     )
                 ]
             )
+            logger.info(f"Saved embedding for chunk {chunk_id}")
 
-    async def _search_related_message_ids(
-        self, chat_id, query, collection_name: str, limit=5
-    ) -> list[dict]:
+    async def _search_related_message_ids(self, chat_id, query, limit=5) -> list[dict]:
         search_embedding = await self._get_embedding_vectors(query)
 
         result: QueryResponse = await self.qdrant_client.query_points(
-            collection_name=collection_name,
+            collection_name=self.collection_name,
             query=search_embedding,
             limit=limit,
             score_threshold=0.2,
@@ -114,22 +118,23 @@ class EmbeddingsClient:
         ]
 
     async def _get_embedding_vectors(self, text: str) -> list[float]:
-        async with self.api_client as client:
-            response = await client.post(
-                '/embeddings',
-                json={
-                    "model": self.model_name,
-                    "input": text,
-                    "encoding_format": "float"
-                })
+        response = await self.api_client.post(
+            '/embeddings',
+            json={
+                "model": self.model_name,
+                "input": text,
+                "encoding_format": "float"
+            })
 
-            response.raise_for_status()
-            data = response.json()
+        response.raise_for_status()
+        data = response.json()
 
-            return data["data"][0]["embedding"]
+        return data["data"][0]["embedding"]
 
 
-embeddings_client = EmbeddingsClient(
+
+messages_embeddings_client = EmbeddingsClient(
+    collection_name='messages',
     model_name=settings.EMBEDDINGS_MODEL_SETTINGS['model_name'],
     vector_size=settings.EMBEDDINGS_MODEL_SETTINGS['vector_size'],
 )
