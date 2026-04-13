@@ -177,3 +177,10 @@ class MediaDescription(BaseModel):
 class MediaDescriptionData(BaseModel):
     description: str
     ocr_text: str | None = None
+
+
+class EmbeddingTask(BaseModel):
+    id: str | None = Field(default=None, alias='_id')
+    chat_id: int
+    last_message_time: datetime
+    created_at: datetime
