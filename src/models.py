@@ -73,6 +73,7 @@ class MessageMedia(BaseModel):
 
 class Message(BaseModel):
     id: str | None = Field(default=None, alias='_id')
+    chat_id: int
     nickname: str
     role: UserRole
     text: str | None = None
