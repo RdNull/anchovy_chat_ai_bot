@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from typing import Iterable, Sequence
+
+from bson import ObjectId
 
 from src import db
 from src.logs import logger
@@ -7,6 +10,22 @@ from src.models import (
     MemoryData, Message, MessageMedia, MessageReply, RecapData,
     RecapType, StructuredMemory, UserRole,
 )
+
+
+async def get_messages(
+    chat_id: int, limit: int = 100, ids: Iterable[str] | None = None
+) -> list[Message]:
+    logger.debug(f"Fetching messages for chat {chat_id} ({limit=} {ids=})")
+    search_query = {'chat_id': chat_id}
+    if ids:
+        search_query['_id'] = {'$in': [ObjectId(id_str) for id_str in ids]}
+
+    cursor = db.messages.find(search_query).sort('created_at', -1).limit(limit)
+    messages = await cursor.to_list(length=limit)
+    return [
+        await _parse_message_record(message)
+        for message in messages
+    ]
 
 
 async def push_history(chat_id: int, message: Message):
@@ -30,6 +49,7 @@ async def push_history(chat_id: int, message: Message):
 
     result = await db.messages.insert_one(data)
     message.id = result.inserted_id
+    message.chat_id = chat_id
 
 
 async def get_history(
@@ -200,6 +220,7 @@ async def _parse_message_record(data: dict) -> Message:
 
     return Message(
         _id=str(data['_id']),
+        chat_id=data['chat_id'],
         role=UserRole(data['role']),
         text=data['text'],
         reply=reply,
