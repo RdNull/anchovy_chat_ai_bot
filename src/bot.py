@@ -10,14 +10,13 @@ from telegram.ext import (
 from src import const, settings, tasks
 from src.messages import handlers
 from src.messages.utils import ReplyToBotFilter
-from src.models import RecapType
 
 
 async def setup_scheduler():
     schedule = Scheduler(tzinfo=const.TIMEZONE_ALMATY)
     schedule.hourly(
         dt.time(minute=0, tzinfo=const.TIMEZONE_ALMATY),
-        tasks.update_all_chats_memory
+        tasks.memory.update_all_chats_memory
     )
     while True:
         await asyncio.sleep(1)
