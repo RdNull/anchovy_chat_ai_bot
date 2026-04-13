@@ -17,11 +17,10 @@ from src.models import (
     Message, MessageMediaStatus, MessageReply,
     RecapData, RecapType, UserRole,
 )
-from src.processors.memory import update_chat_memory
 from src.processors.recap import generate_and_save_recap
 from .history import (
     get_history, get_last_memory, get_last_message, get_last_recap, get_message_media_data,
-    get_messages_count, get_messages_count_since, push_history,
+    get_messages_count_since, push_history,
     register_chat,
 )
 from .media import handle_media_message
@@ -29,6 +28,7 @@ from .utils import (
     escape_markdown_v2, get_chat_character, restricted, send_action,
     set_chat_character,
 )
+from ..processors.context import run_context_checks
 
 
 async def start(update: Update, context: CallbackContext):
@@ -202,7 +202,7 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     if user_message.media and user_message.media.status == MessageMediaStatus.PENDING:
         asyncio.create_task(handle_media_message(user_message, context))
 
-    asyncio.create_task(_check_recap(chat_id, context))
+    asyncio.create_task(run_context_checks(chat_id))
 
 
 @restricted
@@ -215,21 +215,6 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_message.media:
         await handle_media_message(user_message, context)
         await _generate_answer(update, context)
-
-
-async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    last_memory = await get_last_memory(chat_id)
-    if last_memory:
-        messages_count = await get_messages_count_since(chat_id,
-                                                        last_memory.created_at.timestamp())
-    else:
-        messages_count = await get_messages_count(chat_id)
-
-    if messages_count >= settings.LAST_MESSAGES_SIZE:
-        logger.info(
-            f"Triggering periodic memory update for chat {chat_id} (count since last: {messages_count})"
-        )
-        await update_chat_memory(chat_id)
 
 
 @send_action(ChatAction.TYPING)
@@ -274,7 +259,7 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         )
     )
-    asyncio.create_task(_check_recap(chat_id, context))
+    asyncio.create_task(run_context_checks(chat_id))
 
 
 async def _parse_user_message(update: Update) -> Message | None:
