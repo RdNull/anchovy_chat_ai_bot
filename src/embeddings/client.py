@@ -83,7 +83,8 @@ class EmbeddingsClient:
                         vector=embedding,
                         payload={
                             'message_ids': [str(m.id) for m in chunk],
-                            'chat_id': chat_id
+                            'chat_id': chat_id,
+                            'timestamp': messages[0].created_at.timestamp()
                         }
                     )
                 ]
