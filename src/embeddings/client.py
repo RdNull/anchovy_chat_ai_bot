@@ -9,7 +9,7 @@ from qdrant_client.models import (Distance, PointStruct, VectorParams)
 from src import settings
 from src.logs import logger
 from src.messages.history import get_messages
-from src.models import Message
+from src.models import Message, RelatedMessagesData
 from src.settings import QDRANT_URL
 
 
@@ -48,7 +48,7 @@ class EmbeddingsClient:
             ),
         )
 
-    async def search(self, chat_id: int, query, limit=5) -> list[dict]:
+    async def search(self, chat_id: int, query, limit=5) -> list[RelatedMessagesData]:
         message_search = await self._search_related_message_ids(chat_id, query, limit)
         if not message_search:
             return []
@@ -56,10 +56,12 @@ class EmbeddingsClient:
         result = []
         for search_result in message_search:
             messages = await get_messages(chat_id, ids=search_result['message_ids'])
-            result.append({
-                'messages': [m.ai_format() for m in messages],
-                'score': search_result['score'],
-            })
+            result.append(
+                RelatedMessagesData(
+                    messages=messages,
+                    score=search_result['score']
+                )
+            )
 
         return result
 

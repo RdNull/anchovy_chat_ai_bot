@@ -5,8 +5,20 @@ from src.messages.history import get_history
 from src.logs import logger
 from src import settings
 from src import db
-from src.models import EmbeddingTask
+from src.models import EmbeddingTask, Message, RelatedMessagesData
 
+
+async def search_related_messages(user_message: Message) -> list[RelatedMessagesData]:
+    query = user_message.text
+    if user_message.media:
+        query = f'{query}|{user_message.media.description}|{user_message.media.ocr_text}'
+
+    if len(query) < 5:  # no need to spend time on spam messages
+        return []
+
+    return await messages_embeddings_client.search(
+        chat_id=user_message.chat_id, query=query, limit=settings.EMBEDDINGS_SEARCH_MAX_SIZE
+    )
 
 async def update_chat_embeddings(chat_id: int):
     logger.info(f"Updating embeddings for chat {chat_id}")
