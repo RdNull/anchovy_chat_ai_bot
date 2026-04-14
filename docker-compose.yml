@@ -43,7 +43,7 @@ services:
     volumes:
       - type: volume
         source: qdrant_data
-        target: /data/qdrant/shizo_ded_bot_db
+        target: /qdrant/storage
 
 networks:
   default:
@@ -51,6 +51,8 @@ networks:
 
 volumes:
   qdrant_data:
+    external: true
   shizo_ded_bot:
     external: true
   bot_data:
+    external: true
