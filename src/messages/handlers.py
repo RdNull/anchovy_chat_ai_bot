@@ -17,11 +17,10 @@ from src.models import (
     Message, MessageMediaStatus, MessageReply,
     RecapData, RecapType, UserRole,
 )
-from src.processors.memory import update_chat_memory
 from src.processors.recap import generate_and_save_recap
 from .history import (
     get_history, get_last_memory, get_last_message, get_last_recap, get_message_media_data,
-    get_messages_count, get_messages_count_since, push_history,
+    get_messages_count_since, push_history,
     register_chat,
 )
 from .media import handle_media_message
@@ -29,6 +28,9 @@ from .utils import (
     escape_markdown_v2, get_chat_character, restricted, send_action,
     set_chat_character,
 )
+from ..embeddings.client import messages_embeddings_client
+from ..processors.context import run_context_checks
+from ..processors.context.embeddings import search_related_messages
 
 
 async def start(update: Update, context: CallbackContext):
@@ -198,11 +200,11 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     await register_chat(chat_id)
-    await push_history(chat_id, user_message)
+    await push_history(user_message)
     if user_message.media and user_message.media.status == MessageMediaStatus.PENDING:
         asyncio.create_task(handle_media_message(user_message, context))
 
-    asyncio.create_task(_check_recap(chat_id, context))
+    asyncio.create_task(run_context_checks(chat_id))
 
 
 @restricted
@@ -217,21 +219,6 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _generate_answer(update, context)
 
 
-async def _check_recap(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
-    last_memory = await get_last_memory(chat_id)
-    if last_memory:
-        messages_count = await get_messages_count_since(chat_id,
-                                                        last_memory.created_at.timestamp())
-    else:
-        messages_count = await get_messages_count(chat_id)
-
-    if messages_count >= settings.LAST_MESSAGES_SIZE:
-        logger.info(
-            f"Triggering periodic memory update for chat {chat_id} (count since last: {messages_count})"
-        )
-        await update_chat_memory(chat_id)
-
-
 @send_action(ChatAction.TYPING)
 async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = await _parse_user_message(update)
@@ -241,14 +228,19 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f"Generating answer for chat {chat_id} (user: {user_message.nickname})")
 
-    await register_chat(chat_id)
-    await push_history(chat_id, user_message)
+    await asyncio.gather(
+        register_chat(chat_id),
+        push_history(user_message)
+    )
 
-    last_memory = await get_last_memory(chat_id)
-
+    last_memory, related_messages = await asyncio.gather(
+        get_last_memory(chat_id),
+        search_related_messages(user_message)
+    )
     character = get_chat_character(
         context=context,
         memory=last_memory if last_memory else None,
+        related_messages=related_messages,
     )
     last_messages = await get_history(
         chat_id,
@@ -256,13 +248,13 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from_date=last_memory.created_at if last_memory else None
     )
     last_messages = last_messages[:-1]  # to trim the current user message from history
-    llm = llm_module.get_model()
-    response = await character.respond(user_message, last_messages, llm=llm)
+    response = await character.respond(user_message, last_messages)
 
     await update.message.reply_text(response)
 
     await push_history(
-        chat_id, Message(
+        Message(
+            chat_id=chat_id,
             nickname=f'{settings.BOT_NICKNAME}({character.name})',
             role=UserRole.AI,
             text=response,
@@ -273,7 +265,7 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         )
     )
-    asyncio.create_task(_check_recap(chat_id, context))
+    asyncio.create_task(run_context_checks(chat_id))
 
 
 async def _parse_user_message(update: Update) -> Message | None:
@@ -300,6 +292,7 @@ async def _parse_user_message(update: Update) -> Message | None:
 
     message_text = update.message.text or update.message.caption
     return Message(
+        chat_id=update.effective_chat.id,
         role=UserRole.USER,
         text=message_text,
         reply=reply,

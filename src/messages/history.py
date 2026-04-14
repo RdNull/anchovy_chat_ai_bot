@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from typing import Iterable, Sequence
+
+from bson import ObjectId
 
 from src import db
 from src.logs import logger
@@ -9,7 +12,24 @@ from src.models import (
 )
 
 
-async def push_history(chat_id: int, message: Message):
+async def get_messages(
+    chat_id: int, limit: int = 100, ids: Iterable[str] | None = None
+) -> list[Message]:
+    logger.debug(f"Fetching messages for chat {chat_id} ({limit=} {ids=})")
+    search_query = {'chat_id': chat_id}
+    if ids:
+        search_query['_id'] = {'$in': [ObjectId(id_str) for id_str in ids]}
+
+    cursor = db.messages.find(search_query).sort('created_at', -1).limit(limit)
+    messages = await cursor.to_list(length=limit)
+    return [
+        await _parse_message_record(message)
+        for message in messages
+    ]
+
+
+async def push_history(message: Message):
+    chat_id = message.chat_id
     message_text = message.text[:50] if message.text else '<media>'
     logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message_text}...")
     data = {
@@ -38,7 +58,7 @@ async def get_history(
     logger.debug(f"Fetching history for chat {chat_id} ({size=} {from_date=})")
     search_query = {'chat_id': chat_id}
     if from_date:
-        search_query['created_at'] = {'$gte': from_date.timestamp()}
+        search_query['created_at'] = {'$gt': from_date.timestamp()}
 
     cursor = db.messages.find(search_query).sort('created_at', -1).limit(size)
     messages = await cursor.to_list(length=size)
@@ -106,7 +126,7 @@ async def get_last_recaps(
         'type': recap_type.value,
     }
     if from_date:
-        search_params['created_at'] = {'$gte': from_date.timestamp()}
+        search_params['created_at'] = {'$gt': from_date.timestamp()}
 
     recaps = await db.recaps.find(search_params).sort([('created_at', -1)]).to_list(length=size)
     return [RecapData(**r) for r in recaps]
@@ -200,6 +220,7 @@ async def _parse_message_record(data: dict) -> Message:
 
     return Message(
         _id=str(data['_id']),
+        chat_id=data['chat_id'],
         role=UserRole(data['role']),
         text=data['text'],
         reply=reply,

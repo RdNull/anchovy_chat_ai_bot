@@ -17,6 +17,7 @@ services:
       - bot_data:/proj/data
     depends_on:
       - mongo
+      - qdrant
     command: python -m src.bot
     restart: always
     stdin_open: true
@@ -33,11 +34,23 @@ services:
       - type: volume
         source: shizo_ded_bot
         target: /data/mongo/shizo_ded_bot_db
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - type: volume
+        source: qdrant_data
+        target: /data/qdrant/shizo_ded_bot_db
+
 networks:
   default:
     name: shizo_ded_bot
 
 volumes:
+  qdrant_data:
   shizo_ded_bot:
     external: true
   bot_data:
