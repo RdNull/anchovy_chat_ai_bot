@@ -2,9 +2,8 @@ from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessa
 
 from src import ai
 from src.logs import logger
-from src.models import MediaDescriptionData, ImageDetectionData
+from src.models import ImageDetectionData, MediaDescriptionData
 from src.prompt_manager import prompt_manager
-
 
 
 async def describe_image(image: ImageDetectionData) -> MediaDescriptionData | None:
@@ -36,5 +35,3 @@ async def describe_image(image: ImageDetectionData) -> MediaDescriptionData | No
         )
 
     return None
-
-

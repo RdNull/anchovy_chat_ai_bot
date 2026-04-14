@@ -22,6 +22,7 @@ FILE_FORMATS = {
 }
 SUPPORTED_FORMATS = set(chain(*FILE_FORMATS.values()))
 
+
 async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_TYPE):
     if not message.media.unique_id or _skip_media_description_generation(message.media.status):
         return
@@ -133,6 +134,7 @@ async def get_media_descriptions_by_hash(content_hash: str) -> MediaDescription 
     result = await media_descriptions.find_one({'hash': content_hash})
     return _parse_media_description(result) if result else None
 
+
 async def update_media_description_status(description_id: str, status: MessageMediaStatus):
     await media_descriptions.update_one(
         {'_id': description_id},
@@ -198,6 +200,7 @@ def _parse_animation_file(file_format: str, file_bytes: io.BytesIO) -> Animation
         content=file_bytes.read(),
         format=file_format,
     )
+
 
 def _parse_media_description(data: dict) -> MediaDescription:
     return MediaDescription(

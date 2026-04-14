@@ -1,12 +1,12 @@
 import asyncio
 from functools import wraps
 
-from telegram import Update, Message
+from telegram import Message, Update
 from telegram.ext import (ContextTypes, filters)
 
-from src.logs import logger
 from src import settings
 from src.characters.repository import get_character
+from src.logs import logger
 from src.models import MemoryData, RelatedMessagesData
 
 

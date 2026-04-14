@@ -5,7 +5,6 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, ClassVar
 
-from bson import ObjectId
 from pydantic import BaseModel as _BaseModel, BeforeValidator, ConfigDict, Field
 
 MongoId = Annotated[str, BeforeValidator(lambda x: str(x))]
@@ -158,6 +157,7 @@ class AnimationDetectionData(MediaDetectionData):
     @property
     def content_hash(self):
         return hashlib.md5(self.content).hexdigest()
+
 
 class MediaDescription(BaseModel):
     id: MongoId | None = Field(default=None, alias='_id')

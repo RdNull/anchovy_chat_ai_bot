@@ -22,7 +22,6 @@ async def setup_scheduler():
         await asyncio.sleep(1)
 
 
-
 def main() -> None:
     persistence = PicklePersistence(filepath=settings.BOT_PERSISTENCE_FILE)
     loop = asyncio.new_event_loop()
@@ -34,7 +33,6 @@ def main() -> None:
     ).persistence(
         persistence
     ).http_version('2').build()
-
 
     mention_handler = MessageHandler(
         filters.TEXT & (

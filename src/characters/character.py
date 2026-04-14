@@ -3,13 +3,10 @@ from typing import Generator
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from src import settings
+from src import ai, settings
 from src.logs import logger
-from src import ai
 from src.models import MemoryData, Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
-
-
 
 
 def _format_previous_messages(last_messages: list[Message]) -> Generator[

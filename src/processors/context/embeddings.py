@@ -1,10 +1,9 @@
 from datetime import datetime, timezone
 
+from src import db, settings
 from src.embeddings.client import messages_embeddings_client
-from src.messages.history import get_history
 from src.logs import logger
-from src import settings
-from src import db
+from src.messages.history import get_history
 from src.models import EmbeddingTask, Message, RelatedMessagesData
 
 
@@ -19,6 +18,7 @@ async def search_related_messages(user_message: Message) -> list[RelatedMessages
     return await messages_embeddings_client.search(
         chat_id=user_message.chat_id, query=query, limit=settings.EMBEDDINGS_SEARCH_MAX_SIZE
     )
+
 
 async def update_chat_embeddings(chat_id: int):
     logger.info(f"Updating embeddings for chat {chat_id}")

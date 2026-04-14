@@ -2,6 +2,7 @@ import os
 from collections import defaultdict
 
 from jinja2 import Template
+
 from src import settings
 
 

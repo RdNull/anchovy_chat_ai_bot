@@ -1,11 +1,11 @@
 import base64
 import io
+import math
 import os
 import tempfile
 from typing import List
 
 import cv2
-import math
 from PIL import Image
 from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessage
 from lottie.exporters.cairo import PngRenderer

@@ -134,7 +134,6 @@ class EmbeddingsClient:
         return data["data"][0]["embedding"]
 
 
-
 messages_embeddings_client = EmbeddingsClient(
     collection_name='messages',
     model_name=settings.EMBEDDINGS_MODEL_SETTINGS['model_name'],
