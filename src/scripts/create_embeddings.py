@@ -22,7 +22,7 @@ async def create_embeddings(chat_id: int, _from: datetime):
         return
 
     await messages_embeddings_client.save_embeddings(messages)
-    last_message_dt = messages[-1].created_at
+    last_message_dt = messages[0].created_at
     await save_embedding_task(chat_id, last_message_dt)
 
     await create_embeddings(chat_id, last_message_dt)
