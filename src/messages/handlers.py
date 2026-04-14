@@ -28,7 +28,9 @@ from .utils import (
     escape_markdown_v2, get_chat_character, restricted, send_action,
     set_chat_character,
 )
+from ..embeddings.client import messages_embeddings_client
 from ..processors.context import run_context_checks
+from ..processors.context.embeddings import search_related_messages
 
 
 async def start(update: Update, context: CallbackContext):
@@ -226,14 +228,19 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f"Generating answer for chat {chat_id} (user: {user_message.nickname})")
 
-    await register_chat(chat_id)
-    await push_history(user_message)
+    await asyncio.gather(
+        register_chat(chat_id),
+        push_history(user_message)
+    )
 
-    last_memory = await get_last_memory(chat_id)
-
+    last_memory, related_messages = await asyncio.gather(
+        get_last_memory(chat_id),
+        search_related_messages(user_message)
+    )
     character = get_chat_character(
         context=context,
         memory=last_memory if last_memory else None,
+        related_messages=related_messages,
     )
     last_messages = await get_history(
         chat_id,
@@ -241,8 +248,7 @@ async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from_date=last_memory.created_at if last_memory else None
     )
     last_messages = last_messages[:-1]  # to trim the current user message from history
-    llm = llm_module.get_model()
-    response = await character.respond(user_message, last_messages, llm=llm)
+    response = await character.respond(user_message, last_messages)
 
     await update.message.reply_text(response)
 
