@@ -16,7 +16,7 @@ def _format_previous_messages(last_messages: list[Message]) -> Generator[
     HumanMessage | AIMessage, None, None]:
     for message in last_messages:
         if message.role == UserRole.USER:
-            yield HumanMessage(message.ai_format())
+            yield HumanMessage(message.ai_format)
         else:
             yield AIMessage(message.text)
 
@@ -59,7 +59,7 @@ class Character:
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
-            HumanMessage(user_message.ai_format()),
+            HumanMessage(user_message.ai_format),
         ]
         logger.debug(
             f"Invoking LLM for character {self.name} with {len(messages)} messages"

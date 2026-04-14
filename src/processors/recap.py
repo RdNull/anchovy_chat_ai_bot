@@ -89,7 +89,7 @@ async def _get_new_messages(chat_id: int) -> str | None:
         chat_id, size=settings.MESSAGES_RECAP_MAX_SIZE, from_date=from_date
     )
 
-    return "\n".join([m.ai_format() for m in last_messages]) if last_messages else None
+    return "\n".join([m.ai_format for m in last_messages]) if last_messages else None
 
 
 async def _get_last_recaps_data(

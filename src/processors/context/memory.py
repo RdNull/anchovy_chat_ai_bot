@@ -34,7 +34,7 @@ async def _update_chat_memory(chat_id: int):
         logger.info(f"No new messages for memory update in chat {chat_id}")
         return
 
-    formatted_messages = "\n".join([m.ai_format() for m in new_messages])
+    formatted_messages = "\n".join([m.ai_format for m in new_messages])
 
     llm = ai.get_memory_model(version='v1')
     model_with_structure = llm.with_structured_output(StructuredMemory)

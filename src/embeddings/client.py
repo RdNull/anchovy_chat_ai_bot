@@ -78,7 +78,7 @@ class EmbeddingsClient:
             f"Saving embedding for chat {chat_id} with {len(messages)} in {len(chunks)} chunks"
         )
         for chunk in chunks:
-            compressed_messages = '\n'.join([c.ai_format() for c in chunk])
+            compressed_messages = '\n'.join([c.ai_format for c in chunk])
             embedding = await self._get_embedding_vectors(compressed_messages)
             chunk_id = get_chunk_id(chunk)
             await self.qdrant_client.upsert(
