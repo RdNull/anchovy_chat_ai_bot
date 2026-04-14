@@ -12,20 +12,42 @@ parser.add_argument("--chat", type=int)
 
 
 async def create_embeddings(chat_id: int, _from: datetime):
-    messages = await get_history(
-        chat_id,
-        size=50,
-        from_date=_from,
-        sort_order=1,
-    )
-    if not messages:
-        return
+    overlap_messages = []
+    current_from = _from
 
-    await messages_embeddings_client.save_embeddings(messages)
-    last_message_dt = messages[0].created_at
-    await save_embedding_task(chat_id, last_message_dt)
+    while True:
+        messages = await get_history(
+            chat_id,
+            size=100,
+            from_date=current_from,
+            sort_order=1,
+        )
 
-    await create_embeddings(chat_id, last_message_dt)
+        if not messages:
+            break
+
+        # messages are returned reversed by get_history (newest first)
+        # We need them in chronological order
+        messages.sort(key=lambda m: m.created_at)
+
+        # Prepend overlap messages from previous batch
+        batch_messages = overlap_messages + messages
+
+        # Save embeddings
+        await messages_embeddings_client.save_embeddings(batch_messages)
+
+        # Update current_from for next iteration
+        last_message_dt = messages[-1].created_at
+        current_from = last_message_dt
+
+        # Checkpoint: Save progress
+        await save_embedding_task(chat_id, last_message_dt)
+
+        # Prepare overlap for next batch
+        overlap_messages = messages[-3:]
+
+        if len(messages) < 20:
+            break
 
 
 if __name__ == '__main__':
