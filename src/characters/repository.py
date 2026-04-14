@@ -5,7 +5,7 @@ import yaml
 
 from src import settings
 from src.characters.character import Character
-from src.models import MemoryData
+from src.models import MemoryData, RelatedMessagesData
 
 CHARACTERS = {}
 for path in Path(settings.CHARACTERS_DIRECTORY).rglob('*.yaml'):
@@ -25,7 +25,9 @@ for path in Path(settings.CHARACTERS_DIRECTORY).rglob('*.yaml'):
 def get_character(
     character_name: str = None,
     memory: MemoryData | None = None,
+    related_messages: list[RelatedMessagesData] | None = None
 ) -> Character:
     character = CHARACTERS[character_name or random.choice(list(CHARACTERS.keys()))]
     character.memory = memory
+    character.related_messages = related_messages
     return character

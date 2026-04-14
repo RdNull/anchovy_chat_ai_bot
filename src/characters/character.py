@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from src import settings
 from src.logs import logger
 from src import ai
-from src.models import MemoryData, Message, UserRole
+from src.models import MemoryData, Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
 
 
@@ -23,6 +23,7 @@ def _format_previous_messages(last_messages: list[Message]) -> Generator[
 
 class Character:
     memory: MemoryData | None = None
+    related_messages: list[RelatedMessagesData] | None = None
 
     def __init__(
         self,
@@ -42,24 +43,28 @@ class Character:
     def system_message(self):
         setup_prompt = prompt_manager.get_prompt(
             'character_setup',
+            version='v2',
             character_description=self.style_prompt,
-            memory=self.memory.content.model_dump_json(indent=2) if self.memory else None
+            memory=self.memory.content.model_dump_json(indent=2) if self.memory else None,
+            related_messages=self.related_messages or None,
         )
         return SystemMessage(setup_prompt)
 
     async def respond(
-        self, user_message: Message, last_messages: list[Message] = None, llm=None
+        self,
+        user_message: Message,
+        last_messages: list[Message] = None,
     ) -> str:
+        llm = ai.get_model()
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
             HumanMessage(user_message.ai_format()),
         ]
         logger.debug(
-            f"Invoking LLM for character {self.name} with {len(messages)} messages")
+            f"Invoking LLM for character {self.name} with {len(messages)} messages"
+        )
         try:
-            if not llm:
-                llm = ai.get_model()
             response = await asyncio.wait_for(
                 llm.ainvoke(messages),
                 timeout=settings.AI_TIMEOUT
