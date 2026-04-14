@@ -53,14 +53,14 @@ async def push_history(message: Message):
 
 
 async def get_history(
-    chat_id: int, size: int = 50, from_date: datetime | None = None
+    chat_id: int, size: int = 50, from_date: datetime | None = None, sort_order: int = -1,
 ) -> list[Message]:
     logger.debug(f"Fetching history for chat {chat_id} ({size=} {from_date=})")
     search_query = {'chat_id': chat_id}
     if from_date:
         search_query['created_at'] = {'$gt': from_date.timestamp()}
 
-    cursor = db.messages.find(search_query).sort('created_at', -1).limit(size)
+    cursor = db.messages.find(search_query).sort('created_at', sort_order).limit(size)
     messages = await cursor.to_list(length=size)
     return [
         await _parse_message_record(message)

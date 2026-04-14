@@ -16,6 +16,7 @@ async def create_embeddings(chat_id: int, _from: datetime):
         chat_id,
         size=50,
         from_date=_from,
+        sort_order=1,
     )
     if not messages:
         return
