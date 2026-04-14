@@ -58,7 +58,7 @@ async def get_history(
     logger.debug(f"Fetching history for chat {chat_id} ({size=} {from_date=})")
     search_query = {'chat_id': chat_id}
     if from_date:
-        search_query['created_at'] = {'$gte': from_date.timestamp()}
+        search_query['created_at'] = {'$gt': from_date.timestamp()}
 
     cursor = db.messages.find(search_query).sort('created_at', -1).limit(size)
     messages = await cursor.to_list(length=size)
@@ -126,7 +126,7 @@ async def get_last_recaps(
         'type': recap_type.value,
     }
     if from_date:
-        search_params['created_at'] = {'$gte': from_date.timestamp()}
+        search_params['created_at'] = {'$gt': from_date.timestamp()}
 
     recaps = await db.recaps.find(search_params).sort([('created_at', -1)]).to_list(length=size)
     return [RecapData(**r) for r in recaps]

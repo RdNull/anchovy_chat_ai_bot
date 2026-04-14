@@ -37,7 +37,7 @@ async def update_chat_embeddings(chat_id: int):
 
     try:
         await messages_embeddings_client.save_embeddings(messages)
-        await _save_embedding_task(chat_id, messages[-1].created_at)
+        await save_embedding_task(chat_id, messages[-1].created_at)
         logger.info(f"Embeddings updated for chat {chat_id}")
     except Exception as e:
         logger.error(f"Error updating embeddings for chat {chat_id}: {e}", exc_info=True)
@@ -54,7 +54,7 @@ async def get_last_embedding_task(chat_id: int) -> EmbeddingTask | None:
     return EmbeddingTask(**embedding_task)
 
 
-async def _save_embedding_task(chat_id: int, last_message_time: datetime):
+async def save_embedding_task(chat_id: int, last_message_time: datetime):
     logger.info(f"Saving embedding for chat {chat_id}")
     data = {
         'chat_id': chat_id,
