@@ -27,7 +27,7 @@ async def _update_chat_memory(chat_id: int):
 
     from_date = last_memory_data.created_at if last_memory_data else None
     new_messages = await get_history(
-        chat_id, size=settings.MESSAGES_RECAP_MAX_SIZE, from_date=from_date
+        chat_id, size=settings.MESSAGES_MEMORY_MAX_SIZE, from_date=from_date
     )
 
     if not new_messages:

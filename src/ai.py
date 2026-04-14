@@ -11,10 +11,6 @@ def get_model(version: str = 'v1') -> BaseChatModel:
     return _get_model('chat', version)
 
 
-def get_recap_model(version: str = 'v1') -> BaseChatModel:
-    return _get_model('recap', version)
-
-
 def get_memory_model(version: str = 'v1') -> BaseChatModel:
     return _get_model('memory', version)
 

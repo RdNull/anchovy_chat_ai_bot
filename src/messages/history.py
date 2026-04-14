@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Iterable, Sequence
+from typing import Iterable
 
 from bson import ObjectId
 
@@ -7,8 +7,8 @@ from src import db
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
 from src.models import (
-    MemoryData, Message, MessageMedia, MessageReply, RecapData,
-    RecapType, StructuredMemory, UserRole,
+    MemoryData, Message, MessageMedia, MessageReply,
+    StructuredMemory, UserRole,
 )
 
 
@@ -81,18 +81,6 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
     return await _parse_message_record(message)
 
 
-async def get_last_recap_timestamp(
-    chat_id: int, recap_type: RecapType = RecapType.PERIODIC
-) -> float | None:
-    logger.debug(f"Fetching last {recap_type.value} recap timestamp for chat {chat_id}")
-    recap = await db.recaps.find_one(
-        {'chat_id': chat_id, 'type': recap_type.value}, sort=[('created_at', -1)]
-    )
-    if not recap:
-        return None
-    return recap['created_at']
-
-
 async def get_messages_count_since(chat_id: int, timestamp: float) -> int:
     logger.debug(f"Counting messages for chat {chat_id} since {timestamp}")
     return await db.messages.count_documents({
@@ -104,32 +92,6 @@ async def get_messages_count_since(chat_id: int, timestamp: float) -> int:
 async def get_messages_count(chat_id: int) -> int:
     logger.debug(f"Counting messages for chat {chat_id}")
     return await db.messages.count_documents({'chat_id': chat_id})
-
-
-async def get_last_recap(
-    chat_id: int, recap_type: RecapType = RecapType.PERIODIC
-) -> RecapData | None:
-    logger.debug(f"Fetching last {recap_type.value} recap for chat {chat_id}")
-    recap = await db.recaps.find_one(
-        {'chat_id': chat_id, 'type': recap_type.value}, sort=[('created_at', -1)]
-    )
-    return RecapData(**recap) if recap else None
-
-
-async def get_last_recaps(
-    chat_id: int, recap_type: RecapType = RecapType.PERIODIC, from_date: datetime | None = None,
-    size: int = 20
-) -> list[RecapData]:
-    logger.debug(f"Fetching last {recap_type.value} {size} recaps for chat {chat_id}")
-    search_params = {
-        'chat_id': chat_id,
-        'type': recap_type.value,
-    }
-    if from_date:
-        search_params['created_at'] = {'$gt': from_date.timestamp()}
-
-    recaps = await db.recaps.find(search_params).sort([('created_at', -1)]).to_list(length=size)
-    return [RecapData(**r) for r in recaps]
 
 
 async def register_chat(chat_id: int):
@@ -144,21 +106,6 @@ async def get_active_chats() -> list[int]:
     cursor = db.chats.find({})
     chats = await cursor.to_list(length=1000)
     return [c['chat_id'] for c in chats]
-
-
-async def save_recap(
-    chat_id: int, text: str, recap_type: RecapType = RecapType.PERIODIC,
-    created_at: datetime | None = None
-):
-    logger.debug(f"Saving {recap_type.value} recap for chat {chat_id}")
-    created_at = created_at.timestamp() if created_at else datetime.now(timezone.utc).timestamp()
-    data = {
-        'chat_id': chat_id,
-        'text': text,
-        'type': recap_type.value,
-        'created_at': created_at
-    }
-    await db.recaps.insert_one(data)
 
 
 async def save_memory(chat_id: int, memory: StructuredMemory):

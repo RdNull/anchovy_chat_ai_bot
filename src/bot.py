@@ -60,9 +60,6 @@ def main() -> None:
     start_handler = CommandHandler('start', handlers.start)
     info_handler = CommandHandler('info', handlers.info)
     list_handler = CommandHandler('list', handlers.list_characters)
-    recap_handler = CommandHandler('recap', handlers.send_recap)
-    recap_hour_handler = CommandHandler('recap_hour', handlers.send_recap_hour)
-    recap_day_handler = CommandHandler('recap_day', handlers.send_recap_day)
     random_handler = CommandHandler('random', handlers.random_character)
     select_callback_handler = CallbackQueryHandler(
         handlers.select_character,
@@ -72,9 +69,6 @@ def main() -> None:
     app.add_handler(start_handler)
     app.add_handler(info_handler)
     app.add_handler(list_handler)
-    app.add_handler(recap_handler)
-    app.add_handler(recap_hour_handler)
-    app.add_handler(recap_day_handler)
     app.add_handler(random_handler)
     app.add_handler(select_callback_handler)
     app.add_handler(mention_handler)

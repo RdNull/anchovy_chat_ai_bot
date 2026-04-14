@@ -1,6 +1,5 @@
 import asyncio
 import random
-import re
 from datetime import datetime, timedelta, timezone
 
 from telegram import (
@@ -10,17 +9,16 @@ from telegram._files._basemedium import _BaseMedium
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
-from src import ai as llm_module, settings
+from src import settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
 from src.models import (
     Message, MessageMediaStatus, MessageReply,
-    RecapData, RecapType, UserRole,
+    UserRole,
 )
-from src.processors.recap import generate_and_save_recap
 from .history import (
-    get_history, get_last_memory, get_last_message, get_last_recap, get_message_media_data,
-    get_messages_count_since, push_history,
+    get_history, get_last_memory, get_last_message, get_message_media_data,
+    push_history,
     register_chat,
 )
 from .media import handle_media_message
@@ -28,7 +26,6 @@ from .utils import (
     escape_markdown_v2, get_chat_character, restricted, send_action,
     set_chat_character,
 )
-from ..embeddings.client import messages_embeddings_client
 from ..processors.context import run_context_checks
 from ..processors.context.embeddings import search_related_messages
 
@@ -81,77 +78,6 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     character = CHARACTERS[character_code]
 
     await query.edit_message_text(f"Персонаж изменён на: {character.display_name}")
-
-
-@restricted
-@send_action(ChatAction.TYPING)
-async def send_recap(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _send_recap_by_type(update, context, RecapType.PERIODIC)
-
-
-@restricted
-@send_action(ChatAction.TYPING)
-async def send_recap_hour(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _send_recap_by_type(update, context, RecapType.HOURLY)
-
-
-@restricted
-@send_action(ChatAction.TYPING)
-async def send_recap_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _send_recap_by_type(update, context, RecapType.DAILY)
-
-
-async def _is_recap_old(chat_id: int, recap: RecapData | None, recap_type: RecapType) -> bool:
-    if not recap:
-        return True
-
-    messages_count = await get_messages_count_since(chat_id, recap.created_at.timestamp())
-    now = datetime.now(timezone.utc)
-    time_passed = now - recap.created_at
-
-    if recap_type == RecapType.PERIODIC:
-        return messages_count > 5
-    elif recap_type == RecapType.HOURLY:
-        return messages_count > 10 or time_passed > timedelta(minutes=10)
-    elif recap_type == RecapType.DAILY:
-        return messages_count > 30 or time_passed > timedelta(hours=2)
-
-    return False
-
-
-async def _send_recap_by_type(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    recap_type: RecapType
-):
-    chat_id = update.effective_chat.id
-    logger.info(f"Recap {recap_type} requested in chat {chat_id}")
-
-    recap = await get_last_recap(chat_id, recap_type=recap_type)
-    if await _is_recap_old(chat_id, recap, recap_type):
-        logger.info(f"Recap {recap_type} for chat {chat_id} is old or missing, regenerating...")
-        await generate_and_save_recap(chat_id, recap_type)
-        recap = await get_last_recap(chat_id, recap_type=recap_type)
-
-    if not recap:
-        await update.message.reply_text("Сводки пока нет.")
-        return
-
-    recap_text = recap.text.strip()
-    if recap_text:
-        sentences = [s.strip() for s in re.split(r'\.\s*', recap_text) if s.strip()]
-        recap_text = "\n".join([f"- {s}." for s in sentences])
-
-    title = {
-        RecapType.PERIODIC: "Последняя сводка",
-        RecapType.HOURLY: "Сводка за час",
-        RecapType.DAILY: "Сводка за день",
-    }[recap_type]
-
-    await update.message.reply_text(
-        f"*{title}:*\n{escape_markdown_v2(recap_text)}",
-        parse_mode="MarkdownV2"
-    )
 
 
 @restricted

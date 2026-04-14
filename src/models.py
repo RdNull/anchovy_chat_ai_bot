@@ -10,11 +10,6 @@ from pydantic import BaseModel as _BaseModel, BeforeValidator, ConfigDict, Field
 
 MongoId = Annotated[str, BeforeValidator(lambda x: str(x))]
 
-class RecapType(str, Enum):
-    PERIODIC = 'periodic'
-    HOURLY = 'hourly'
-    DAILY = 'daily'
-
 
 class BaseModel(_BaseModel):
     model_config = ConfigDict(coerce_numbers_to_str=True, arbitrary_types_allowed=True)
@@ -96,13 +91,6 @@ class Message(BaseModel):
             return f'{self.nickname} (reply: "{self.reply.ai_format}"): {message_part}'
 
         return f'{self.nickname}: {message_part}'
-
-
-class RecapData(BaseModel):
-    chat_id: str
-    created_at: datetime
-    text: str
-    type: RecapType = RecapType.PERIODIC
 
 
 class Fact(BaseModel):
