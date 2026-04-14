@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 from enum import Enum
-from typing import ClassVar
+from typing import Annotated, ClassVar
 
-from pydantic import BaseModel as _BaseModel, ConfigDict, Field
+from bson import ObjectId
+from pydantic import BaseModel as _BaseModel, BeforeValidator, ConfigDict, Field
 
+MongoId = Annotated[str, BeforeValidator(lambda x: str(x))]
 
 class RecapType(str, Enum):
     PERIODIC = 'periodic'
@@ -72,7 +74,7 @@ class MessageMedia(BaseModel):
 
 
 class Message(BaseModel):
-    id: str | None = Field(default=None, alias='_id')
+    id: MongoId | None = Field(default=None, alias='_id')
     chat_id: int
     nickname: str
     role: UserRole
@@ -166,7 +168,7 @@ class AnimationDetectionData(MediaDetectionData):
         return hashlib.md5(self.content).hexdigest()
 
 class MediaDescription(BaseModel):
-    id: str | None = Field(default=None, alias='_id')
+    id: MongoId | None = Field(default=None, alias='_id')
     media_id: str | None = None
     description: str
     ocr_text: str | None = None
@@ -180,7 +182,12 @@ class MediaDescriptionData(BaseModel):
 
 
 class EmbeddingTask(BaseModel):
-    id: str | None = Field(default=None, alias='_id')
+    id: MongoId | None = Field(default=None, alias='_id')
     chat_id: int
     last_message_time: datetime
     created_at: datetime
+
+
+class RelatedMessagesData(BaseModel):
+    messages: list[Message]
+    score: float
