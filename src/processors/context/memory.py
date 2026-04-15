@@ -2,6 +2,7 @@ import asyncio
 from typing import Any
 
 from langchain_core.messages import SystemMessage
+from langsmith import traceable
 
 from src import ai, settings
 from src.logs import logger
@@ -21,6 +22,7 @@ async def update_chat_memory(chat_id: int):
             logger.error(f"Error updating memory for chat {chat_id}: {e}", exc_info=True)
 
 
+@traceable
 async def _update_chat_memory(chat_id: int):
     last_memory_data = await get_last_memory(chat_id)
     current_memory = last_memory_data.content if last_memory_data else StructuredMemory()

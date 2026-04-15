@@ -3,6 +3,7 @@ from typing import Generator
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolCall
+from langsmith import traceable
 
 from src import ai, settings
 from src.logs import logger
@@ -50,6 +51,7 @@ class Character:
         )
         return SystemMessage(setup_prompt)
 
+    @traceable
     async def respond(
         self,
         user_message: Message,

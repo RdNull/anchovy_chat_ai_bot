@@ -1,4 +1,5 @@
 from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessage
+from langsmith import traceable
 
 from src import ai
 from src.logs import logger
@@ -6,6 +7,8 @@ from src.models import ImageDetectionData, MediaDescriptionData
 from src.prompt_manager import prompt_manager
 
 
+
+@traceable
 async def describe_image(image: ImageDetectionData) -> MediaDescriptionData | None:
     llm = ai.get_image_descriptor_model()
     model_with_structure = llm.with_structured_output(MediaDescriptionData)

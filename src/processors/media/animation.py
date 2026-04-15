@@ -8,6 +8,7 @@ from typing import List
 import cv2
 from PIL import Image
 from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessage
+from langsmith import traceable
 from lottie.exporters.cairo import PngRenderer
 from lottie.importers.core import import_tgs
 
@@ -17,6 +18,7 @@ from src.models import AnimationDetectionData, MediaDescriptionData
 from src.prompt_manager import prompt_manager
 
 
+@traceable
 async def describe_animation(animation: AnimationDetectionData) -> MediaDescriptionData | None:
     key_frames = _get_animation_key_frames(animation)
     if not key_frames:
