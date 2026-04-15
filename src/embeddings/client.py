@@ -99,6 +99,7 @@ class EmbeddingsClient:
             logger.info(f"Saved embedding for chunk {chunk_id}")
 
     async def _search_related_message_ids(self, chat_id, query, limit=5) -> list[dict]:
+        await self._check_collection()
         search_embedding = await self._get_embedding_vectors(query)
 
         result: QueryResponse = await self.qdrant_client.query_points(
