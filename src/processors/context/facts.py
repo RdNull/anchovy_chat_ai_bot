@@ -17,7 +17,12 @@ async def save_fact(nickname: str, text: str, confidence: float) -> UserFact:
 
 async def get_facts(nickname: str, limit: int = 5) -> list[UserFact]:
     logger.debug(f"Fetching facts for {nickname}")
-    facts = db.messages.find({'nickname': nickname}).sort('confidence', -1).limit(limit)
+    if 'facts' not in await db.db_client.data.list_collection_names():
+        await db.db_client.data.create_collection('facts')
+        return []
+
+    cursor = db.facts.find({'nickname': nickname}).sort('confidence', -1).limit(limit)
+    facts = await cursor.to_list(length=limit)
 
     return [UserFact.model_validate(f) for f in facts]
 
