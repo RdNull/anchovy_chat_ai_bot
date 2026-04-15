@@ -1,12 +1,15 @@
 import asyncio
 from typing import Generator
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolCall
 
 from src import ai, settings
 from src.logs import logger
 from src.models import MemoryData, Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
+from . import tools
+from ..tools import ToolRegistry
 
 
 def _format_previous_messages(last_messages: list[Message]) -> Generator[
@@ -58,12 +61,14 @@ class Character:
             *_format_previous_messages(last_messages),
             HumanMessage(user_message.ai_format),
         ]
+        tools_registry = ToolRegistry((tools.get_user_facts, tools.save_user_fact,))
+
         logger.debug(
             f"Invoking LLM for character {self.name} with {len(messages)} messages"
         )
         try:
             response = await asyncio.wait_for(
-                llm.ainvoke(messages),
+                self._run_llm_loop(llm, messages, tools_registry),
                 timeout=settings.AI_TIMEOUT
             )
         except asyncio.TimeoutError:
@@ -76,3 +81,23 @@ class Character:
 
         logger.info(f"LLM response from {self.name}: {response.content[:50]}...")
         return response.content
+
+    async def _run_llm_loop(
+        self,
+        llm: BaseChatModel,
+        messages: list[BaseMessage],
+        tools_registry: ToolRegistry,
+    ) -> AIMessage:
+        llm_with_tools = llm.bind_tools(tools_registry.tools)
+
+        response = await llm_with_tools.ainvoke(messages)
+        if not response.tool_calls:
+            return response
+
+        messages.append(response)
+        # todo implement tool call limits
+        for tool_call in response.tool_calls:  # type: ToolCall
+            tool_result = await tools_registry.execute(tool_call)
+            messages.append(tool_result)
+
+        return await self._run_llm_loop(llm, messages, tools_registry)

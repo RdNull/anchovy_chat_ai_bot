@@ -17,7 +17,7 @@ ALLOWED_USER_IDS = [str(i) for i in os.environ.get('ALLOWED_USER_IDS', '').split
 RANDOM_REPLY_CHANCE = float(os.environ.get('RANDOM_REPLY_CHANCE', 0.05))
 RANDOM_REPLY_COOLDOWN_MINUTES = int(os.environ.get('RANDOM_REPLY_COOLDOWN_MINUTES', 30))
 
-AI_TIMEOUT = int(os.environ.get('AI_TIMEOUT', 60))
+AI_TIMEOUT = int(os.environ.get('AI_TIMEOUT', 90))
 
 EMBEDDINGS_SEARCH_MAX_SIZE = int(os.environ.get('EMBEDDINGS_SEARCH_MAX_SIZE', 3))
 MESSAGES_EMBEDDINGS_MAX_SIZE = int(os.environ.get('MESSAGES_EMBEDDINGS_MAX_SIZE', 40))
