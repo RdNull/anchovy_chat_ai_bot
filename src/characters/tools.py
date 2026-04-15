@@ -7,8 +7,7 @@ from src.processors.context.facts import get_facts, save_fact
 from src.tools import ToolContext
 
 SEARCH_MESSAGES_DESCRIPTION = '''
-HIGH COST:
-Поиск сообщений чата по запросу.
+COST: MEDIUM | Поиск сообщений чата по запросу. 
 
 Args:
     search_query: Текст запроса для поиска в свободном формате; Максимум 2 предложения.
@@ -40,8 +39,7 @@ async def search_messages(search_query: str, limit: int = 3) -> list[dict]:
 
 
 SAVE_USER_FACT_TOOL_DESCRIPTION = '''
-LOW COST:
-Сохранить СТАБИЛЬНЫЙ и ВАЖНЫЙ факт о пользователе
+COST: LOW | Сохранить СТАБИЛЬНЫЙ и ВАЖНЫЙ факт о пользователе
 Факты сохраняются с оценкой уверенности о факте (confidence).
 
 Args:
@@ -68,8 +66,7 @@ async def save_user_fact(nickname: str, text: str, confidence: float) -> UserFac
 
 
 GET_USER_FACT_TOOL_DESCRIPTION = '''
-LOW COST:
-Получить КЛЮЧЕВЫЕ факты о пользователе
+COST: LOW | Получить КЛЮЧЕВЫЕ факты о пользователе
 Args:
 - nickname: Никнейм пользователя
 - limit: Максимальное количество фактов для получения; От 1 до 20.
