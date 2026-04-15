@@ -13,6 +13,9 @@ for path in Path(settings.CHARACTERS_DIRECTORY).rglob('*.yaml'):
         character_data = yaml.safe_load(f)
 
     character_code = path.stem
+    if character_code == 'debug' and not settings.IS_LOCAL:
+        continue
+
     CHARACTERS[character_code] = Character(
         code=character_code,
         name=character_data['name'],
