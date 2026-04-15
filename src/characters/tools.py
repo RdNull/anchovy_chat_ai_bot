@@ -1,17 +1,11 @@
 from langchain.tools import tool
-from langchain_core.messages import ToolCall
 
 from src.logs import logger
 from src.models import UserFact
 from src.processors.context.facts import get_facts, save_fact
 
-
-def get_tool_executor(tool_call: ToolCall):
-    pass
-
-
 SAVE_USER_FACT_TOOL_DESCRIPTION = '''
-Сохраняет факт о пользователе для дальнейшего использования.
+Сохранить СТАБИЛЬНЫЙ и ВАЖНЫЙ факт о пользователе
 Факты сохраняются с оценкой уверенности о факте (confidence).
 
 Args:
@@ -38,7 +32,7 @@ async def save_user_fact(nickname: str, text: str, confidence: float) -> UserFac
 
 
 GET_USER_FACT_TOOL_DESCRIPTION = '''
-Получает факты о пользователе.
+Получить КЛЮЧЕВЫЕ факты о пользователе
 Args:
 - nickname: Никнейм пользователя
 - limit: Максимальное количество фактов для получения; От 1 до 20.
