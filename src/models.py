@@ -183,3 +183,12 @@ class EmbeddingTask(BaseModel):
 class RelatedMessagesData(BaseModel):
     messages: list[Message]
     score: float
+
+
+class UserFact(BaseModel):
+    id: MongoId | None = Field(default=None, alias='_id')
+    nickname: str
+    text: str
+    confidence: float
+    created_at: datetime | None = None
+
