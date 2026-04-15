@@ -9,7 +9,7 @@ from src.logs import logger
 from src.models import MemoryData, Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
 from . import tools
-from ..tools import ToolRegistry
+from ..tools import ToolContext, ToolRegistry
 
 
 def _format_previous_messages(last_messages: list[Message]) -> Generator[
@@ -61,7 +61,10 @@ class Character:
             *_format_previous_messages(last_messages),
             HumanMessage(user_message.ai_format),
         ]
-        tools_registry = ToolRegistry((tools.get_user_facts, tools.save_user_fact,))
+        tools_registry = ToolRegistry(
+            (tools.search_messages, tools.get_user_facts, tools.save_user_fact,),
+            context=ToolContext(chat_id=user_message.chat_id),
+        )
 
         logger.debug(
             f"Invoking LLM for character {self.name} with {len(messages)} messages"

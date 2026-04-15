@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Iterable
 
 from langchain_core.messages import ToolMessage
@@ -6,9 +7,14 @@ from langchain_core.tools import BaseTool
 from src.logs import logger
 
 
+@dataclass
+class ToolContext:
+    chat_id: int
+
 class ToolRegistry:
-    def __init__(self, tools: Iterable[BaseTool]):
+    def __init__(self, tools: Iterable[BaseTool], context: ToolContext):
         self.tools = tuple(tools)
+        self.context = context
         self._tool_by_name = {tool.name: tool for tool in tools}
 
     async def execute(self, tool_call) -> ToolMessage:
@@ -17,6 +23,8 @@ class ToolRegistry:
             raise ValueError(f"Unknown tool: {tool_call['name']}")
 
         logger.info(f"Executing tool: {tool_call['name']} with arguments: {tool_call['args']}")
+
+        tool.metadata = {'context': self.context}
         tool_result = await tool.ainvoke(tool_call["args"])
 
         tool_message = ToolMessage(
