@@ -42,7 +42,7 @@ async def test_respond_returns_llm_text(mocker):
     result = await make_character().respond(user_msg, last_messages=[])
 
     assert result == 'привет!'
-    llm.ainvoke.assert_called_once()
+    assert llm.ainvoke.call_count == 1
     msgs = llm.ainvoke.call_args[0][0]
     assert len(msgs) == 2  # SystemMessage + HumanMessage
     assert isinstance(msgs[0], SystemMessage)
@@ -89,7 +89,7 @@ async def test_respond_executes_tool_call_and_recurses(mocker):
 
     assert result == 'final answer'
     assert llm.ainvoke.call_count == 2
-    mock_execute.assert_called_once()
+    assert mock_execute.call_count == 1
     # Second ainvoke receives the accumulated messages including tool result
     second_msgs = llm.ainvoke.call_args[0][0]
     assert len(second_msgs) == 4  # SystemMessage, HumanMessage, AIMessage(tool), ToolMessage

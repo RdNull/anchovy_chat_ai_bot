@@ -71,10 +71,11 @@ def _make_context():
 
 
 def test_set_get_chat_character():
+    code = next(iter(CHARACTERS))
     ctx = _make_context()
-    set_chat_character('anchovy', ctx)
+    set_chat_character(code, ctx)
     character = get_chat_character(ctx)
-    assert character.code == 'anchovy'
+    assert character.code == code
 
 
 def test_get_chat_character_no_code_returns_valid():

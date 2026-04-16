@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 from src import settings
 from src.messages.history import get_last_memory, push_history
@@ -38,8 +38,8 @@ async def test_run_context_checks_below_threshold_no_update(mocker):
     await push_history(make_message())  # 1 < threshold 2
     await run_context_checks(1)
 
-    mock_memory.assert_not_called()
-    mock_embed.assert_not_called()
+    assert mock_memory.call_count == 0
+    assert mock_embed.call_count == 0
 
 
 async def test_run_context_checks_triggers_memory_update(mocker):
@@ -51,7 +51,8 @@ async def test_run_context_checks_triggers_memory_update(mocker):
     await push_history(make_message(text='msg2'))  # 2 >= threshold 2
     await run_context_checks(1)
 
-    mock_memory.assert_called_once_with(1)
+    assert mock_memory.call_count == 1
+    assert mock_memory.call_args == call(1)
 
 
 async def test_run_context_checks_triggers_embedding_update(mocker):
@@ -64,7 +65,8 @@ async def test_run_context_checks_triggers_embedding_update(mocker):
     await push_history(make_message(text='msg2'))
     await run_context_checks(1)
 
-    mock_embed.assert_called_once_with(1)
+    assert mock_embed.call_count == 1
+    assert mock_embed.call_args == call(1)
 
 
 # --- update_chat_memory ---
@@ -87,7 +89,7 @@ async def test_update_chat_memory_no_op_when_no_messages(mocker):
 
     await update_chat_memory(1)
 
-    llm.with_structured_output.return_value.ainvoke.assert_not_called()
+    assert llm.with_structured_output.return_value.ainvoke.call_count == 0
     assert await get_last_memory(1) is None
 
 
@@ -99,7 +101,7 @@ async def test_update_chat_embeddings_calls_save_embeddings(mocker):
     await push_history(make_message())
     await update_chat_embeddings(1)
 
-    mock_save.assert_called_once()
+    assert mock_save.call_count == 1
     saved_messages = mock_save.call_args[0][0]
     assert len(saved_messages) == 1
     assert saved_messages[0].text == 'hello'
@@ -121,5 +123,5 @@ async def test_update_chat_embeddings_no_op_when_no_messages(mocker):
 
     await update_chat_embeddings(1)
 
-    mock_save.assert_not_called()
+    assert mock_save.call_count == 0
     assert await get_last_embedding_task(1) is None
