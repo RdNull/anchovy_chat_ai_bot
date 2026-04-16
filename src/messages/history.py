@@ -3,7 +3,7 @@ from typing import Iterable
 
 from bson import ObjectId
 
-from src import db
+from src import mongo
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
 from src.models import (
@@ -20,7 +20,7 @@ async def get_messages(
     if ids:
         search_query['_id'] = {'$in': [ObjectId(id_str) for id_str in ids]}
 
-    cursor = db.messages.find(search_query).sort('created_at', -1).limit(limit)
+    cursor = mongo.messages.find(search_query).sort('created_at', -1).limit(limit)
     messages = await cursor.to_list(length=limit)
     return [
         await _parse_message_record(message)
@@ -48,7 +48,7 @@ async def push_history(message: Message):
         reply_media_unique_id = message.reply.media.unique_id if message.reply.media else None
         data['reply_media_unique_id'] = reply_media_unique_id
 
-    result = await db.messages.insert_one(data)
+    result = await mongo.messages.insert_one(data)
     message.id = result.inserted_id
 
 
@@ -60,7 +60,7 @@ async def get_history(
     if from_date:
         search_query['created_at'] = {'$gt': from_date.timestamp()}
 
-    cursor = db.messages.find(search_query).sort('created_at', sort_order).limit(size)
+    cursor = mongo.messages.find(search_query).sort('created_at', sort_order).limit(size)
     messages = await cursor.to_list(length=size)
     return [
         await _parse_message_record(message)
@@ -74,7 +74,7 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
     if role:
         query['role'] = role.value
 
-    message = await db.messages.find_one(query, sort=[('created_at', -1)])
+    message = await mongo.messages.find_one(query, sort=[('created_at', -1)])
     if not message:
         return None
 
@@ -83,7 +83,7 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
 
 async def get_messages_count_since(chat_id: int, timestamp: float) -> int:
     logger.debug(f"Counting messages for chat {chat_id} since {timestamp}")
-    return await db.messages.count_documents({
+    return await mongo.messages.count_documents({
         'chat_id': chat_id,
         'created_at': {'$gt': timestamp}
     })
@@ -91,11 +91,11 @@ async def get_messages_count_since(chat_id: int, timestamp: float) -> int:
 
 async def get_messages_count(chat_id: int) -> int:
     logger.debug(f"Counting messages for chat {chat_id}")
-    return await db.messages.count_documents({'chat_id': chat_id})
+    return await mongo.messages.count_documents({'chat_id': chat_id})
 
 
 async def register_chat(chat_id: int):
-    await db.chats.update_one(
+    await mongo.chats.update_one(
         {'chat_id': chat_id},
         {'$set': {'last_active': datetime.now(timezone.utc).timestamp()}},
         upsert=True
@@ -103,7 +103,7 @@ async def register_chat(chat_id: int):
 
 
 async def get_active_chats() -> list[int]:
-    cursor = db.chats.find({})
+    cursor = mongo.chats.find({})
     chats = await cursor.to_list(length=1000)
     return [c['chat_id'] for c in chats]
 
@@ -115,12 +115,12 @@ async def save_memory(chat_id: int, memory: StructuredMemory):
         'content': memory.model_dump(),
         'created_at': datetime.now(timezone.utc).timestamp()
     }
-    await db.memory.insert_one(data)
+    await mongo.memory.insert_one(data)
 
 
 async def get_last_memory(chat_id: int) -> MemoryData | None:
     logger.debug(f"Fetching last memory for chat {chat_id}")
-    memory = await db.memory.find_one(
+    memory = await mongo.memory.find_one(
         {'chat_id': chat_id}, sort=[('created_at', -1)]
     )
     if not memory:

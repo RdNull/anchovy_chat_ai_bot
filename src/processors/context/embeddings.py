@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from src import db, settings
+from src import mongo as db, settings
 from src.embeddings.client import messages_embeddings_client
 from src.logs import logger
 from src.messages.history import get_history

@@ -6,7 +6,7 @@ from pathlib import Path
 from bson import ObjectId
 from telegram.ext import ContextTypes
 
-from src.db import media_descriptions
+from src.mongo import media_descriptions
 from src.logs import logger
 from src.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescription, MediaDescriptionData,
