@@ -71,3 +71,4 @@ Run tests inside Docker: `docker compose exec bot pytest`
 - Follow PEP 8 and the Google Python Style Guide.
 - Use single quotes for strings.
 - Always use `src/settings.py` for config access — never read env vars directly.
+- It's forbidden to use line splitting for long strings (`\`).
