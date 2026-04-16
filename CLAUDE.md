@@ -63,3 +63,11 @@ Always use `src/settings.py` (Pydantic `BaseSettings`) for all config — never 
 ### Testing notes
 
 `pytest.toml` sets `pythonpath = ["src"]` and `asyncio_mode = "auto"`. Test env vars (incl. `DATABASE_NAME=test_data`) are set in `[pytest_env]` — no `.env` file needed for tests.
+
+Run tests inside Docker: `docker compose exec bot pytest`
+
+## Code Style
+
+- Follow PEP 8 and the Google Python Style Guide.
+- Use single quotes for strings.
+- Always use `src/settings.py` for config access — never read env vars directly.
