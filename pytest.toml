@@ -24,5 +24,7 @@ OPENROUTER_API_KEY = "<openrouter_key>"
 BOT_NICKNAME = "test_bot"
 LANGSMITH_TRACING = "false"
 LANGSMITH_API_KEY = "<api_key>"
+ALLOWED_USER_IDS = "111"
+ALLOWED_CHAT_IDS = "222"
 
 
