@@ -66,6 +66,9 @@ Always use `src/settings.py` (Pydantic `BaseSettings`) for all config — never 
 
 Run tests inside Docker: `docker compose exec bot pytest`
 
+All tests live in `src/tests/`. Shared fixtures are in `src/tests/conftest.py`.
+Use `[write-tests](.claude/skills/write-tests)` skill for tests manipulation.
+
 ## Code Style
 
 - Follow PEP 8 and the Google Python Style Guide.
