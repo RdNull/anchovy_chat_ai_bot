@@ -15,3 +15,10 @@ Jinja2
 lottie
 cairosvg # for lottie gif export
 qdrant-client
+
+pytest
+pytest-asyncio
+pytest-cov
+pytest-env
+pytest-mock
+freezegun
