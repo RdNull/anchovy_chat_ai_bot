@@ -1,15 +1,11 @@
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
+
+import pytest
 
 from src.messages.history import (
-    get_active_chats,
-    get_history,
-    get_last_memory,
-    get_last_message,
-    get_messages_count,
-    get_messages_count_since,
-    push_history,
-    register_chat,
-    save_memory,
+    get_active_chats, get_history, get_last_memory, get_last_message,
+    get_messages_count, get_messages_count_since, push_history, register_chat, save_memory,
 )
 from src.models import (
     Decision, Fact, Message, MessageReply, OpenLoop, ParticipantInfo,
@@ -25,7 +21,13 @@ def make_message(chat_id=1, role=UserRole.USER, text='hello', nickname='user1'):
 
 async def test_push_history_persists_fields():
     reply = MessageReply(text='quoted text', nickname='other_user')
-    msg = Message(chat_id=42, role=UserRole.USER, text='test message', nickname='tester', reply=reply)
+    msg = Message(
+        chat_id=42,
+        role=UserRole.USER,
+        text='test message',
+        nickname='tester',
+        reply=reply
+    )
     assert msg.id is None
     await push_history(msg)
 
@@ -169,3 +171,33 @@ async def test_get_last_memory_returns_newest():
 
     result = await get_last_memory(1)
     assert result.content.constraints == ['second']
+
+
+async def test_push_history_db_error(mocker):
+    # Mocking mongo.messages in src.messages.history
+    mock_mongo = mocker.patch("src.messages.history.mongo")
+    mock_mongo.messages.insert_one = AsyncMock(side_effect=Exception("DB error"))
+    mock_logger = mocker.patch("src.messages.history.logger")
+
+    msg = Message(chat_id=123, nickname="n", role=UserRole.USER, text="t")
+    # history.py doesn't have a try-except for insert_one, so it will raise
+    with pytest.raises(Exception, match="DB error"):
+        await push_history(msg)
+
+
+async def test_get_history_db_error(mocker):
+    mock_mongo = mocker.patch("src.messages.history.mongo")
+    mock_mongo.messages.find.side_effect = Exception("DB find error")
+    mock_logger = mocker.patch("src.messages.history.logger")
+
+    with pytest.raises(Exception, match="DB find error"):
+        await get_history(123)
+
+
+async def test_register_chat_db_error(mocker):
+    mock_mongo = mocker.patch("src.messages.history.mongo")
+    mock_mongo.chats.update_one = AsyncMock(side_effect=Exception("DB update error"))
+    mock_logger = mocker.patch("src.messages.history.logger")
+
+    with pytest.raises(Exception, match="DB update error"):
+        await register_chat(123)

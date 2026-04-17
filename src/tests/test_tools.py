@@ -1,9 +1,12 @@
 from datetime import datetime
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock, MagicMock, call
+
+import pytest
+from langchain_core.messages import ToolMessage
 
 from src.characters.tools import get_user_facts, save_user_fact, search_messages
 from src.models import Message, RelatedMessagesData, UserFact, UserRole
-from src.tools import ToolContext
+from src.tools import ToolContext, ToolRegistry
 
 
 async def test_search_messages_tool(mocker):
@@ -118,3 +121,71 @@ async def test_get_user_facts_tool_limit_validation(mocker):
     # Low limit
     await get_user_facts.ainvoke({'nickname': 'bob', 'limit': -1})
     assert mock_get.call_args == call('bob', limit=5)
+
+
+async def test_tool_registry_execute_success(mocker):
+    # Setup
+    mock_tool = MagicMock()
+    mock_tool.name = "test_tool"
+    mock_tool.ainvoke = AsyncMock(return_value="tool result")
+
+    context = ToolContext(chat_id=123)
+    registry = ToolRegistry(tools=[mock_tool], context=context)
+
+    tool_call = {
+        "name": "test_tool",
+        "args": {"arg1": "val1"},
+        "id": "call_123"
+    }
+
+    # Execute
+    result = await registry.execute(tool_call)
+
+    # Assert
+    assert isinstance(result, ToolMessage)
+    assert result.content == "tool result"
+    assert result.tool_call_id == "call_123"
+    assert mock_tool.metadata == {'context': context}
+    assert mock_tool.ainvoke.call_count == 1
+    assert mock_tool.ainvoke.call_args == call({"arg1": "val1"})
+
+
+async def test_tool_registry_execute_unknown_tool():
+    # Setup
+    context = ToolContext(chat_id=123)
+    registry = ToolRegistry(tools=[], context=context)
+
+    tool_call = {
+        "name": "unknown_tool",
+        "args": {},
+        "id": "call_456"
+    }
+
+    # Execute & Assert
+    with pytest.raises(ValueError, match="Unknown tool: unknown_tool"):
+        await registry.execute(tool_call)
+
+
+async def test_tool_registry_execute_logging(mocker):
+    # Setup
+    mock_tool = MagicMock()
+    mock_tool.name = "test_tool"
+    mock_tool.ainvoke = AsyncMock(return_value="res")
+
+    mock_logger = mocker.patch("src.tools.logger")
+
+    context = ToolContext(chat_id=123)
+    registry = ToolRegistry(tools=[mock_tool], context=context)
+
+    tool_call = {
+        "name": "test_tool",
+        "args": {"p": 1},
+        "id": "id1"
+    }
+
+    # Execute
+    await registry.execute(tool_call)
+
+    # Assert
+    assert mock_logger.info.call_count == 1
+    assert "Executing tool: test_tool with arguments: {'p': 1}" in mock_logger.info.call_args[0][0]

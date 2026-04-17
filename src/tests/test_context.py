@@ -2,10 +2,10 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 from src import settings
 from src.messages.history import get_last_memory, push_history
-from src.models import Message, StructuredMemory, UserRole
-from src.processors.context import run_context_checks
+from src.models import Message, UserRole
+from src.processors.context import run_context_checks, update_chat_memory
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
-from src.processors.context.memory import update_chat_memory
+from src.processors.context.memory import StructuredMemory
 
 
 def make_message(chat_id=1, role=UserRole.USER, text='hello', nickname='user1'):
@@ -125,3 +125,47 @@ async def test_update_chat_embeddings_no_op_when_no_messages(mocker):
 
     assert mock_save.call_count == 0
     assert await get_last_embedding_task(1) is None
+
+
+async def test_update_chat_memory_lock_held(mocker):
+    # Mocking the MEMORY_LOCK in src.processors.context.memory
+    mock_lock = AsyncMock()
+    mock_lock.locked.return_value = True
+    # Since it's used as 'async with MEMORY_LOCK', we need to mock __aenter__
+    # asyncio.TimeoutError is not caught by 'except Exception', so use Exception
+    mock_lock.__aenter__.side_effect = Exception("Lock timeout")
+
+    mocker.patch("src.processors.context.memory.MEMORY_LOCK", mock_lock)
+    mock_logger = mocker.patch("src.processors.context.memory.logger")
+
+    await update_chat_memory(123)
+
+    assert mock_logger.error.call_count == 1
+    assert "Error updating memory for chat 123" in mock_logger.error.call_args[0][0]
+
+
+async def test_update_chat_memory_db_error(mocker):
+    # Mocking save_memory in src.processors.context.memory
+    mock_save = mocker.patch(
+        "src.processors.context.memory.save_memory",
+        AsyncMock(side_effect=Exception("DB memory error"))
+    )
+    mock_logger = mocker.patch("src.processors.context.memory.logger")
+
+    # Needs some messages to trigger update
+    msg = MagicMock()
+    mocker.patch("src.processors.context.memory.get_history", AsyncMock(return_value=[msg] * 10))
+    mocker.patch("src.processors.context.memory.ai.get_memory_model", MagicMock())
+    mocker.patch("src.processors.context.memory.prompt_manager.get_prompt", return_value="p")
+
+    # Mock LLM return
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
+        return_value=StructuredMemory(facts=[])
+    )
+    mocker.patch("src.processors.context.memory.ai.get_memory_model", return_value=mock_llm)
+
+    await update_chat_memory(123)
+
+    assert mock_logger.error.call_count == 1
+    assert "Error updating memory for chat 123" in mock_logger.error.call_args[0][0]
