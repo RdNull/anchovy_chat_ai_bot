@@ -6,7 +6,7 @@ from bson import ObjectId
 from src import mongo
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
-from src.models import Message, MessageMedia, MessageReply, UserRole
+from src.models import Message, MessageMedia, MessageReply, UpdateMessage, UserRole
 
 
 async def save_message(message: Message):
@@ -15,6 +15,7 @@ async def save_message(message: Message):
     logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message_text}...")
     data = {
         'chat_id': chat_id,
+        'telegram_id': message.telegram_id,
         'role': message.role.value,
         'text': message.text,
         'nickname': message.nickname,
@@ -23,6 +24,7 @@ async def save_message(message: Message):
         'created_at': datetime.now(timezone.utc).timestamp()
     }
     if message.reply:
+        data['reply_telegram_id'] = message.reply.telegram_id
         data['reply_text'] = message.reply.text
         data['reply_nickname'] = message.reply.nickname
         data['reply_media_id'] = message.reply.media.media_id if message.reply.media else None
@@ -32,6 +34,17 @@ async def save_message(message: Message):
     result = await mongo.messages.insert_one(data)
     message.id = result.inserted_id
 
+
+async def update_message(update_message_data: UpdateMessage):
+    logger.info(f"Updating message {update_message_data.id}: {update_message_data.text}")
+    update_payload = update_message_data.model_dump(exclude={'id'}, exclude_unset=True)
+    if not update_payload:
+        return
+
+    await mongo.messages.update_one(
+        {'_id': ObjectId(update_message_data.id)},
+        {'$set': update_payload}
+    )
 
 async def get_messages(
     chat_id: int, size: int = 50, from_date: datetime | None = None, sort_order: int = -1,
@@ -62,6 +75,17 @@ async def get_messages_by_ids(
         for message in messages
     ]
 
+
+async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None:
+    logger.debug(f"Fetching message by telegram id {telegram_id}")
+    message = await mongo.messages.find_one({
+        'chat_id': chat_id,
+        'telegram_id': telegram_id,
+    })
+    if not message:
+        return None
+
+    return await _parse_message_record(message)
 
 async def get_last_message(chat_id: int, role: UserRole | None = None) -> Message | None:
     logger.debug(f"Fetching last message for chat {chat_id} (role={role})")
@@ -128,6 +152,7 @@ async def _parse_message_record(data: dict) -> Message:
             )
 
         reply = MessageReply(
+            telegram_id=data.get('reply_telegram_id'),
             text=reply_text,
             nickname=data['reply_nickname'],
             media=reply_media,
@@ -138,6 +163,7 @@ async def _parse_message_record(data: dict) -> Message:
 
     return Message(
         _id=str(data['_id']),
+        telegram_id=data.get('telegram_id'),
         chat_id=data['chat_id'],
         role=UserRole(data['role']),
         text=data['text'],

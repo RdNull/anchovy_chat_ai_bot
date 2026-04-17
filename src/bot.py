@@ -48,6 +48,10 @@ def main() -> None:
         ) & (~filters.COMMAND),
         handlers.handle_conversation
     )
+    edits_handler = MessageHandler(
+        filters.UpdateType.EDITED_MESSAGE & filters.TEXT,
+        handlers.handle_message_edit
+    )
     media_handler = MessageHandler(
         (filters.PHOTO | filters.Sticker.ALL | filters.ANIMATION) & (
             filters.ChatType.PRIVATE |
@@ -64,14 +68,19 @@ def main() -> None:
         pattern="^select_char:"
     )
 
+    # commands
     app.add_handler(start_handler)
     app.add_handler(info_handler)
     app.add_handler(list_handler)
     app.add_handler(random_handler)
     app.add_handler(select_callback_handler)
+
+    # chat meta handlers
+    app.add_handler(edits_handler)
+
+    # chat reply handlers
     app.add_handler(mention_handler)
     app.add_handler(media_handler)
-
     app.add_handler(conversation_handler)
 
     app.add_error_handler(handlers.error_handler)
