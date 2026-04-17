@@ -1,24 +1,36 @@
 from datetime import datetime, timezone
 
 from src.messages.repository import (
-    get_active_chats, get_messages, get_last_message, get_messages_count, get_messages_count_since,
-    save_message, register_chat,
+    get_active_chats, get_last_message, get_message_by_tg_id, get_messages, get_messages_count,
+    get_messages_count_since,
+    register_chat, save_message, update_message,
 )
 from src.models import (
-    Message, MessageReply, UserRole,
+    Message, MessageReply, UpdateMessage, UserRole,
 )
 
 
-def make_message(chat_id=1, role=UserRole.USER, text='hello', nickname='user1'):
-    return Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
+def make_message(chat_id=1, telegram_id=404, role=UserRole.USER, text='hello', nickname='user1'):
+    return Message(
+        chat_id=chat_id,
+        telegram_id=telegram_id,
+        role=role,
+        text=text,
+        nickname=nickname
+    )
 
 
 # --- save_message ---
 
 async def test_save_message_persists_fields():
-    reply = MessageReply(text='quoted text', nickname='other_user')
+    reply = MessageReply(
+        telegram_id=405,
+        text='quoted text',
+        nickname='other_user',
+    )
     msg = Message(
         chat_id=42,
+        telegram_id=404,
         role=UserRole.USER,
         text='test message',
         nickname='tester',
@@ -30,6 +42,7 @@ async def test_save_message_persists_fields():
     fetched = await get_last_message(42)
     assert fetched.id is not None
     assert fetched.chat_id == 42
+    assert fetched.telegram_id == 404
     assert fetched.nickname == 'tester'
     assert fetched.role == UserRole.USER
     assert fetched.text == 'test message'
@@ -37,6 +50,7 @@ async def test_save_message_persists_fields():
     assert fetched.reply is not None
     assert fetched.reply.text == 'quoted text'
     assert fetched.reply.nickname == 'other_user'
+    assert fetched.reply.telegram_id == 405
 
 
 # --- get_messages ---
@@ -90,6 +104,17 @@ async def test_get_last_message_empty():
     assert result is None
 
 
+async def test_get_message_by_telegram_id():
+    message = make_message(chat_id=101, telegram_id=8008)
+    await save_message(message)
+
+    fetched_message = await get_message_by_tg_id(message.chat_id, telegram_id=message.telegram_id)
+
+    assert fetched_message
+    assert fetched_message.chat_id == message.chat_id
+    assert fetched_message.telegram_id == message.telegram_id
+
+
 # --- get_messages_count / get_messages_count_since ---
 
 async def test_get_messages_count():
@@ -106,6 +131,23 @@ async def test_get_messages_count_since():
     await save_message(make_message(text='recent'))
 
     assert await get_messages_count_since(1, cutoff.timestamp()) == 1
+
+
+async def test_message_update():
+    old_message = make_message()
+    await save_message(old_message)
+
+    update_data = UpdateMessage(
+        id=old_message.id,
+        text='updated text',
+    )
+    await update_message(update_data)
+
+    assert await get_messages_count(old_message.chat_id) == 1
+
+    fetched_message = await get_last_message(old_message.chat_id)
+    assert fetched_message
+    assert fetched_message.text == 'updated text'
 
 
 # --- register_chat / get_active_chats ---

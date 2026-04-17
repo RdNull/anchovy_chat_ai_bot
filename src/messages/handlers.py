@@ -2,17 +2,20 @@ import asyncio
 import random
 from datetime import datetime, timedelta, timezone
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage, Update
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
 from src import settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
-from src.models import MessageMediaStatus, UserRole
-from .repository import get_last_message, save_message, register_chat
+from src.models import MessageMediaStatus, UpdateMessage, UserRole
 from .media import handle_media_message
 from .parsing import parse_user_message
+from .repository import (
+    get_last_message, get_message_by_tg_id, register_chat, save_message,
+    update_message,
+)
 from .response import generate_answer
 from .utils import (
     escape_markdown_v2, get_chat_character, restricted, send_action,
@@ -134,3 +137,28 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_message.media:
         await handle_media_message(user_message, context)
         await generate_answer(update, context)
+
+
+@restricted
+async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.edited_message:
+        return
+
+    edited_tg_message: TgMessage = update.edited_message
+
+    new_text = edited_tg_message.text or edited_tg_message.caption
+    if not new_text:
+        return
+
+    message = await get_message_by_tg_id(
+        chat_id=edited_tg_message.chat_id, telegram_id=edited_tg_message.message_id,
+    )
+    if not message:
+        return
+
+    await update_message(
+        UpdateMessage(
+            id=message.id,
+            text=new_text,
+        )
+    )

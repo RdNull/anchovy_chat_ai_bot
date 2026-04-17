@@ -20,7 +20,12 @@ async def parse_user_message(update) -> Message | None:
             )
 
         reply_text = reply_msg.text or reply_msg.caption
-        reply = MessageReply(text=reply_text, nickname=reply_nickname, media=reply_media)
+        reply = MessageReply(
+            telegram_id=reply_msg.message_id,
+            text=reply_text,
+            nickname=reply_nickname,
+            media=reply_media,
+        )
 
     user_nickname = update.message.from_user.username or update.message.from_user.first_name
     media = None
@@ -30,6 +35,7 @@ async def parse_user_message(update) -> Message | None:
     message_text = update.message.text or update.message.caption
     return Message(
         chat_id=update.effective_chat.id,
+        telegram_id=update.message.message_id,
         role=UserRole.USER,
         text=message_text,
         reply=reply,

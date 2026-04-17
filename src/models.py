@@ -32,6 +32,7 @@ class MessageMediaStatus(str, Enum):
 
 
 class MessageReply(BaseModel):
+    telegram_id: int | None = Field(default=None)
     text: str | None = None
     nickname: str
     media: MessageMedia | None = None
@@ -64,6 +65,7 @@ class MessageMedia(BaseModel):
 
 class Message(BaseModel):
     id: MongoId | None = Field(default=None, alias='_id')
+    telegram_id: int | None = Field(default=None)
     chat_id: int
     nickname: str
     role: UserRole
@@ -83,6 +85,10 @@ class Message(BaseModel):
 
         return f'{self.nickname}: {message_part}'
 
+
+class UpdateMessage(BaseModel):
+    id: MongoId
+    text: str
 
 class Fact(BaseModel):
     text: str

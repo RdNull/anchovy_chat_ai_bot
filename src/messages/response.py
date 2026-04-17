@@ -46,15 +46,17 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last_messages = last_messages[:-1]  # to trim the current user message from history
     response = await character.respond(user_message, last_messages)
 
-    await update.message.reply_text(response)
+    reply_message = await update.message.reply_text(response)
 
     await save_message(
         Message(
+            telegram_id=reply_message.message_id,
             chat_id=chat_id,
             nickname=f'{settings.BOT_NICKNAME}({character.name})',
             role=UserRole.AI,
             text=response,
             reply=MessageReply(
+                telegram_id=user_message.telegram_id,
                 text=user_message.text,
                 nickname=user_message.nickname,
                 media=user_message.media
