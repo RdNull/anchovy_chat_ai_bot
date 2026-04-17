@@ -29,48 +29,39 @@ defaultTest:
           - ocr_text
         type: object
 
-    # OCR
-    - type: javascript
-      metric: ocr_score
-      threshold: 0.7
-      value: |
-        function normalize(s) {
-          return s
-            .toLowerCase()
-            .replace(/[^a-z0-9а-яё\s]/gi, '')
-            .split(/\s+/)
-            .filter(Boolean);
-        }
-
-        const pred = new Set(normalize(output.ocr_text));
-        const exp = new Set(normalize(context.vars.expected.ocr));
-
-        let match = 0;
-        for (const w of exp) {
-          if (pred.has(w)) match++;
-        }
-
-        return match / exp.size;
-    
-
     # Keywords present
-    - type: javascript
+    - type: icontains-all
       metric: keyword_coverage
-      value: |
-        const desc = output.description.toLowerCase();
-        return context.vars.expected.keywords.every(k => desc.includes(k));
+      value: '{{expected.keywords}}'
 
+    #similarity
     - type: similar
       metric: similarity
       transform: output.description
       value: '{{expected.description}}'
       threshold: 0.8
 
+    - type: similar
+      metric: similarity
+      transform: output.ocr_text
+      value: '{{expected.ocr_text}}'
+      threshold: 0.9
+
 tests:
-  - vars:
+  - description: "simple_image"
+    vars:
       image: file://images/simple_image.jpg
       expected:
         keywords: [ "мужчина", "офис" ]
-        ocr: "инвестировал в говно"
+        ocr_text: "инвестировал в говно"
         description: "Мужчина в костюме сидит в офисе за столом, на столе надпись 'инвестировал в говно'."
+
+  - description: "screenshot"
+    vars:
+      image: file://images/screenshot.jpg
+      expected:
+        keywords: [ "анчоусы", "кентубас", "лоу-таб" ]
+        ocr_text: "22:31 Анчоусы 11 members Pinned Message бля че го по 2 часа в день и бимбимбамб... Ален Ищанов @GuldenToktassyn у тебя фронт... Э 10:40 Ален Ищанов @GuldenToktassyn у тебя фронтов и... Лоу-таб эт чё такое? 10:41 Ален Ищанов кентубасик Э Bekniyaz Zhumagulov У меня кентубас работу ищет 10:41 Bekniyaz Zhumagulov 0 прикинь Да ну нах 10:41 Anton Luboshnikov Лоу-таб эт чё такое? Ну типа слабый 10:41 Message Ален Ищанов У меня кентубас работу ищет Ты про меня что ли? 10:41"
+        description: "Скриншот чата в Telegram, где участники обсуждают 'лоу-таб' и ищут работу для кентубаса."
+
 
