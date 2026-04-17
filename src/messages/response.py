@@ -6,9 +6,10 @@ from telegram.ext import ContextTypes
 
 from src import settings
 from src.logs import logger
+from src.memory.repository import get_last_memory
 from src.models import Message, MessageReply, UserRole
-from .repository import get_history, get_last_memory, push_history, register_chat
 from .parsing import parse_user_message
+from .repository import get_history, push_history, register_chat
 from .utils import get_chat_character, send_action
 from ..processors.context import run_context_checks
 from ..processors.context.embeddings import search_related_messages
