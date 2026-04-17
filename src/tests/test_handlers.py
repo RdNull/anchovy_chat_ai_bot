@@ -420,7 +420,9 @@ async def test_handle_message_edit_no_text(mocker, make_update, make_context):
         chat_id=222, telegram_id=101, role=UserRole.USER, text='old msg', nickname='user'
     )
     await save_message(original_message)
-    update = make_update(message_id=101, updated_text='')
+    update = make_update(message_id=101, updated_text='oppa')
+    update.edited_message.text = ''
+    update.edited_message.caption = ''
     await handlers.handle_message_edit(update, make_context)
 
     assert update_message_mock.call_count == 0
@@ -432,7 +434,7 @@ async def test_handle_message_edit_no_message_found(mocker, make_update, make_co
         chat_id=222, telegram_id=101, role=UserRole.USER, text='old msg', nickname='user'
     )
     await save_message(original_message)
-    update = make_update(message_id=202, updated_text='')
+    update = make_update(message_id=202, updated_text='whatever')
     await handlers.handle_message_edit(update, make_context)
 
     assert update_message_mock.call_count == 0
