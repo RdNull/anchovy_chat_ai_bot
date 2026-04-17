@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from src.embeddings.client import messages_embeddings_client
-from src.messages.history import get_history
+from src.messages.repository import get_messages
 from src.processors.context.embeddings import save_embedding_task
 
 parser = argparse.ArgumentParser(description='Script so useful.')
@@ -16,7 +16,7 @@ async def create_embeddings(chat_id: int, _from: datetime):
     current_from = _from
 
     while True:
-        messages = await get_history(
+        messages = await get_messages(
             chat_id,
             size=100,
             from_date=current_from,

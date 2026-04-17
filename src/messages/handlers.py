@@ -2,32 +2,23 @@ import asyncio
 import random
 from datetime import datetime, timedelta, timezone
 
-from telegram import (
-    InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage, PhotoSize, Update,
-)
-from telegram._files._basemedium import _BaseMedium
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
 from src import settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
-from src.models import (
-    Message, MessageMediaStatus, MessageReply,
-    UserRole,
-)
-from .history import (
-    get_history, get_last_memory, get_last_message, get_message_media_data,
-    push_history,
-    register_chat,
-)
+from src.models import MessageMediaStatus, UserRole
+from .repository import get_last_message, save_message, register_chat
 from .media import handle_media_message
+from .parsing import parse_user_message
+from .response import generate_answer
 from .utils import (
     escape_markdown_v2, get_chat_character, restricted, send_action,
     set_chat_character,
 )
 from ..processors.context import run_context_checks
-from ..processors.context.embeddings import search_related_messages
 
 
 async def start(update: Update, context: CallbackContext):
@@ -95,13 +86,13 @@ async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f"Bot mentioned or replied to in chat {chat_id}")
-    await _generate_answer(update, context)
+    await generate_answer(update, context)
 
 
 @restricted
 async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    user_message = await _parse_user_message(update)
+    user_message = await parse_user_message(update)
     if not user_message:
         return
 
@@ -122,11 +113,11 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
                 return
 
         logger.info(f"Triggering random reply in chat {chat_id}")
-        await _generate_answer(update, context)
+        await generate_answer(update, context)
         return
 
     await register_chat(chat_id)
-    await push_history(user_message)
+    await save_message(user_message)
     if user_message.media and user_message.media.status == MessageMediaStatus.PENDING:
         asyncio.create_task(handle_media_message(user_message, context))
 
@@ -136,108 +127,10 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 @restricted
 @send_action(ChatAction.TYPING)
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = await _parse_user_message(update)
+    user_message = await parse_user_message(update)
     if not user_message:
         return
 
     if user_message.media:
         await handle_media_message(user_message, context)
-        await _generate_answer(update, context)
-
-
-@send_action(ChatAction.TYPING)
-async def _generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = await _parse_user_message(update)
-    if not user_message:
-        return
-
-    chat_id = update.effective_chat.id
-    logger.info(f"Generating answer for chat {chat_id} (user: {user_message.nickname})")
-
-    await asyncio.gather(
-        register_chat(chat_id),
-        push_history(user_message)
-    )
-
-    last_memory, related_messages = await asyncio.gather(
-        get_last_memory(chat_id),
-        search_related_messages(user_message)
-    )
-    character = get_chat_character(
-        context=context,
-        memory=last_memory if last_memory else None,
-        related_messages=related_messages,
-    )
-    last_messages = await get_history(
-        chat_id,
-        size=settings.LAST_MESSAGES_SIZE,
-        from_date=last_memory.created_at if last_memory else None
-    )
-    last_messages = last_messages[:-1]  # to trim the current user message from history
-    response = await character.respond(user_message, last_messages)
-
-    await update.message.reply_text(response)
-
-    await push_history(
-        Message(
-            chat_id=chat_id,
-            nickname=f'{settings.BOT_NICKNAME}({character.name})',
-            role=UserRole.AI,
-            text=response,
-            reply=MessageReply(
-                text=user_message.text,
-                nickname=user_message.nickname,
-                media=user_message.media
-            ),
-        )
-    )
-    asyncio.create_task(run_context_checks(chat_id))
-
-
-async def _parse_user_message(update: Update) -> Message | None:
-    if not update.message:
-        return None
-
-    reply = None
-    if update.message.reply_to_message:
-        reply_msg = update.message.reply_to_message
-        reply_nickname = reply_msg.from_user.username or reply_msg.from_user.first_name if reply_msg.from_user else "unknown"
-        reply_media = None
-        if reply_medium := _get_message_medium(reply_msg):
-            reply_media = await get_message_media_data(
-                reply_medium.file_id, reply_medium.file_unique_id
-            )
-
-        reply_text = reply_msg.text or reply_msg.caption
-        reply = MessageReply(text=reply_text, nickname=reply_nickname, media=reply_media)
-
-    user_nickname = update.message.from_user.username or update.message.from_user.first_name
-    media = None
-    if medium := _get_message_medium(update.message):
-        media = await get_message_media_data(medium.file_id, medium.file_unique_id)
-
-    message_text = update.message.text or update.message.caption
-    return Message(
-        chat_id=update.effective_chat.id,
-        role=UserRole.USER,
-        text=message_text,
-        reply=reply,
-        nickname=user_nickname,
-        media=media
-    )
-
-
-def _get_message_medium(tg_message: TgMessage) -> _BaseMedium | None:
-    if sticker := tg_message.sticker:
-        return sticker
-
-    if photo_sizes := tg_message.photo:  # type: tuple[PhotoSize, ...]
-        # selecting the biggest photo size that is less than 300_000 pixels ("magic number")
-        photo_size = next(s for s in reversed(photo_sizes) if s.height * s.width <= 300_000)
-        return photo_size
-
-    if animation := tg_message.animation:
-        if animation.duration <= 10:  # in seconds; long gifs will be ignored
-            return animation
-
-    return None
+        await generate_answer(update, context)

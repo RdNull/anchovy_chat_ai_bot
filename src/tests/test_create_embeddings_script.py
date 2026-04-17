@@ -23,7 +23,7 @@ async def test_create_embeddings_loop(mocker):
 
     # First call returns 20 messages (to trigger loop continuation)
     # Second call returns 0 messages (to stop loop)
-    mock_history = mocker.patch("src.scripts.create_embeddings.get_history", AsyncMock())
+    mock_history = mocker.patch("src.scripts.create_embeddings.get_messages", AsyncMock())
     mock_history.side_effect = [
         [msg1] * 20,
         []
@@ -45,7 +45,7 @@ async def test_create_embeddings_loop(mocker):
 @pytest.mark.asyncio
 async def test_create_embeddings_empty_history(mocker):
     mock_history = mocker.patch(
-        "src.scripts.create_embeddings.get_history",
+        "src.scripts.create_embeddings.get_messages",
         AsyncMock(return_value=[])
     )
     mock_embeddings = mocker.patch(

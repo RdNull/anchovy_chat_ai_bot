@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.messages.media import (
-    _generate_media_description, _get_message_media, _parse_animation_file, _parse_image_file,
-    create_media_description, get_media_description_by_media_id,
-    handle_media_message,
+    create_media_description, get_media_description_by_media_id, handle_media_message,
 )
+from src.messages.media.download import _parse_animation_file, _parse_image_file, get_message_media
+from src.messages.media.pipeline import _generate_media_description
 from src.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescriptionData, MediaDetectionData,
     Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UserRole,
@@ -38,15 +38,15 @@ def sample_message():
 
 
 async def test_handle_media_message_new_image(mocker, sample_message, mock_context):
-    # Mock _get_message_media
-    mocker.patch('src.messages.media._get_message_media', return_value=ImageDetectionData(
+    # Mock get_message_media
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
         content='base64content',
         format='jpg'
     ))
 
     # Mock _generate_media_description
     mocker.patch(
-        'src.messages.media._generate_media_description',
+        'src.messages.media.pipeline._generate_media_description',
         return_value=MediaDescriptionData(
             description='A cute cat',
             ocr_text='CAT'
@@ -93,7 +93,7 @@ async def test_handle_media_message_cache_hit_by_hash(mocker, sample_message, mo
         status=MessageMediaStatus.READY
     )
 
-    mocker.patch('src.messages.media._get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
         content='base64content',
         format='jpg'
     ))
@@ -106,7 +106,7 @@ async def test_handle_media_message_cache_hit_by_hash(mocker, sample_message, mo
     )
 
     # Mock _generate_media_description to ensure it's NOT called
-    mock_gen = mocker.patch('src.messages.media._generate_media_description')
+    mock_gen = mocker.patch('src.messages.media.pipeline._generate_media_description')
 
     await handle_media_message(sample_message, mock_context)
 
@@ -147,11 +147,11 @@ async def test_handle_media_message_skips_when_status_ready(mock_context):
 
 
 async def test_handle_media_message_generate_returns_none(mocker, sample_message, mock_context):
-    mocker.patch('src.messages.media._get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
         content='base64content',
         format='jpg'
     ))
-    mocker.patch('src.messages.media._generate_media_description', return_value=None)
+    mocker.patch('src.messages.media.pipeline._generate_media_description', return_value=None)
 
     # Should complete without raising; description record is created but not finalised
     await handle_media_message(sample_message, mock_context)
@@ -165,7 +165,7 @@ async def test_handle_media_message_generate_returns_none(mocker, sample_message
 async def test_generate_media_description_image(mocker, sample_message):
     image_data = ImageDetectionData(content='base64content', format='jpg')
     expected = MediaDescriptionData(description='A cat', ocr_text=None)
-    mocker.patch('src.messages.media.describe_image', return_value=expected)
+    mocker.patch('src.messages.media.pipeline.describe_image', return_value=expected)
 
     result = await _generate_media_description(sample_message, image_data)
 
@@ -175,7 +175,7 @@ async def test_generate_media_description_image(mocker, sample_message):
 async def test_generate_media_description_animation(mocker, sample_message):
     animation_data = AnimationDetectionData(content=b'gif_bytes', format='gif')
     expected = MediaDescriptionData(description='Animated cat', ocr_text=None)
-    mocker.patch('src.messages.media.describe_animation', return_value=expected)
+    mocker.patch('src.messages.media.pipeline.describe_animation', return_value=expected)
 
     result = await _generate_media_description(sample_message, animation_data)
 
@@ -195,7 +195,7 @@ async def test_generate_media_description_unknown_type(sample_message):
     assert result is None
 
 
-# --- _get_message_media ---
+# --- get_message_media ---
 
 async def test_get_message_media_image():
     context = MagicMock()
@@ -211,7 +211,7 @@ async def test_get_message_media_image():
 
     media_file.download_to_memory.side_effect = fill_bytes
 
-    result = await _get_message_media('file_id', context)
+    result = await get_message_media('file_id', context)
 
     assert isinstance(result, ImageDetectionData)
     assert result.format == 'jpg'
@@ -232,7 +232,7 @@ async def test_get_message_media_animation():
 
     media_file.download_to_memory.side_effect = fill_bytes
 
-    result = await _get_message_media('file_id', context)
+    result = await get_message_media('file_id', context)
 
     assert isinstance(result, AnimationDetectionData)
     assert result.format == 'gif'
@@ -245,7 +245,7 @@ async def test_get_message_media_unsupported_format():
     media_file.file_path = 'docs/file.pdf'
     context.bot.get_file = AsyncMock(return_value=media_file)
 
-    result = await _get_message_media('file_id', context)
+    result = await get_message_media('file_id', context)
 
     assert result is None
 

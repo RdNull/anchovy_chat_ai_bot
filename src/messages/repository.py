@@ -6,29 +6,10 @@ from bson import ObjectId
 from src import mongo
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
-from src.models import (
-    MemoryData, Message, MessageMedia, MessageReply,
-    StructuredMemory, UserRole,
-)
+from src.models import Message, MessageMedia, MessageReply, UserRole
 
 
-async def get_messages(
-    chat_id: int, limit: int = 100, ids: Iterable[str] | None = None
-) -> list[Message]:
-    logger.debug(f"Fetching messages for chat {chat_id} ({limit=} {ids=})")
-    search_query = {'chat_id': chat_id}
-    if ids:
-        search_query['_id'] = {'$in': [ObjectId(id_str) for id_str in ids]}
-
-    cursor = mongo.messages.find(search_query).sort('created_at', -1).limit(limit)
-    messages = await cursor.to_list(length=limit)
-    return [
-        await _parse_message_record(message)
-        for message in messages
-    ]
-
-
-async def push_history(message: Message):
+async def save_message(message: Message):
     chat_id = message.chat_id
     message_text = message.text[:50] if message.text else '<media>'
     logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message_text}...")
@@ -52,7 +33,7 @@ async def push_history(message: Message):
     message.id = result.inserted_id
 
 
-async def get_history(
+async def get_messages(
     chat_id: int, size: int = 50, from_date: datetime | None = None, sort_order: int = -1,
 ) -> list[Message]:
     logger.debug(f"Fetching history for chat {chat_id} ({size=} {from_date=})")
@@ -65,6 +46,20 @@ async def get_history(
     return [
         await _parse_message_record(message)
         for message in reversed(messages)
+    ]
+
+
+async def get_messages_by_ids(
+    ids: Iterable[str], size: int = 100, sort_order: int = -1,
+) -> list[Message]:
+    logger.debug(f"Fetching messages: {ids} ({size=} {ids=})")
+    search_query = {'_id': {'$in': [ObjectId(id_str) for id_str in ids]}}
+
+    cursor = mongo.messages.find(search_query).sort('created_at', sort_order).limit(size)
+    messages = await cursor.to_list(length=size)
+    return [
+        await _parse_message_record(message)
+        for message in messages
     ]
 
 
@@ -106,30 +101,6 @@ async def get_active_chats() -> list[int]:
     cursor = mongo.chats.find({})
     chats = await cursor.to_list(length=1000)
     return [c['chat_id'] for c in chats]
-
-
-async def save_memory(chat_id: int, memory: StructuredMemory):
-    logger.debug(f"Saving memory for chat {chat_id}")
-    data = {
-        'chat_id': chat_id,
-        'content': memory.model_dump(),
-        'created_at': datetime.now(timezone.utc).timestamp()
-    }
-    await mongo.memory.insert_one(data)
-
-
-async def get_last_memory(chat_id: int) -> MemoryData | None:
-    logger.debug(f"Fetching last memory for chat {chat_id}")
-    memory = await mongo.memory.find_one(
-        {'chat_id': chat_id}, sort=[('created_at', -1)]
-    )
-    if not memory:
-        return None
-
-    # MongoDB stores created_at as float (timestamp)
-    # Pydantic MemoryData expects datetime for created_at
-    memory['created_at'] = datetime.fromtimestamp(memory['created_at'], tz=timezone.utc)
-    return MemoryData(**memory)
 
 
 async def get_message_media_data(media_id: str, media_unique_id: str):

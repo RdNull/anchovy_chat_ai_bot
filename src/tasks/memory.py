@@ -1,5 +1,5 @@
 from src.logs import logger
-from src.messages.history import get_active_chats
+from src.messages.repository import get_active_chats
 from src.processors.context.memory import update_chat_memory
 
 
