@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from src import mongo
 from src.messages.repository import (
     get_active_chats, get_last_message, get_message_by_tg_id, get_messages, get_messages_count,
     get_messages_count_since,
@@ -23,18 +24,26 @@ def make_message(chat_id=1, telegram_id=404, role=UserRole.USER, text='hello', n
 # --- save_message ---
 
 async def test_save_message_persists_fields():
-    reply = MessageReply(
+    replied_msg = Message(
+        chat_id=42,
         telegram_id=405,
+        role=UserRole.USER,
         text='quoted text',
         nickname='other_user',
     )
+    await save_message(replied_msg)
+
     msg = Message(
         chat_id=42,
         telegram_id=404,
         role=UserRole.USER,
         text='test message',
         nickname='tester',
-        reply=reply
+        reply=MessageReply(
+            telegram_id=405,
+            text='quoted text',
+            nickname='other_user',
+        )
     )
     assert msg.id is None
     await save_message(msg)
@@ -50,6 +59,48 @@ async def test_save_message_persists_fields():
     assert fetched.reply is not None
     assert fetched.reply.text == 'quoted text'
     assert fetched.reply.nickname == 'other_user'
+    assert fetched.reply.telegram_id == 405
+
+
+async def test_save_message_reply_skipped_when_original_not_in_db():
+    msg = Message(
+        chat_id=42,
+        telegram_id=404,
+        role=UserRole.USER,
+        text='test message',
+        nickname='tester',
+        reply=MessageReply(
+            telegram_id=999,
+            text='original text not in db',
+            nickname='ghost_user',
+        )
+    )
+    await save_message(msg)
+
+    fetched = await get_last_message(42)
+    assert fetched.reply is None
+
+
+async def test_parse_old_format_reply():
+    old_doc = {
+        'chat_id': 42,
+        'telegram_id': 404,
+        'role': 'user',
+        'text': 'test message',
+        'nickname': 'tester',
+        'reply_telegram_id': 405,
+        'reply_text': 'old format reply',
+        'reply_nickname': 'old_user',
+        'reply_media_id': None,
+        'reply_media_unique_id': None,
+        'created_at': datetime.now(timezone.utc).timestamp(),
+    }
+    await mongo.messages.insert_one(old_doc)
+
+    fetched = await get_last_message(42)
+    assert fetched.reply is not None
+    assert fetched.reply.text == 'old format reply'
+    assert fetched.reply.nickname == 'old_user'
     assert fetched.reply.telegram_id == 405
 
 

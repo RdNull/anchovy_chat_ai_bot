@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -24,12 +25,12 @@ async def save_message(message: Message):
         'created_at': datetime.now(timezone.utc).timestamp()
     }
     if message.reply:
-        data['reply_telegram_id'] = message.reply.telegram_id
-        data['reply_text'] = message.reply.text
-        data['reply_nickname'] = message.reply.nickname
-        data['reply_media_id'] = message.reply.media.media_id if message.reply.media else None
-        reply_media_unique_id = message.reply.media.unique_id if message.reply.media else None
-        data['reply_media_unique_id'] = reply_media_unique_id
+        reply_doc = await mongo.messages.find_one({
+            'chat_id': chat_id,
+            'telegram_id': message.reply.telegram_id,
+        })
+        if reply_doc:
+            data['reply_id'] = reply_doc['_id']
 
     result = await mongo.messages.insert_one(data)
     message.id = result.inserted_id
@@ -142,33 +143,49 @@ async def get_message_media_data(media_id: str, media_unique_id: str):
     return media
 
 
-async def _parse_message_record(data: dict) -> Message:
-    reply, media = None, None
-    if reply_text := data.get('reply_text'):
-        reply_media = None
-        if reply_media_id := data.get('reply_media_id'):
-            reply_media = await get_message_media_data(
-                reply_media_id, data.get('reply_media_unique_id')
+async def _parse_reply(data: dict) -> MessageReply | None:
+    if reply_id := data.get('reply_id'):
+        reply_doc = await mongo.messages.find_one({'_id': reply_id})
+        if reply_doc:
+            return MessageReply(
+                telegram_id=reply_doc.get('telegram_id'),
+                text=reply_doc.get('text'),
+                nickname=reply_doc.get('nickname', 'unknown'),
+                media=await _parse_media(reply_doc),
             )
+        return None
 
-        reply = MessageReply(
+    # legacy flat-field format
+    if reply_text := data.get('reply_text'):
+        return MessageReply(
             telegram_id=data.get('reply_telegram_id'),
             text=reply_text,
             nickname=data['reply_nickname'],
-            media=reply_media,
+            media=await _parse_media(data, prefix='reply_'),
         )
 
-    if media_id := data.get('media_id'):
-        media = await get_message_media_data(media_id, data.get('media_unique_id'))
+    return None
 
+
+async def _parse_media(data: dict, prefix: str = '') -> MessageMedia | None:
+    if media_id := data.get(f'{prefix}media_id'):
+        return await get_message_media_data(media_id, data.get(f'{prefix}media_unique_id'))
+    return None
+
+
+async def _parse_message_record(data: dict) -> Message:
+    reply, media = await asyncio.gather(
+        _parse_reply(data),
+        _parse_media(data),
+    )
     return Message(
         _id=str(data['_id']),
         telegram_id=data.get('telegram_id'),
         chat_id=data['chat_id'],
         role=UserRole(data['role']),
         text=data['text'],
+        nickname=data.get('nickname', 'unknown'),
         reply=reply,
         media=media,
-        nickname=data.get('nickname', 'unknown'),
         created_at=datetime.fromtimestamp(data['created_at'], tz=timezone.utc)
     )
