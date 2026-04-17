@@ -13,7 +13,10 @@ providers:
 
 defaultTest:
   options:
-    transform: JSON.parse(output.replace(/```json|```/g, '').trim())
+    transform: |
+      let parsed = JSON.parse(output.replace(/```json|```/g, '').trim())
+      parsed.ocr_text = parsed.ocr_text.length ? parsed.ocr_text : '<empty>'
+      return parsed
     provider:
       embedding:
         id: ollama:embedding:mxbai-embed-large
@@ -65,3 +68,10 @@ tests:
         description: "Скриншот чата в Telegram, где участники обсуждают 'лоу-таб' и ищут работу для кентубаса."
 
 
+  - description: "no_text"
+    vars:
+      image: file://images/cat.png
+      expected:
+        keywords: [ "кот", "язык" ]
+        ocr_text: "<empty>"
+        description: "Кот с высунутым языком и широко открытыми глазами, поверх изображения наложен жест 'позвони мне'"
