@@ -7,7 +7,7 @@ import pytest
 from src.messages.media import (
     create_media_description, get_media_description_by_media_id, handle_media_message,
 )
-from src.messages.media.download import get_message_media, _parse_animation_file, _parse_image_file
+from src.messages.media.download import _parse_animation_file, _parse_image_file, get_message_media
 from src.messages.media.pipeline import _generate_media_description
 from src.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescriptionData, MediaDetectionData,
