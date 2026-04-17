@@ -28,7 +28,7 @@ async def get_messages(
     ]
 
 
-async def push_history(message: Message):
+async def save_message(message: Message):
     chat_id = message.chat_id
     message_text = message.text[:50] if message.text else '<media>'
     logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message_text}...")

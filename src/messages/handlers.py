@@ -10,7 +10,7 @@ from src import settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
 from src.models import MessageMediaStatus, UserRole
-from .repository import get_last_message, push_history, register_chat
+from .repository import get_last_message, save_message, register_chat
 from .media import handle_media_message
 from .parsing import parse_user_message
 from .response import generate_answer
@@ -117,7 +117,7 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     await register_chat(chat_id)
-    await push_history(user_message)
+    await save_message(user_message)
     if user_message.media and user_message.media.status == MessageMediaStatus.PENDING:
         asyncio.create_task(handle_media_message(user_message, context))
 

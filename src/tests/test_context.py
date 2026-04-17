@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 from src import settings
 from src.memory.repository import get_last_memory
-from src.messages.repository import push_history
+from src.messages.repository import save_message
 from src.models import Message, UserRole
 from src.processors.context import run_context_checks, update_chat_memory
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
@@ -36,7 +36,7 @@ async def test_run_context_checks_below_threshold_no_update(mocker):
     mock_embed = mocker.patch('src.processors.context.update_chat_embeddings',
                               new_callable=AsyncMock)
 
-    await push_history(make_message())  # 1 < threshold 2
+    await save_message(make_message())  # 1 < threshold 2
     await run_context_checks(1)
 
     assert mock_memory.call_count == 0
@@ -48,8 +48,8 @@ async def test_run_context_checks_triggers_memory_update(mocker):
     mock_memory = mocker.patch('src.processors.context.update_chat_memory', new_callable=AsyncMock)
     mocker.patch('src.processors.context.update_chat_embeddings', new_callable=AsyncMock)
 
-    await push_history(make_message(text='msg1'))
-    await push_history(make_message(text='msg2'))  # 2 >= threshold 2
+    await save_message(make_message(text='msg1'))
+    await save_message(make_message(text='msg2'))  # 2 >= threshold 2
     await run_context_checks(1)
 
     assert mock_memory.call_count == 1
@@ -62,8 +62,8 @@ async def test_run_context_checks_triggers_embedding_update(mocker):
     mock_embed = mocker.patch('src.processors.context.update_chat_embeddings',
                               new_callable=AsyncMock)
 
-    await push_history(make_message(text='msg1'))
-    await push_history(make_message(text='msg2'))
+    await save_message(make_message(text='msg1'))
+    await save_message(make_message(text='msg2'))
     await run_context_checks(1)
 
     assert mock_embed.call_count == 1
@@ -76,7 +76,7 @@ async def test_update_chat_memory_saves_to_db(mocker):
     expected = StructuredMemory(constraints=['updated'])
     mock_memory_llm(mocker, return_value=expected)
 
-    await push_history(make_message())
+    await save_message(make_message())
     await update_chat_memory(1)
 
     result = await get_last_memory(1)
@@ -99,7 +99,7 @@ async def test_update_chat_memory_no_op_when_no_messages(mocker):
 async def test_update_chat_embeddings_calls_save_embeddings(mocker):
     mock_save = mock_embeddings_client(mocker)
 
-    await push_history(make_message())
+    await save_message(make_message())
     await update_chat_embeddings(1)
 
     assert mock_save.call_count == 1
@@ -111,7 +111,7 @@ async def test_update_chat_embeddings_calls_save_embeddings(mocker):
 async def test_update_chat_embeddings_saves_task(mocker):
     mock_embeddings_client(mocker)
 
-    await push_history(make_message())
+    await save_message(make_message())
     await update_chat_embeddings(1)
 
     task = await get_last_embedding_task(1)

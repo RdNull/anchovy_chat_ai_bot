@@ -9,7 +9,7 @@ from src.logs import logger
 from src.memory.repository import get_last_memory
 from src.models import Message, MessageReply, UserRole
 from .parsing import parse_user_message
-from .repository import get_history, push_history, register_chat
+from .repository import get_history, save_message, register_chat
 from .utils import get_chat_character, send_action
 from ..processors.context import run_context_checks
 from ..processors.context.embeddings import search_related_messages
@@ -26,7 +26,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await asyncio.gather(
         register_chat(chat_id),
-        push_history(user_message)
+        save_message(user_message)
     )
 
     last_memory, related_messages = await asyncio.gather(
@@ -48,7 +48,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(response)
 
-    await push_history(
+    await save_message(
         Message(
             chat_id=chat_id,
             nickname=f'{settings.BOT_NICKNAME}({character.name})',

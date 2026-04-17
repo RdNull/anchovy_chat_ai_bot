@@ -5,7 +5,7 @@ from src import mongo
 from src.characters.repository import CHARACTERS
 from src.messages import handlers
 from src.messages.parsing import _get_message_medium
-from src.messages.repository import get_history, push_history
+from src.messages.repository import get_history, save_message
 from src.models import Message, UserRole
 
 
@@ -169,7 +169,7 @@ async def test_handle_conversation_skips_random_reply_if_last_was_ai(
         'src.messages.handlers.generate_answer', new_callable=AsyncMock
     )
     # Seed an AI message as the last in history
-    await push_history(
+    await save_message(
         Message(chat_id=222, role=UserRole.AI, text='bot said', nickname='bot')
     )
 
@@ -269,7 +269,7 @@ async def test_handle_conversation_no_message_returns_early(make_context, mocker
     update.effective_chat.id = 222
     update.effective_message.reply_text = AsyncMock()
     mocker.patch('src.messages.handlers.random.random', return_value=1.0)
-    mock_push = mocker.patch('src.messages.handlers.push_history', new_callable=AsyncMock)
+    mock_push = mocker.patch('src.messages.handlers.save_message', new_callable=AsyncMock)
 
     await handlers.handle_conversation(update, make_context)
 
@@ -306,7 +306,7 @@ async def test_handle_conversation_creates_media_task(make_update, make_context,
 async def test_generate_answer_no_message_returns_early(make_context, mocker):
     update = MagicMock()
     update.message = None
-    mock_push = mocker.patch('src.messages.response.push_history', new_callable=AsyncMock)
+    mock_push = mocker.patch('src.messages.response.save_message', new_callable=AsyncMock)
 
     await handlers.generate_answer(update, make_context)
 
@@ -323,7 +323,7 @@ async def test_handle_conversation_random_reply_skipped_within_cooldown(
     mock_gen = mocker.patch('src.messages.handlers.generate_answer', new_callable=AsyncMock)
 
     # Insert a recent AI message (1 min ago, well within the 30-min cooldown) directly
-    # so push_history doesn't overwrite created_at.
+    # so save_message doesn't overwrite created_at.
     recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=1)).timestamp()
     await mongo.messages.insert_one({
         'chat_id': 222,
@@ -335,7 +335,7 @@ async def test_handle_conversation_random_reply_skipped_within_cooldown(
         'media_unique_id': None,
     })
     # Push a user message after so the last-any-message check sees a USER, not AI.
-    await push_history(
+    await save_message(
         Message(chat_id=222, role=UserRole.USER, text='user msg', nickname='user')
     )
 
@@ -351,7 +351,7 @@ async def test_handle_conversation_random_reply_fires_after_cooldown(
     mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
     mock_gen = mocker.patch('src.messages.handlers.generate_answer', new_callable=AsyncMock)
 
-    # Insert an AI message with an old timestamp (past cooldown) directly so push_history
+    # Insert an AI message with an old timestamp (past cooldown) directly so save_message
     # doesn't overwrite created_at with datetime.now().
     old_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).timestamp()
     await mongo.messages.insert_one({
@@ -364,7 +364,7 @@ async def test_handle_conversation_random_reply_fires_after_cooldown(
         'media_unique_id': None,
     })
     # Push a user message so that get_last_message(chat_id) returns a USER, not AI.
-    await push_history(
+    await save_message(
         Message(chat_id=222, role=UserRole.USER, text='user msg', nickname='user')
     )
 

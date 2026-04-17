@@ -5,7 +5,7 @@ import pytest
 
 from src.memory.repository import get_last_memory, save_memory
 from src.messages.repository import (
-    get_history, push_history, register_chat,
+    get_history, save_message, register_chat,
 )
 from src.models import (
     Decision, Fact, Message, OpenLoop, ParticipantInfo,
@@ -53,7 +53,7 @@ async def test_get_last_memory_returns_newest():
     assert result.content.constraints == ['second']
 
 
-async def test_push_history_db_error(mocker):
+async def test_save_message_db_error(mocker):
     # Mocking mongo.messages in src.messages.history
     mock_mongo = mocker.patch("src.messages.repository.mongo")
     mock_mongo.messages.insert_one = AsyncMock(side_effect=Exception("DB error"))
@@ -62,7 +62,7 @@ async def test_push_history_db_error(mocker):
     msg = Message(chat_id=123, nickname="n", role=UserRole.USER, text="t")
     # repository.py doesn't have a try-except for insert_one, so it will raise
     with pytest.raises(Exception, match="DB error"):
-        await push_history(msg)
+        await save_message(msg)
 
 
 async def test_get_history_db_error(mocker):
