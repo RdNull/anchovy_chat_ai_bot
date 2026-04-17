@@ -11,9 +11,9 @@ docker-compose up -d --build
 
 ### Run tests
 ```bash
-pytest                        # all tests
-pytest -k test_db             # single test
-pytest -v --cov               # verbose with coverage
+docker compose exec bot pytest                   # all
+docker compose exec bot pytest src/tests/test_X.py -v  # single file
+docker compose exec bot pytest -k test_name      # single test
 ```
 
 ### Prompt evaluation (LLM outputs)
