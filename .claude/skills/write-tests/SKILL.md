@@ -4,7 +4,7 @@ description: >
   Use this skill when the user asks to write, add, or implement tests for this
   project. Covers pytest patterns, fixture usage, mock strategies, and
   assertion style for shizo_ded_bot.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 ## Current test state
