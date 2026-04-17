@@ -15,11 +15,11 @@ MEMORY_LOCK = asyncio.Lock()
 
 async def update_chat_memory(chat_id: int):
     logger.info(f"Updating memory for chat {chat_id}")
-    async with MEMORY_LOCK:
-        try:
+    try:
+        async with MEMORY_LOCK:
             await _update_chat_memory(chat_id)
-        except Exception as e:
-            logger.error(f"Error updating memory for chat {chat_id}: {e}", exc_info=True)
+    except Exception as e:
+        logger.error(f"Error updating memory for chat {chat_id}: {e}", exc_info=True)
 
 
 @traceable
