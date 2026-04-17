@@ -1,6 +1,6 @@
 import base64
 import os
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from PIL import Image
@@ -127,7 +127,7 @@ async def test_describe_image(mocker, sample_jpg):
     assert mock_model.ainvoke.call_count == 1
 
     # Verify messages
-    mock_model.ainvoke.assert_called_once_with([
+    assert mock_model.ainvoke.call_args == call([
         SystemMessage(content='test prompt'),
         HumanMessage(content=[
             {
@@ -169,7 +169,7 @@ async def test_describe_animation(mocker, sample_tgs):
             'base64': frame_b64
         })
 
-    mock_model.ainvoke.assert_called_once_with([
+    assert mock_model.ainvoke.call_args == call([
         SystemMessage(content='anim prompt'),
         HumanMessage(content=expected_human_content)
     ])
