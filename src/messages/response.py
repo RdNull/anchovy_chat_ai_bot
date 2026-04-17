@@ -41,7 +41,6 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last_messages = await get_messages(
         chat_id,
         size=settings.LAST_MESSAGES_SIZE,
-        from_date=last_memory.created_at if last_memory else None
     )
     last_messages = last_messages[:-1]  # to trim the current user message from history
     response = await character.respond(user_message, last_messages)
