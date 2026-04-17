@@ -45,6 +45,9 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
 
     try:
         response: MediaDescriptionData = await model_with_structure.ainvoke(messages)
+        if not response:
+            raise Exception("No response from model")
+
         logger.info(
             "Image description generated for "
             f"{animation.content_hash}: {response.description}; {response.ocr_text}"

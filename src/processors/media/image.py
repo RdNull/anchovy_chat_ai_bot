@@ -26,6 +26,9 @@ async def describe_image(image: ImageDetectionData) -> MediaDescriptionData | No
 
     try:
         response: MediaDescriptionData = await model_with_structure.ainvoke(messages)
+        if not response:
+            raise Exception("No response from model")
+
         logger.info(
             "Image description generated for "
             f"{image.content_hash}: {response.description}; {response.ocr_text}"
