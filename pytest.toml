@@ -13,6 +13,8 @@ addopts = [
     "-v",
     "-l",
     "--ff",
+    "--cov=.",
+    "--cov-config=pytest.toml"
 ]
 
 
@@ -28,3 +30,7 @@ ALLOWED_USER_IDS = "111"
 ALLOWED_CHAT_IDS = "222"
 
 
+[tool.coverage.run]
+omit = [
+    "*/tests/*",
+]
