@@ -400,6 +400,7 @@ async def test_parse_user_message_reply_with_sticker(make_update):
     assert msg.reply.media.media_id == 'sticker_fid'
 
 
+# --- test handle_message_edit ---
 async def test_handle_message_edit(mocker, make_update, make_context):
     update_message_mock = mocker.patch('src.messages.handlers.update_message')
     original_message = Message(
@@ -411,6 +412,30 @@ async def test_handle_message_edit(mocker, make_update, make_context):
 
     assert update_message_mock.call_count == 1
     assert update_message_mock.call_args == call(UpdateMessage(id=original_message.id, text='upd'))
+
+
+async def test_handle_message_edit_no_text(mocker, make_update, make_context):
+    update_message_mock = mocker.patch('src.messages.handlers.update_message')
+    original_message = Message(
+        chat_id=222, telegram_id=101, role=UserRole.USER, text='old msg', nickname='user'
+    )
+    await save_message(original_message)
+    update = make_update(message_id=101, updated_text='')
+    await handlers.handle_message_edit(update, make_context)
+
+    assert update_message_mock.call_count == 0
+
+
+async def test_handle_message_edit_no_message_found(mocker, make_update, make_context):
+    update_message_mock = mocker.patch('src.messages.handlers.update_message')
+    original_message = Message(
+        chat_id=222, telegram_id=101, role=UserRole.USER, text='old msg', nickname='user'
+    )
+    await save_message(original_message)
+    update = make_update(message_id=202, updated_text='')
+    await handlers.handle_message_edit(update, make_context)
+
+    assert update_message_mock.call_count == 0
 
 
 # --- _get_message_medium ---
