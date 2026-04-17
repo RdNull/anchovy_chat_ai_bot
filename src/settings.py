@@ -8,6 +8,7 @@ PROMPTS_DIR = 'src/prompts'
 TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
 BOT_NICKNAME = os.environ.get('BOT_NICKNAME', 'ShizoDedAnchovyBot')
 DATABASE_URL = os.environ['DATABASE_URL']
+DATABASE_NAME = os.environ.get('DATABASE_NAME', 'data')
 
 IS_LOCAL = os.environ.get('IS_LOCAL', 'false').lower() == 'true'
 

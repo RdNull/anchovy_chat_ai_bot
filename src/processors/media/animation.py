@@ -97,10 +97,13 @@ def _extract_tgs_frames(tgs_bytes: bytes) -> List[str]:
                 png_file = io.BytesIO()
                 renderer.serialize(i, png_file)
                 png_file.seek(0)
-                with Image.open(png_file) as img:
-                    frame = img.convert("RGB")
-                    frame = _resize_frame_if_needed(frame)
-                    frames.append(_image_to_base64(frame))
+                try:
+                    with Image.open(png_file) as img:
+                        frame = img.convert("RGB")
+                        frame = _resize_frame_if_needed(frame)
+                        frames.append(_image_to_base64(frame))
+                except Exception as e:
+                    logger.error(f"Error processing TGS frame {i}: {e}")
     except Exception as e:
         logger.error(f"Error extracting frames from TGS: {e}", exc_info=True)
     return frames

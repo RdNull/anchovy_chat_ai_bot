@@ -1,0 +1,36 @@
+[pytest]
+pythonpath = ["src"]
+
+asyncio_mode = "auto"
+
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+addopts = [
+    "-rs",
+    "-v",
+    "-l",
+    "--ff",
+    "--cov=.",
+    "--cov-config=pytest.toml"
+]
+
+
+[pytest_env]
+DATABASE_NAME = "test_data"
+TELEGRAM_TOKEN = "<token>"
+IS_LOCAL = "false"
+OPENROUTER_API_KEY = "<openrouter_key>"
+BOT_NICKNAME = "test_bot"
+LANGSMITH_TRACING = "false"
+LANGSMITH_API_KEY = "<api_key>"
+ALLOWED_USER_IDS = "111"
+ALLOWED_CHAT_IDS = "222"
+
+
+[tool.coverage.run]
+omit = [
+    "*/tests/*",
+]

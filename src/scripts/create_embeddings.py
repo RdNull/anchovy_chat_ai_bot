@@ -50,7 +50,7 @@ async def create_embeddings(chat_id: int, _from: datetime):
             break
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     args = parser.parse_args()
     if date_from := args.date_from:
         date_from = datetime.fromisoformat(date_from)
