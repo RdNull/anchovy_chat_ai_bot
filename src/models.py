@@ -61,14 +61,6 @@ class MessageMedia(BaseModel):
 
         return 'PROCESSING'
 
-    @property
-    def ai_short_format(self):
-        if self.status == MessageMediaStatus.READY:
-            media_type_prefix = f'{self.type.value}: ' if self.type else ''
-            return f'{media_type_prefix}{self.description[:50]} | текст: {self.ocr_text[:50] if self.ocr_text else ""}'
-
-        return 'PROCESSING'
-
 
 class Message(BaseModel):
     id: MongoId | None = Field(default=None, alias='_id')
