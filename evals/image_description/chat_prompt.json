@@ -1,0 +1,17 @@
+[
+    {
+        "role": "system",
+        "content": "{{prompt}}"
+    },
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": "{{image}}"
+                }
+            }
+        ]
+    }
+]

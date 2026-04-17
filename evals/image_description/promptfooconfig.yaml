@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+
+# Learn more about building a configuration: https://promptfoo.dev/docs/configuration/guide
+
+description: "Image description eval"
+
+prompts:
+  - id: file://chat_prompt.json
+    label: "Prompt-v1"
+
+providers:
+  - file://../models/cloud/image_describe/v1.yaml
+
+defaultTest:
+  options:
+    transform: JSON.parse(output.replace(/```json|```/g, '').trim())
+    provider:
+      embedding:
+        id: ollama:embedding:mxbai-embed-large
+  vars:
+    prompt: file://../../src/prompts/image_describe/v1.j2
+
+  assert:
+    # json format
+    - type: contains-json
+      value:
+        required:
+          - description
+          - ocr_text
+        type: object
+
+    # OCR
+    - type: javascript
+      metric: ocr_score
+      threshold: 0.7
+      value: |
+        function normalize(s) {
+          return s
+            .toLowerCase()
+            .replace(/[^a-z0-9а-яё\s]/gi, '')
+            .split(/\s+/)
+            .filter(Boolean);
+        }
+
+        const pred = new Set(normalize(output.ocr_text));
+        const exp = new Set(normalize(context.vars.expected.ocr));
+
+        let match = 0;
+        for (const w of exp) {
+          if (pred.has(w)) match++;
+        }
+
+        return match / exp.size;
+    
+
+    # Keywords present
+    - type: javascript
+      metric: keyword_coverage
+      value: |
+        const desc = output.description.toLowerCase();
+        return context.vars.expected.keywords.every(k => desc.includes(k));
+
+    - type: similar
+      metric: similarity
+      transform: output.description
+      value: '{{expected.description}}'
+      threshold: 0.8
+
+tests:
+  - vars:
+      image: file://images/simple_image.jpg
+      expected:
+        keywords: [ "мужчина", "офис" ]
+        ocr: "инвестировал в говно"
+        description: "Мужчина в костюме сидит в офисе за столом, на столе надпись 'инвестировал в говно'."
+
