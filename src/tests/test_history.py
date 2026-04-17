@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.messages.history import (
+from src.messages.repository import (
     get_active_chats, get_history, get_last_memory, get_last_message,
     get_messages_count, get_messages_count_since, push_history, register_chat, save_memory,
 )
@@ -175,29 +175,29 @@ async def test_get_last_memory_returns_newest():
 
 async def test_push_history_db_error(mocker):
     # Mocking mongo.messages in src.messages.history
-    mock_mongo = mocker.patch("src.messages.history.mongo")
+    mock_mongo = mocker.patch("src.messages.repository.mongo")
     mock_mongo.messages.insert_one = AsyncMock(side_effect=Exception("DB error"))
-    mock_logger = mocker.patch("src.messages.history.logger")
+    mock_logger = mocker.patch("src.messages.repository.logger")
 
     msg = Message(chat_id=123, nickname="n", role=UserRole.USER, text="t")
-    # history.py doesn't have a try-except for insert_one, so it will raise
+    # repository.py doesn't have a try-except for insert_one, so it will raise
     with pytest.raises(Exception, match="DB error"):
         await push_history(msg)
 
 
 async def test_get_history_db_error(mocker):
-    mock_mongo = mocker.patch("src.messages.history.mongo")
+    mock_mongo = mocker.patch("src.messages.repository.mongo")
     mock_mongo.messages.find.side_effect = Exception("DB find error")
-    mock_logger = mocker.patch("src.messages.history.logger")
+    mock_logger = mocker.patch("src.messages.repository.logger")
 
     with pytest.raises(Exception, match="DB find error"):
         await get_history(123)
 
 
 async def test_register_chat_db_error(mocker):
-    mock_mongo = mocker.patch("src.messages.history.mongo")
+    mock_mongo = mocker.patch("src.messages.repository.mongo")
     mock_mongo.chats.update_one = AsyncMock(side_effect=Exception("DB update error"))
-    mock_logger = mocker.patch("src.messages.history.logger")
+    mock_logger = mocker.patch("src.messages.repository.logger")
 
     with pytest.raises(Exception, match="DB update error"):
         await register_chat(123)

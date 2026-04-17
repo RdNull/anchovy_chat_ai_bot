@@ -8,7 +8,7 @@ from qdrant_client.models import (Distance, PointStruct, VectorParams)
 
 from src import settings
 from src.logs import logger
-from src.messages.history import get_messages
+from src.messages.repository import get_messages
 from src.models import Message, RelatedMessagesData
 from src.settings import QDRANT_URL
 

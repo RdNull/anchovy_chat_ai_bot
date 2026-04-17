@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, call
 
 from src import settings
-from src.messages.history import get_last_memory, push_history
+from src.messages.repository import get_last_memory, push_history
 from src.models import Message, UserRole
 from src.processors.context import run_context_checks, update_chat_memory
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings

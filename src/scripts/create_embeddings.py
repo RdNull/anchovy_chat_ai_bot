@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from src.embeddings.client import messages_embeddings_client
-from src.messages.history import get_history
+from src.messages.repository import get_history
 from src.processors.context.embeddings import save_embedding_task
 
 parser = argparse.ArgumentParser(description='Script so useful.')

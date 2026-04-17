@@ -6,7 +6,7 @@ from langsmith import traceable
 
 from src import ai, settings
 from src.logs import logger
-from src.messages.history import get_history, get_last_memory, save_memory
+from src.messages.repository import get_history, get_last_memory, save_memory
 from src.models import StructuredMemory
 from src.prompt_manager import prompt_manager
 

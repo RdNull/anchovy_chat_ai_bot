@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from src import mongo as db, settings
 from src.embeddings.client import messages_embeddings_client
 from src.logs import logger
-from src.messages.history import get_history
+from src.messages.repository import get_history
 from src.models import EmbeddingTask, Message, RelatedMessagesData
 
 

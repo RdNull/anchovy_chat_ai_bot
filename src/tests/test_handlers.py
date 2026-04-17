@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, call
 from src import mongo
 from src.characters.repository import CHARACTERS
 from src.messages import handlers
-from src.messages.handlers import _get_message_medium
-from src.messages.history import get_history, push_history
+from src.messages.parsing import _get_message_medium
+from src.messages.repository import get_history, push_history
 from src.models import Message, UserRole
 
 
@@ -86,12 +86,12 @@ async def test_restricted_blocks_unauthorized_user(make_update, make_context):
     assert update.message.reply_text.call_count == 0
 
 
-# --- _parse_user_message ---
+# --- parse_user_message ---
 
 async def test_parse_user_message_text(make_update, make_context):
     update = make_update(text='hi there', username='alice', chat_id=222)
 
-    msg = await handlers._parse_user_message(update)
+    msg = await handlers.parse_user_message(update)
 
     assert msg is not None
     assert msg.text == 'hi there'
@@ -104,7 +104,7 @@ async def test_parse_user_message_no_message_returns_none():
     update = MagicMock()
     update.message = None
 
-    result = await handlers._parse_user_message(update)
+    result = await handlers.parse_user_message(update)
 
     assert result is None
 
@@ -120,7 +120,7 @@ async def test_parse_user_message_with_reply(make_update):
     reply_msg.animation = None
     update = make_update(reply_to_message=reply_msg)
 
-    msg = await handlers._parse_user_message(update)
+    msg = await handlers.parse_user_message(update)
 
     assert msg.reply is not None
     assert msg.reply.text == 'original'
@@ -135,7 +135,7 @@ async def test_parse_user_message_with_photo(make_update):
     photo.height = 400
     update = make_update(photo=[photo])
 
-    msg = await handlers._parse_user_message(update)
+    msg = await handlers.parse_user_message(update)
 
     assert msg.media is not None
     assert msg.media.media_id == 'file123'
@@ -166,7 +166,7 @@ async def test_handle_conversation_skips_random_reply_if_last_was_ai(
         'src.messages.handlers.run_context_checks', new_callable=AsyncMock
     )
     mock_generate = mocker.patch(
-        'src.messages.handlers._generate_answer', new_callable=AsyncMock
+        'src.messages.handlers.generate_answer', new_callable=AsyncMock
     )
     # Seed an AI message as the last in history
     await push_history(
@@ -178,20 +178,20 @@ async def test_handle_conversation_skips_random_reply_if_last_was_ai(
     assert mock_generate.call_count == 0
 
 
-# --- _generate_answer ---
+# --- generate_answer ---
 
 async def test_generate_answer_full_flow(make_update, make_context, mock_llm, mocker):
     mocker.patch(
-        'src.messages.handlers.search_related_messages',
+        'src.messages.response.search_related_messages',
         new_callable=AsyncMock,
         return_value=[],
     )
     mocker.patch(
-        'src.messages.handlers.run_context_checks', new_callable=AsyncMock
+        'src.messages.response.run_context_checks', new_callable=AsyncMock
     )
     update = make_update(text='question', chat_id=222)
 
-    await handlers._generate_answer(update, make_context)
+    await handlers.generate_answer(update, make_context)
 
     # User message + AI response both saved
     history = await get_history(222)
@@ -220,7 +220,7 @@ async def test_error_handler(mocker):
 
 async def test_handle_mention(make_update, make_context, mocker):
     update = make_update()
-    mock_gen = mocker.patch("src.messages.handlers._generate_answer", AsyncMock())
+    mock_gen = mocker.patch("src.messages.handlers.generate_answer", AsyncMock())
 
     await handlers.handle_mention(update, make_context)
 
@@ -240,7 +240,7 @@ async def test_handle_media(make_update, make_context, mocker):
     # Mock bot.get_file to be an AsyncMock
     make_context.bot.get_file = AsyncMock()
 
-    mock_gen = mocker.patch("src.messages.handlers._generate_answer", AsyncMock())
+    mock_gen = mocker.patch("src.messages.handlers.generate_answer", AsyncMock())
 
     await handlers.handle_media(update, make_context)
 
@@ -253,7 +253,7 @@ async def test_handle_media_no_message_returns_early(make_context, mocker):
     update.effective_user.id = 111
     update.effective_chat.id = 222
     update.effective_message.reply_text = AsyncMock()
-    mock_gen = mocker.patch('src.messages.handlers._generate_answer', new_callable=AsyncMock)
+    mock_gen = mocker.patch('src.messages.handlers.generate_answer', new_callable=AsyncMock)
 
     await handlers.handle_media(update, make_context)
 
@@ -301,14 +301,14 @@ async def test_handle_conversation_creates_media_task(make_update, make_context,
     assert mock_handle_media.call_count == 1
 
 
-# --- _generate_answer early return ---
+# --- generate_answer early return ---
 
 async def test_generate_answer_no_message_returns_early(make_context, mocker):
     update = MagicMock()
     update.message = None
-    mock_push = mocker.patch('src.messages.handlers.push_history', new_callable=AsyncMock)
+    mock_push = mocker.patch('src.messages.response.push_history', new_callable=AsyncMock)
 
-    await handlers._generate_answer(update, make_context)
+    await handlers.generate_answer(update, make_context)
 
     assert mock_push.call_count == 0
 
@@ -320,7 +320,7 @@ async def test_handle_conversation_random_reply_skipped_within_cooldown(
 ):
     mocker.patch('src.messages.handlers.random.random', return_value=0.0)
     mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
-    mock_gen = mocker.patch('src.messages.handlers._generate_answer', new_callable=AsyncMock)
+    mock_gen = mocker.patch('src.messages.handlers.generate_answer', new_callable=AsyncMock)
 
     # Insert a recent AI message (1 min ago, well within the 30-min cooldown) directly
     # so push_history doesn't overwrite created_at.
@@ -349,7 +349,7 @@ async def test_handle_conversation_random_reply_fires_after_cooldown(
 ):
     mocker.patch('src.messages.handlers.random.random', return_value=0.0)
     mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
-    mock_gen = mocker.patch('src.messages.handlers._generate_answer', new_callable=AsyncMock)
+    mock_gen = mocker.patch('src.messages.handlers.generate_answer', new_callable=AsyncMock)
 
     # Insert an AI message with an old timestamp (past cooldown) directly so push_history
     # doesn't overwrite created_at with datetime.now().
@@ -373,7 +373,7 @@ async def test_handle_conversation_random_reply_fires_after_cooldown(
     assert mock_gen.call_count == 1
 
 
-# --- _parse_user_message reply with medium ---
+# --- parse_user_message reply with medium ---
 
 async def test_parse_user_message_reply_with_sticker(make_update):
     sticker = MagicMock()
@@ -391,7 +391,7 @@ async def test_parse_user_message_reply_with_sticker(make_update):
 
     update = make_update(reply_to_message=reply_msg)
 
-    msg = await handlers._parse_user_message(update)
+    msg = await handlers.parse_user_message(update)
 
     assert msg.reply is not None
     assert msg.reply.media is not None

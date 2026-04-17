@@ -1,6 +1,6 @@
 from src import settings
 from src.logs import logger
-from src.messages.history import get_last_memory, get_messages_count, get_messages_count_since
+from src.messages.repository import get_last_memory, get_messages_count, get_messages_count_since
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
 from src.processors.context.memory import update_chat_memory
 
