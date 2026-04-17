@@ -118,7 +118,7 @@ async def test_embeddings_client_search(mocker):
         create_mock_message(1, 'text 1'),
         create_mock_message(2, 'text 2')
     ]
-    mock_get_messages = mocker.patch(
+    mock_get_messages = mocker.patch( # todo replace by real db fetching
         'src.embeddings.client.get_messages_by_ids', AsyncMock(return_value=mock_messages)
     )
 
