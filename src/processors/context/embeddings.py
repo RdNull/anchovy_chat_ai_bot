@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from src import mongo as db, settings
 from src.embeddings.client import messages_embeddings_client
 from src.logs import logger
-from src.messages.repository import get_history
+from src.messages.repository import get_messages
 from src.models import EmbeddingTask, Message, RelatedMessagesData
 
 
@@ -25,7 +25,7 @@ async def update_chat_embeddings(chat_id: int):
 
     last_embedding_task = await get_last_embedding_task(chat_id)
     from_date = last_embedding_task.last_message_time if last_embedding_task else None
-    messages = await get_history(
+    messages = await get_messages(
         chat_id,
         size=settings.MESSAGES_EMBEDDINGS_MAX_SIZE,
         from_date=from_date,

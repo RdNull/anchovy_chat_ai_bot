@@ -9,7 +9,7 @@ from src.logs import logger
 from src.memory.repository import get_last_memory
 from src.models import Message, MessageReply, UserRole
 from .parsing import parse_user_message
-from .repository import get_history, save_message, register_chat
+from .repository import get_messages, save_message, register_chat
 from .utils import get_chat_character, send_action
 from ..processors.context import run_context_checks
 from ..processors.context.embeddings import search_related_messages
@@ -38,7 +38,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         memory=last_memory if last_memory else None,
         related_messages=related_messages,
     )
-    last_messages = await get_history(
+    last_messages = await get_messages(
         chat_id,
         size=settings.LAST_MESSAGES_SIZE,
         from_date=last_memory.created_at if last_memory else None

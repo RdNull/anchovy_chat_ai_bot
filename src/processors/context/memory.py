@@ -7,7 +7,7 @@ from langsmith import traceable
 from src import ai, settings
 from src.logs import logger
 from src.memory.repository import get_last_memory, save_memory
-from src.messages.repository import get_history
+from src.messages.repository import get_messages
 from src.models import StructuredMemory
 from src.prompt_manager import prompt_manager
 
@@ -29,7 +29,7 @@ async def _update_chat_memory(chat_id: int):
     current_memory = last_memory_data.content if last_memory_data else StructuredMemory()
 
     from_date = last_memory_data.created_at if last_memory_data else None
-    new_messages = await get_history(
+    new_messages = await get_messages(
         chat_id, size=settings.MESSAGES_MEMORY_MAX_SIZE, from_date=from_date
     )
 

@@ -155,7 +155,7 @@ async def test_update_chat_memory_db_error(mocker):
 
     # Needs some messages to trigger update
     msg = MagicMock()
-    mocker.patch("src.processors.context.memory.get_history", AsyncMock(return_value=[msg] * 10))
+    mocker.patch("src.processors.context.memory.get_messages", AsyncMock(return_value=[msg] * 10))
     mocker.patch("src.processors.context.memory.ai.get_memory_model", MagicMock())
     mocker.patch("src.processors.context.memory.prompt_manager.get_prompt", return_value="p")
 

@@ -5,7 +5,7 @@ from src import mongo
 from src.characters.repository import CHARACTERS
 from src.messages import handlers
 from src.messages.parsing import _get_message_medium
-from src.messages.repository import get_history, save_message
+from src.messages.repository import get_messages, save_message
 from src.models import Message, UserRole
 
 
@@ -153,7 +153,7 @@ async def test_handle_conversation_pushes_to_history(make_update, make_context, 
 
     await handlers.handle_conversation(update, make_context)
 
-    history = await get_history(222)
+    history = await get_messages(222)
     assert len(history) == 1
     assert history[0].text == 'hello'
 
@@ -194,7 +194,7 @@ async def test_generate_answer_full_flow(make_update, make_context, mock_llm, mo
     await handlers.generate_answer(update, make_context)
 
     # User message + AI response both saved
-    history = await get_history(222)
+    history = await get_messages(222)
     assert len(history) == 2
     assert history[0].role == UserRole.USER
     assert history[0].text == 'question'

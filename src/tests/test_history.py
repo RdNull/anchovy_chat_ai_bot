@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from src.messages.repository import (
-    get_active_chats, get_history, get_last_message, get_messages_count, get_messages_count_since,
+    get_active_chats, get_messages, get_last_message, get_messages_count, get_messages_count_since,
     save_message, register_chat,
 )
 from src.models import (
@@ -39,31 +39,31 @@ async def test_save_message_persists_fields():
     assert fetched.reply.nickname == 'other_user'
 
 
-# --- get_history ---
+# --- get_messages ---
 
-async def test_get_history_order():
+async def test_get_messages_order():
     await save_message(make_message(text='first'))
     await save_message(make_message(text='second'))
-    history = await get_history(1)
+    history = await get_messages(1)
     assert len(history) == 2
     assert history[0].text == 'first'
     assert history[1].text == 'second'
 
 
-async def test_get_history_from_date():
+async def test_get_messages_from_date():
     await save_message(make_message(text='old'))
     cutoff = datetime.now(timezone.utc)
     await save_message(make_message(text='new'))
-    history = await get_history(1, from_date=cutoff)
+    history = await get_messages(1, from_date=cutoff)
     assert len(history) == 1
     assert history[0].text == 'new'
 
 
-async def test_get_history_size_limit():
+async def test_get_messages_size_limit():
     for i in range(3):
         await save_message(make_message(text=f'msg{i}'))
 
-    history = await get_history(1, size=2)
+    history = await get_messages(1, size=2)
     assert len(history) == 2
 
 

@@ -6,26 +6,7 @@ from bson import ObjectId
 from src import mongo
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
-from src.models import (
-    Message, MessageMedia, MessageReply,
-    UserRole,
-)
-
-
-async def get_messages(
-    chat_id: int, limit: int = 100, ids: Iterable[str] | None = None
-) -> list[Message]:
-    logger.debug(f"Fetching messages for chat {chat_id} ({limit=} {ids=})")
-    search_query = {'chat_id': chat_id}
-    if ids:
-        search_query['_id'] = {'$in': [ObjectId(id_str) for id_str in ids]}
-
-    cursor = mongo.messages.find(search_query).sort('created_at', -1).limit(limit)
-    messages = await cursor.to_list(length=limit)
-    return [
-        await _parse_message_record(message)
-        for message in messages
-    ]
+from src.models import Message, MessageMedia, MessageReply, UserRole
 
 
 async def save_message(message: Message):
@@ -52,7 +33,7 @@ async def save_message(message: Message):
     message.id = result.inserted_id
 
 
-async def get_history(
+async def get_messages(
     chat_id: int, size: int = 50, from_date: datetime | None = None, sort_order: int = -1,
 ) -> list[Message]:
     logger.debug(f"Fetching history for chat {chat_id} ({size=} {from_date=})")
@@ -65,6 +46,20 @@ async def get_history(
     return [
         await _parse_message_record(message)
         for message in reversed(messages)
+    ]
+
+
+async def get_messages_by_ids(
+    ids: Iterable[str], size: int = 100, sort_order: int = -1,
+) -> list[Message]:
+    logger.debug(f"Fetching messages: {ids} ({size=} {ids=})")
+    search_query = {'_id': {'$in': [ObjectId(id_str) for id_str in ids]}}
+
+    cursor = mongo.messages.find(search_query).sort('created_at', sort_order).limit(size)
+    messages = await cursor.to_list(length=size)
+    return [
+        await _parse_message_record(message)
+        for message in messages
     ]
 
 

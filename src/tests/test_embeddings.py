@@ -119,7 +119,7 @@ async def test_embeddings_client_search(mocker):
         create_mock_message(2, 'text 2')
     ]
     mock_get_messages = mocker.patch(
-        'src.embeddings.client.get_messages', AsyncMock(return_value=mock_messages)
+        'src.embeddings.client.get_messages_by_ids', AsyncMock(return_value=mock_messages)
     )
 
     results = await client.search(123, 'test query', limit=5)
@@ -130,7 +130,7 @@ async def test_embeddings_client_search(mocker):
     assert results[0].messages == mock_messages
 
     assert mock_get_messages.call_count == 1
-    assert mock_get_messages.call_args == call(123, ids=['1', '2'])
+    assert mock_get_messages.call_args == call(ids=['1', '2'], size=100, sort_order=-1)
 
 
 async def test_update_chat_embeddings(mocker):
@@ -141,10 +141,10 @@ async def test_update_chat_embeddings(mocker):
     mock_db.embedding_tasks.find_one = AsyncMock(return_value=None)
     mock_db.embedding_tasks.insert_one = AsyncMock()
 
-    # Mock get_history
+    # Mock get_messages
     messages = [create_mock_message(1, 'text 1', chat_id=123)]
-    mock_get_history = mocker.patch(
-        'src.processors.context.embeddings.get_history', AsyncMock(return_value=messages)
+    mock_get_messages = mocker.patch(
+        'src.processors.context.embeddings.get_messages', AsyncMock(return_value=messages)
     )
 
     # Mock client
@@ -153,8 +153,8 @@ async def test_update_chat_embeddings(mocker):
 
     await update_chat_embeddings(123)
 
-    assert mock_get_history.call_count == 1
-    assert mock_get_history.call_args == call(123, size=ANY, from_date=None)
+    assert mock_get_messages.call_count == 1
+    assert mock_get_messages.call_args == call(123, size=ANY, from_date=None)
     assert mock_client.save_embeddings.call_count == 1
     assert mock_client.save_embeddings.call_args == call(messages)
     assert mock_db.embedding_tasks.insert_one.call_count == 1

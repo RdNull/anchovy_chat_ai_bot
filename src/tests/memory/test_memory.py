@@ -5,7 +5,7 @@ import pytest
 
 from src.memory.repository import get_last_memory, save_memory
 from src.messages.repository import (
-    get_history, save_message, register_chat,
+    get_messages, save_message, register_chat,
 )
 from src.models import (
     Decision, Fact, Message, OpenLoop, ParticipantInfo,
@@ -65,13 +65,13 @@ async def test_save_message_db_error(mocker):
         await save_message(msg)
 
 
-async def test_get_history_db_error(mocker):
+async def test_get_messages_db_error(mocker):
     mock_mongo = mocker.patch("src.messages.repository.mongo")
     mock_mongo.messages.find.side_effect = Exception("DB find error")
     mock_logger = mocker.patch("src.messages.repository.logger")
 
     with pytest.raises(Exception, match="DB find error"):
-        await get_history(123)
+        await get_messages(123)
 
 
 async def test_register_chat_db_error(mocker):

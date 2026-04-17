@@ -8,7 +8,7 @@ from qdrant_client.models import (Distance, PointStruct, VectorParams)
 
 from src import settings
 from src.logs import logger
-from src.messages.repository import get_messages
+from src.messages.repository import get_messages_by_ids
 from src.models import Message, RelatedMessagesData
 from src.settings import QDRANT_URL
 
@@ -55,7 +55,11 @@ class EmbeddingsClient:
 
         result = []
         for search_result in message_search:
-            messages = await get_messages(chat_id, ids=search_result['message_ids'])
+            messages = await get_messages_by_ids(
+                ids=search_result['message_ids'],
+                size=100,
+                sort_order=-1,
+            )
             result.append(
                 RelatedMessagesData(
                     messages=messages,
