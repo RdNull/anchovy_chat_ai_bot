@@ -201,3 +201,42 @@ async def test_generate_answer_full_flow(make_update, make_context, mock_llm, mo
     # Telegram reply was sent
     assert update.message.reply_text.call_count == 1
     assert update.message.reply_text.call_args == call('мок ответ')
+
+async def test_error_handler(mocker):
+    update = MagicMock()
+    context = MagicMock()
+    context.error = ValueError("Something went wrong")
+    
+    mock_logger = mocker.patch("src.messages.handlers.logger")
+    
+    await handlers.error_handler(update, context)
+    
+    assert mock_logger.error.call_count == 1
+    assert "Exception while handling an update" in mock_logger.error.call_args[0][0]
+
+async def test_handle_mention(make_update, make_context, mocker):
+    update = make_update()
+    mock_gen = mocker.patch("src.messages.handlers._generate_answer", AsyncMock())
+    
+    await handlers.handle_mention(update, make_context)
+    
+    assert mock_gen.call_count == 1
+
+async def test_handle_media(make_update, make_context, mocker):
+    update = make_update()
+    # Mocking photo list as handle_media checks for photo/sticker/animation
+    mock_photo = MagicMock()
+    mock_photo.width = 100
+    mock_photo.height = 100
+    mock_photo.file_id = "f1"
+    mock_photo.file_unique_id = "fu1"
+    update.message.photo = [mock_photo]
+    
+    # Mock bot.get_file to be an AsyncMock
+    make_context.bot.get_file = AsyncMock()
+    
+    mock_gen = mocker.patch("src.messages.handlers._generate_answer", AsyncMock())
+    
+    await handlers.handle_media(update, make_context)
+    
+    assert mock_gen.call_count == 1
