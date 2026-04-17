@@ -20,7 +20,9 @@ async def clean_collections():
 @pytest.fixture
 def make_update():
     def _factory(
+        message_id=1,
         text='hello',
+        updated_text=None,
         user_id=111,
         chat_id=222,
         username='testuser',
@@ -32,6 +34,7 @@ def make_update():
         update = MagicMock()
         update.effective_user.id = user_id
         update.effective_chat.id = chat_id
+        update.message.message_id = message_id
         update.message.text = text
         update.message.caption = None
         update.message.reply_text = AsyncMock()
@@ -42,6 +45,14 @@ def make_update():
         update.message.sticker = sticker
         update.message.animation = animation
         update.effective_message.reply_text = AsyncMock()
+
+        if updated_text:
+            update.edited_message.chat_id = chat_id
+            update.edited_message.message_id = message_id
+            update.edited_message.text = updated_text
+        else:
+            update.edited_message = None
+
         return update
 
     return _factory

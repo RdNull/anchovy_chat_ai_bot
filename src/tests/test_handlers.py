@@ -5,8 +5,10 @@ from src import mongo
 from src.characters.repository import CHARACTERS
 from src.messages import handlers
 from src.messages.parsing import _get_message_medium
-from src.messages.repository import get_messages, save_message
-from src.models import Message, UserRole
+from src.messages.repository import (
+    get_messages, save_message,
+)
+from src.models import Message, UpdateMessage, UserRole
 
 
 # --- /start ---
@@ -396,6 +398,19 @@ async def test_parse_user_message_reply_with_sticker(make_update):
     assert msg.reply is not None
     assert msg.reply.media is not None
     assert msg.reply.media.media_id == 'sticker_fid'
+
+
+async def test_handle_message_edit(mocker, make_update, make_context):
+    update_message_mock = mocker.patch('src.messages.handlers.update_message')
+    original_message = Message(
+        chat_id=222, telegram_id=101, role=UserRole.USER, text='old msg', nickname='user'
+    )
+    await save_message(original_message)
+    update = make_update(message_id=101, updated_text='upd')
+    await handlers.handle_message_edit(update, make_context)
+
+    assert update_message_mock.call_count == 1
+    assert update_message_mock.call_args == call(UpdateMessage(id=original_message.id, text='upd'))
 
 
 # --- _get_message_medium ---
