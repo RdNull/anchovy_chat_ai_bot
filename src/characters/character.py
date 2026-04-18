@@ -44,7 +44,7 @@ class Character:
     def system_message(self):
         setup_prompt = prompt_manager.get_prompt(
             'character_setup',
-            version='v3',
+            version='v2',
             character_description=self.style_prompt,
             memory=self.memory.content.model_dump_json(indent=2) if self.memory else None,
             related_messages=self.related_messages or None,
@@ -57,7 +57,7 @@ class Character:
         user_message: Message,
         last_messages: list[Message] = None,
     ) -> str:
-        llm = ai.get_model(version='v2')
+        llm = ai.get_model(version='v3')
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
