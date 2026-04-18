@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Biba: Привет, как дела?"
+    },
+    {
+        "role": "assistant",
+        "content": "Бот: Привет, чем могу помочь?"
+    },
+    {
+        "role": "user",
+        "content": "Biba: Объясни что такое HTTP"
+    }
+]

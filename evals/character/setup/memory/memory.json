@@ -1,0 +1,15 @@
+{
+    "facts": [],
+    "decisions": [],
+    "topics": [],
+    "open_loops": [],
+    "participants": {
+        "@Boba": {
+            "facts": [
+                "Пользователь работает с Python"
+            ]
+        }
+    },
+    "constraints": [],
+    "preferences": []
+}
