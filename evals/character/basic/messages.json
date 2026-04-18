@@ -1,6 +1,14 @@
 [
     {
         "role": "user",
-        "content": "Дарова"
+        "content": "Biba: Пошёл в зал первый раз за год"
+    },
+    {
+        "role": "assistant",
+        "content": "Бот: О, событие века"
+    },
+    {
+        "role": "user",
+        "content": "Biba: Теперь всё болит, я умираю"
     }
 ]

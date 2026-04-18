@@ -3,8 +3,6 @@
 description: "Character response eval"
 
 prompts:
-  - id: file://prompts/v1.js
-    label: "Character v1"
   - id: file://prompts/v2.js
     label: "Character v2"
 
@@ -21,6 +19,45 @@ defaultTest:
     # no special characters allowed in the response
     - type: not-regex
       value: "[\\[\\]{}|\\\/<>#$%&*]"
+
+    - type: llm-rubric
+      metric: personality
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.5
+      value: |
+        Does the reply follow the character personality?
+        Character description: 
+        {{character_description}}
+
+    - type: llm-rubric
+      metric: relevance
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.5
+      value: |
+        Does the reply directly address the last user message?
+        All messages:
+        {{messages}}
+
+    - type: llm-rubric
+      metric: hallucination
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.5
+      value: |
+        Does the reply avoid hallucinating facts not present in the conversation or memory?
+        Memory:
+        {{memory}}
+        
+        Related messages:
+        {{related_messages}}
+        
+        Last messages:
+        {{messages}}
 
 
 tests:
