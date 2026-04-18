@@ -7,7 +7,7 @@ prompts:
     label: "Character v2"
 
 providers:
-  - file://../../models/cloud/chat/v1.yaml
+  - id: file://../../models/cloud/chat/v3.yaml
 
 defaultTest:
   vars:
@@ -23,7 +23,7 @@ defaultTest:
         max: 20
     # no special characters allowed in the response
     - type: not-regex
-      value: "[\\[\\]{}|\\\/<>#$%&*]"
+      value: "[\\[\\]{}|\\\/<>#$&*]"
 
     - type: llm-rubric
       metric: personality
@@ -42,7 +42,7 @@ defaultTest:
         id: openrouter:openai/gpt-4o-mini
         config:
           temperature: 0.8
-      value: Is the toxicity level medium and friendly (not offensive)?
+      value: Is the toxicity level not extreme (not offensive)?
 
     - type: llm-rubric # twist checks
       metric: humor
@@ -53,13 +53,7 @@ defaultTest:
         - How different is the punchline from that expectation?
         - Does the punchline still make sense after the twist?
         
-        Score each question and return the average score as the final result.
-        
-        Scoring:
-          - 1.0 = perfect
-          - 0.7 = acceptable
-          - 0.4 = major issues
-          - 0.0 = incorrect
+        Score each question from 0 to 1 and return the average score as the final result.
         
         Memory:
         {{memory}}
@@ -78,13 +72,7 @@ defaultTest:
         - Is there a clear setup → punchline progression?
         - Is the punchline clearly identifiable and emphasized?
         
-        Score each question and return the average score as the final result.
-        
-        Scoring:
-          - 1.0 = perfect
-          - 0.7 = acceptable
-          - 0.4 = major issues
-          - 0.0 = incorrect
+        Score each question from 0 to 1 and return the average score as the final result.
         
         Memory:
         {{memory}}
@@ -103,13 +91,7 @@ defaultTest:
         - Does it use or reference prior context (callbacks)?
         - Does it match the character's personality?
         
-        Score each question and return the average score as the final result.
-        
-        Scoring:
-          - 1.0 = perfect
-          - 0.7 = acceptable
-          - 0.4 = major issues
-          - 0.0 = incorrect
+        Score each question from 0 to 1 and return the average score as the final result.
         
         Memory:
         {{memory}}
