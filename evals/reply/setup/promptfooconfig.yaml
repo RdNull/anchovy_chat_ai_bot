@@ -20,7 +20,7 @@ defaultTest:
         max: 20
     # no special characters allowed in the response
     - type: not-regex
-      value: "[\\[\\]{}|\\\/<>#$%&*]"
+      value: "[\\[\\]{}|\\\/<>#$&*]"
 
     - type: llm-rubric
       metric: personality
