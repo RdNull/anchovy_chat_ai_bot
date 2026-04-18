@@ -1,0 +1,9 @@
+[
+    {
+        "role": "system",
+        "content": {{ system_message | dump }}
+    }
+    {% if messages %}
+    ,{{ messages.trim().slice(1, -1) | safe }}
+    {% endif %}
+]

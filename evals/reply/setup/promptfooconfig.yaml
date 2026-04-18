@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+
+description: "Character setup eval"
+
+prompts:
+  - id: file://../prompts/v2.js
+    label: "Character v2"
+
+providers:
+  - file://../../models/cloud/chat/v1.yaml
+
+defaultTest:
+  vars:
+    memory: '{{memory_data | safe}}'
+  assert:
+    # response must be between 1 and 20 words long
+    - type: word-count
+      value:
+        min: 1
+        max: 20
+    # no special characters allowed in the response
+    - type: not-regex
+      value: "[\\[\\]{}|\\\/<>#$&*]"
+
+    - type: llm-rubric
+      metric: personality
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.8
+      value: |
+        Does the reply follow the character personality?
+        Character description: 
+        {{character_description}}
+
+    - type: llm-rubric
+      metric: relevance
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.2
+      value: |
+        Does the reply directly address the last user message?
+        All messages:
+        {{messages}}
+
+    - type: llm-rubric
+      metric: hallucination
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.2
+      value: |
+        Does the reply based on the facts that present in the memory, related messages or last messages?
+        Memory:
+        {{memory}}
+        
+        Related messages:
+        {{related_messages}}
+        
+        Last messages:
+        {{messages}}
+
+
+tests:
+  - description: "basic"
+    vars:
+      character_description: file://basic/character.txt
+      messages: file://basic/messages.json
+
+  - description: "memory"
+    vars:
+      character_description: file://memory/character.txt
+      messages: file://memory/messages.json
+      memory_data: file://memory/memory.json
+
+  - description: "related_messages"
+    vars:
+      character_description: file://related_messages/character.txt
+      messages: file://related_messages/messages.json
+      related_messages: file://related_messages/related_messages.txt

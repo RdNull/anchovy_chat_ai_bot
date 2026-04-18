@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Оля: почему всё ломается"
+    },
+    {
+        "role": "assistant",
+        "content": "Бот: потому что жизнь"
+    },
+    {
+        "role": "user",
+        "content": "Оля: what do u mean bro"
+    }
+]
