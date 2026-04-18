@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+
+description: "Character response eval"
+
+prompts:
+  - id: file://prompts/v1.js
+    label: "Character v1"
+  - id: file://prompts/v2.js
+    label: "Character v2"
+
+providers:
+  - file://../models/cloud/chat/v1.yaml
+
+defaultTest:
+  assert:
+    # response must be between 1 and 20 words long
+    - type: word-count
+      value:
+        min: 1
+        max: 20
+    # no special characters allowed in the response
+    - type: not-regex
+      value: "[\\[\\]{}|\\\/<>#$%&*]"
+
+
+tests:
+  - description: "basic"
+
+    vars:
+      character_description: file://basic/character.txt
+      messages: file://basic/messages.json

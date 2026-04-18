@@ -113,3 +113,4 @@ http/
 .bash_history
 
 *.tg
+node_modules
