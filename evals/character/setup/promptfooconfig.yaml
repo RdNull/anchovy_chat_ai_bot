@@ -10,7 +10,8 @@ providers:
   - file://../../models/cloud/chat/v1.yaml
 
 defaultTest:
-
+  vars:
+    memory: '{{memory_data | safe}}'
   assert:
     # response must be between 1 and 20 words long
     - type: word-count
@@ -72,7 +73,6 @@ tests:
       character_description: file://memory/character.txt
       messages: file://memory/messages.json
       memory_data: file://memory/memory.json
-      memory: '{{memory_data | safe}}'
 
   - description: "related_messages"
     vars:
