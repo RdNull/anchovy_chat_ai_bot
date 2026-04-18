@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Biba: я начала бегать по утрам"
+    },
+    {
+        "role": "assistant",
+        "content": "Boba: ну всё, человек потерян"
+    },
+    {
+        "role": "user",
+        "content": "Biba: теперь я спорт делаю каждый день"
+    }
+]

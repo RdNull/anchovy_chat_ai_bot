@@ -1,0 +1,146 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+
+description: "Character setup eval"
+
+prompts:
+  - id: file://../prompts/v2.js
+    label: "Character v2"
+
+providers:
+  - file://../../models/cloud/chat/v1.yaml
+
+defaultTest:
+  vars:
+    memory: '{{memory_data | safe}}'
+    character_description: [
+      file://../../../src/characters/repository/whyzzzy.yaml
+    ]
+  assert:
+    # response must be between 1 and 20 words long
+    - type: word-count
+      value:
+        min: 1
+        max: 20
+    # no special characters allowed in the response
+    - type: not-regex
+      value: "[\\[\\]{}|\\\/<>#$%&*]"
+
+    - type: llm-rubric
+      metric: personality
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.8
+      value: |
+        Does the reply follow the character personality?
+        Character description: 
+        {{character_description}}
+
+    - type: llm-rubric
+      metric: personality
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.8
+      value: Is the toxicity level medium and friendly (not offensive)?
+
+    - type: llm-rubric # twist checks
+      metric: humor
+      provider: openrouter:openai/gpt-4o-mini
+      value: |
+        - How strong is the expectation before the punchline?
+        - How strong is the expectation before the punchline?
+        - How different is the punchline from that expectation?
+        - Does the punchline still make sense after the twist?
+        
+        Score each question and return the average score as the final result.
+        
+        Scoring:
+          - 1.0 = perfect
+          - 0.7 = acceptable
+          - 0.4 = major issues
+          - 0.0 = incorrect
+        
+        Memory:
+        {{memory}}
+        
+        Related messages:
+        {{related_messages}}
+        
+        Last messages:
+        {{messages}}
+
+    - type: llm-rubric # structure checks
+      metric: humor
+      provider: openrouter:openai/gpt-4o-mini
+      value: |
+        - Does the final response follows the setup and punchline structure across messages?
+        - Is there a clear setup → punchline progression?
+        - Is the punchline clearly identifiable and emphasized?
+        
+        Score each question and return the average score as the final result.
+        
+        Scoring:
+          - 1.0 = perfect
+          - 0.7 = acceptable
+          - 0.4 = major issues
+          - 0.0 = incorrect
+        
+        Memory:
+        {{memory}}
+        
+        Related messages:
+        {{related_messages}}
+        
+        Last messages:
+        {{messages}}
+
+    - type: llm-rubric # context checks
+      metric: humor
+      provider: openrouter:openai/gpt-4o-mini
+      value: |
+        - How relevant is the joke to the current conversation?
+        - Does it use or reference prior context (callbacks)?
+        - Does it match the character's personality?
+        
+        Score each question and return the average score as the final result.
+        
+        Scoring:
+          - 1.0 = perfect
+          - 0.7 = acceptable
+          - 0.4 = major issues
+          - 0.0 = incorrect
+        
+        Memory:
+        {{memory}}
+        
+        Related messages:
+        {{related_messages}}
+        
+        Last messages:
+        {{messages}}
+
+tests:
+  - description: "basic"
+    vars:
+      messages: file://basic/messages.json
+
+  - description: "chaos_injection_reaction"
+    vars:
+      messages: file://chaos_injection_reaction/messages.json
+
+  - description: "language_mix_and_typos"
+    vars:
+      messages: file://language_mix_and_typos/messages.json
+
+  - description: "random_injection_low_context"
+    vars:
+      messages: file://random_injection_low_context/messages.json
+
+  - description: "topic_change"
+    vars:
+      messages: file://topic_change/messages.json
+
+  - description: "toxic_joke"
+    vars:
+      messages: file://toxic_joke/messages.json
