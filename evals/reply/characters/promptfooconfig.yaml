@@ -30,29 +30,40 @@ defaultTest:
       provider:
         id: openrouter:openai/gpt-4o-mini
         config:
-          temperature: 0.8
+          temperature: 0.2
       value: |
-        Does the reply follow the character personality?
-        Character description: 
+        Given this character:
         {{character_description}}
+
+        Does the reply follow the character personality?
 
     - type: llm-rubric
       metric: personality
       provider:
         id: openrouter:openai/gpt-4o-mini
         config:
-          temperature: 0.8
-      value: Is the toxicity level not extreme (not offensive)?
-
-    - type: llm-rubric # twist checks
-      metric: humor
-      provider: openrouter:openai/gpt-4o-mini
+          temperature: 0.2
       value: |
-        - How strong is the expectation before the punchline?
-        - How strong is the expectation before the punchline?
-        - How different is the punchline from that expectation?
-        - Does the punchline still make sense after the twist?
-        
+        Given this character:
+        {{character_description}}
+
+        Is the toxicity and language level consistent with what's described for this character?
+        Not too soft, not beyond what the character allows.
+
+    - type: llm-rubric # delivery checks
+      metric: humor
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.2
+      value: |
+        Given this character:
+        {{character_description}}
+
+        - Does the response match the humor delivery style described for this character?
+        - Does it stop at the right moment without over-extending or explaining the joke?
+        - Is the tone and confidence level consistent with the character?
+
         Score each question from 0 to 1 and return the average score as the final result.
         
         Memory:
@@ -64,14 +75,20 @@ defaultTest:
         Last messages:
         {{messages}}
 
-    - type: llm-rubric # structure checks
+    - type: llm-rubric # reaction checks
       metric: humor
-      provider: openrouter:openai/gpt-4o-mini
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.2
       value: |
-        - Does the final response follows the setup and punchline structure across messages?
-        - Is there a clear setup → punchline progression?
-        - Is the punchline clearly identifiable and emphasized?
-        
+        Given this character:
+        {{character_description}}
+
+        - Does the response feel like a natural reaction to the conversation rather than a constructed joke?
+        - Does it land confidently on its own, even if it has nothing to do with the conversation?
+        - Does it avoid being try-hard or over-constructed for this character's style?
+
         Score each question from 0 to 1 and return the average score as the final result.
         
         Memory:
@@ -85,12 +102,18 @@ defaultTest:
 
     - type: llm-rubric # context checks
       metric: humor
-      provider: openrouter:openai/gpt-4o-mini
+      provider:
+        id: openrouter:openai/gpt-4o-mini
+        config:
+          temperature: 0.2
       value: |
-        - How relevant is the joke to the current conversation?
-        - Does it use or reference prior context (callbacks)?
-        - Does it match the character's personality?
-        
+        Given this character:
+        {{character_description}}
+
+        - How relevant is the response to the current conversation?
+        - Does it match the character's personality as described?
+        - Does it avoid being try-hard or over-constructed for this character's style?
+
         Score each question from 0 to 1 and return the average score as the final result.
         
         Memory:
