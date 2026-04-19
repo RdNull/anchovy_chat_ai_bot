@@ -27,7 +27,7 @@ defaultTest:
       provider:
         id: openrouter:openai/gpt-4o-mini
         config:
-          temperature: 0.8
+          temperature: 0.2
       value: |
         Does the reply follow the character personality?
         Character description: 
