@@ -7,6 +7,8 @@ from typing import Annotated, ClassVar
 
 from pydantic import BaseModel as _BaseModel, BeforeValidator, ConfigDict, Field
 
+from src.const import TIMEZONE_ALMATY
+
 MongoId = Annotated[str, BeforeValidator(lambda x: str(x))]
 
 
@@ -81,14 +83,20 @@ class Message(BaseModel):
             message_part = f'{message_part} [{self.media.ai_format}]'
 
         if self.reply:
-            return f'{self.nickname} (reply: "{self.reply.ai_format}"): {message_part}'
+            body = f'{self.nickname} (reply: "{self.reply.ai_format}"): {message_part}'
+        else:
+            body = f'{self.nickname}: {message_part}'
 
-        return f'{self.nickname}: {message_part}'
+        if self.created_at:
+            ts = self.created_at.astimezone(TIMEZONE_ALMATY).strftime('%y-%m-%d %H:%M')
+            return f'[{ts}] {body}'
+        return body
 
 
 class UpdateMessage(BaseModel):
     id: MongoId
     text: str
+
 
 class Fact(BaseModel):
     text: str
@@ -189,4 +197,3 @@ class UserFact(BaseModel):
     text: str
     confidence: float
     created_at: datetime | None = None
-

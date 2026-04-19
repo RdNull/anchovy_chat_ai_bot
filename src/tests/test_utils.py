@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from src.characters.repository import CHARACTERS
@@ -171,3 +172,17 @@ def test_message_ai_format_reply_with_media():
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='nice', reply=reply)
     assert 'image: a dog' in msg.ai_format
     assert 'other|' in msg.ai_format
+
+
+def test_message_ai_format_with_timestamp():
+    # 2026-04-19 10:00 UTC = 2026-04-19 15:00 Almaty (UTC+5)
+    created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
+    msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', created_at=created_at)
+    assert msg.ai_format == '[26-04-19 15:00] nick: hello'
+
+
+def test_message_ai_format_reply_with_timestamp():
+    created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
+    reply = MessageReply(text='quoted', nickname='other')
+    msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', reply=reply, created_at=created_at)
+    assert msg.ai_format == '[26-04-19 15:00] nick (reply: "other| quoted"): hello'

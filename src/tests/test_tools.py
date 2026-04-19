@@ -33,7 +33,9 @@ async def test_search_messages_tool(mocker):
     result = await search_messages.ainvoke({'search_query': 'test query', 'limit': 2})
 
     # Assert
-    assert result == [{'score': 0.9, 'messages': 'bob: hello world'}]
+    assert len(result) == 1
+    assert result[0]['score'] == 0.9
+    assert 'bob: hello world' in result[0]['messages']
     assert mock_search.call_count == 1
     assert mock_search.call_args == call(123, 'test query', limit=2)
 
