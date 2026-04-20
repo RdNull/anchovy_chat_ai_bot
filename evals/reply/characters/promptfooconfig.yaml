@@ -7,14 +7,12 @@ prompts:
     label: "Character v2"
 
 providers:
-  - id: file://../../models/cloud/chat/v3.yaml
+  - id: file://../../models/cloud/chat/v4.yaml
 
 defaultTest:
   vars:
     memory: '{{memory_data | safe}}'
-    character_description: [
-      file://../../../src/characters/repository/whyzzzy.yaml
-    ]
+    character_description: file://../../../src/characters/repository/whyzzzy.yaml
   assert:
     # response must be between 1 and 20 words long
     - type: word-count
