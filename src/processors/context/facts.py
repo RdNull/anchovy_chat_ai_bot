@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from bson import ObjectId
+
 from src import mongo
 from src.logs import logger
 from src.models import UserFact
@@ -26,6 +28,28 @@ async def get_facts(nickname: str, limit: int = 5) -> list[UserFact]:
 
     return [UserFact.model_validate(f) for f in facts]
 
+
+async def get_fact_by_id(fact_id: str) -> UserFact | None:
+    logger.debug(f"Fetching fact by id {fact_id}")
+    fact = await mongo.facts.find_one({'_id': fact_id})
+    return UserFact.model_validate(fact) if fact else None
+
+
+async def update_fact(fact_id: str, confidence: float | None = None, text: str | None = None):
+    update_data = {}
+    if confidence is not None:
+        update_data['confidence'] = confidence
+
+    if text is not None:
+        update_data['text'] = text
+
+    if not update_data:
+        return
+
+    await mongo.facts.update_one(
+        {'_id': ObjectId(fact_id)},
+        {'$set': update_data}
+    )
 
 async def _save_fact(fact: UserFact):
     data = {
