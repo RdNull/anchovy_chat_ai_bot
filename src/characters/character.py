@@ -57,7 +57,7 @@ class Character:
         user_message: Message,
         last_messages: list[Message] = None,
     ) -> str:
-        llm = ai.get_model(version='v5-hard')
+        llm = ai.get_model(version='v5-soft')
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
