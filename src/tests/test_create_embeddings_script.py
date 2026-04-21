@@ -30,7 +30,7 @@ async def test_create_embeddings_loop(mocker):
     ]
 
     mock_embeddings = mocker.patch(
-        "src.scripts.create_embeddings.messages_embeddings_client.save_embeddings"
+        "src.scripts.create_embeddings.messages_embeddings_client.save"
     )
     mock_save_task = mocker.patch("src.scripts.create_embeddings.save_embedding_task")
 
@@ -49,7 +49,7 @@ async def test_create_embeddings_empty_history(mocker):
         AsyncMock(return_value=[])
     )
     mock_embeddings = mocker.patch(
-        "src.scripts.create_embeddings.messages_embeddings_client.save_embeddings"
+        "src.scripts.create_embeddings.messages_embeddings_client.save"
     )
 
     await create_embeddings(123, datetime.now(timezone.utc))

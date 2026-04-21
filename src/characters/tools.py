@@ -1,6 +1,6 @@
 from langchain.tools import tool
 
-from src.embeddings.client import messages_embeddings_client
+from src.embeddings.messages import messages_embeddings_client
 from src.logs import logger
 from src.processors.context.facts import get_facts, save_fact
 from src.tools import ToolContext

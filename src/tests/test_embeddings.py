@@ -149,14 +149,14 @@ async def test_update_chat_embeddings(mocker):
 
     # Mock client
     mock_client = mocker.patch('src.processors.context.embeddings.messages_embeddings_client')
-    mock_client.save_embeddings = AsyncMock()
+    mock_client.save = AsyncMock()
 
     await update_chat_embeddings(123)
 
     assert mock_get_messages.call_count == 1
     assert mock_get_messages.call_args == call(123, size=ANY, from_date=None)
-    assert mock_client.save_embeddings.call_count == 1
-    assert mock_client.save_embeddings.call_args == call(messages)
+    assert mock_client.save.call_count == 1
+    assert mock_client.save.call_args == call(messages)
     assert mock_db.embedding_tasks.insert_one.call_count == 1
 
     # Check what was saved to DB

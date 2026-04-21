@@ -2,7 +2,7 @@ import argparse
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from src.embeddings.client import messages_embeddings_client
+from src.embeddings.messages import messages_embeddings_client
 from src.messages.repository import get_messages
 from src.processors.context.embeddings import save_embedding_task
 
@@ -34,7 +34,7 @@ async def create_embeddings(chat_id: int, _from: datetime):
         batch_messages = overlap_messages + messages
 
         # Save embeddings
-        await messages_embeddings_client.save_embeddings(batch_messages)
+        await messages_embeddings_client.save(batch_messages)
 
         # Update current_from for next iteration
         last_message_dt = messages[-1].created_at
