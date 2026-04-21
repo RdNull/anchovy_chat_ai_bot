@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 from langchain_core.messages import ToolMessage
 
-from src.characters.tools import get_user_facts, save_user_fact, search_messages
+from src.characters.tools import get_user_facts, keep_user_fact, search_messages
 from src.models import Message, RelatedMessagesData, UserFact, UserRole
 from src.tools import ToolContext, ToolRegistry
 
@@ -65,7 +65,7 @@ async def test_save_user_fact_tool(mocker):
     )
 
     # Execute with @ nickname
-    result = await save_user_fact.ainvoke(
+    result = await keep_user_fact.ainvoke(
         {'nickname': '@bob', 'text': 'likes pizza', 'confidence': 0.8}
     )
 
@@ -81,12 +81,12 @@ async def test_save_user_fact_tool_invalid_confidence(mocker):
     mock_save = mocker.patch('src.characters.tools.save_fact', AsyncMock())
 
     # Confidence too low
-    result = await save_user_fact.ainvoke({'nickname': 'bob', 'text': 'test', 'confidence': 0.4})
+    result = await keep_user_fact.ainvoke({'nickname': 'bob', 'text': 'test', 'confidence': 0.4})
     assert result is None
     assert mock_save.call_count == 0
 
     # Confidence too high
-    result = await save_user_fact.ainvoke({'nickname': 'bob', 'text': 'test', 'confidence': 1.1})
+    result = await keep_user_fact.ainvoke({'nickname': 'bob', 'text': 'test', 'confidence': 1.1})
     assert result is None
     assert mock_save.call_count == 0
 
