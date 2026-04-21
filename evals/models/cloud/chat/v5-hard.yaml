@@ -1,0 +1,12 @@
+id: openrouter:x-ai/grok-4.20
+label: "v5-grok-hard"
+config:
+  temperature: 1.1
+  presence_penalty: 0.1
+  reasoning:
+    effort: minimal
+
+  max_tokens: 200
+  frequency_penalty: 0.4
+  top_p: 1.0
+  showThinking: false
