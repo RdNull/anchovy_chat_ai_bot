@@ -49,6 +49,7 @@ class EmbeddingsClient:
         )
 
     async def _save(self, chunks: list[ChunkData]):
+        await self._check_collection()
         for chunk in chunks:
             embedding = await self._get_embedding_vectors(chunk.payload)
             await self.qdrant_client.upsert(
@@ -63,7 +64,7 @@ class EmbeddingsClient:
             )
             logger.info(f"Saved embedding for chunk {chunk.chunk_id}")
 
-    async def _search(self, query: str, limit=5, **filters) -> list[EmbeddingSearchDataItem]:
+    async def _search(self, query: str, limit=5, score_threshold=0.2,  **filters) -> list[EmbeddingSearchDataItem]:
         await self._check_collection()
         search_embedding = await self._get_embedding_vectors(query)
 
@@ -71,7 +72,7 @@ class EmbeddingsClient:
             collection_name=self.collection_name,
             query=search_embedding,
             limit=limit,
-            score_threshold=0.2,
+            score_threshold=score_threshold,
             query_filter=Filter(
                 must=[
                     FieldCondition(
