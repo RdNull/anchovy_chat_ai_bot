@@ -70,7 +70,7 @@ class Character:
             HumanMessage(user_message.ai_format),
         ]
         tools_registry = ToolRegistry(
-            (tools.search_messages, tools.get_user_facts, tools.save_user_fact,),
+            (tools.search_messages, tools.get_user_facts, tools.keep_user_fact,),
             context=ToolContext(chat_id=user_message.chat_id),
         )
 
