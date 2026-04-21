@@ -59,7 +59,6 @@ class MessageEmbeddingsClient(EmbeddingsClient):
         return result
 
     async def save(self, messages: list[Message]) -> None:
-        await self._check_collection()
         chunks = chunk_messages(messages)
         chat_id = messages[0].chat_id
         logger.info(
