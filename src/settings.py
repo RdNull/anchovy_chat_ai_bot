@@ -19,6 +19,7 @@ RANDOM_REPLY_CHANCE = float(os.environ.get('RANDOM_REPLY_CHANCE', 0.05))
 RANDOM_REPLY_COOLDOWN_MINUTES = int(os.environ.get('RANDOM_REPLY_COOLDOWN_MINUTES', 30))
 
 AI_TIMEOUT = int(os.environ.get('AI_TIMEOUT', 90))
+CHAT_RATE_LIMIT = int(os.environ.get('CHAT_RATE_LIMIT', 5))  # calls per minute per chat
 
 EMBEDDINGS_SEARCH_MAX_SIZE = int(os.environ.get('EMBEDDINGS_SEARCH_MAX_SIZE', 3))
 MESSAGES_EMBEDDINGS_MAX_SIZE = int(os.environ.get('MESSAGES_EMBEDDINGS_MAX_SIZE', 40))
