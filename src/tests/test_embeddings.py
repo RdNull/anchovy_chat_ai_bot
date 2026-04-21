@@ -3,8 +3,9 @@ from unittest.mock import ANY, AsyncMock, MagicMock, call
 
 from qdrant_client.http.models import QueryResponse, ScoredPoint
 
-from src.embeddings.client import EmbeddingsClient, chunk_messages
-from src.models import Message, MessageMedia, RelatedMessagesData, UserRole
+from src.embeddings.facts import FactsEmbeddingClient, FactsSearchResult
+from src.embeddings.messages import MessageEmbeddingsClient, chunk_messages
+from src.models import Message, MessageMedia, RelatedMessagesData, UserFact, UserRole
 from src.processors.context.embeddings import search_related_messages, update_chat_embeddings
 
 
@@ -28,10 +29,10 @@ def test_chunk_messages():
     # Chunk 2: [5, 6, 7, 8, 9]
     chunks = chunk_messages(messages, window=8, overlap=3)
     assert len(chunks) == 2
-    assert len(chunks[0]) == 8
-    assert len(chunks[1]) == 5
-    assert chunks[0][-1].text == 'text 7'
-    assert chunks[1][0].text == 'text 5'
+    assert len(chunks[0].metadata['message_ids']) == 8
+    assert len(chunks[1].metadata['message_ids']) == 5
+    assert 'text 7' in chunks[0].payload
+    assert chunks[1].payload.startswith('') and 'text 5' in chunks[1].payload
 
     # Test small overlap handling
     # window=4, overlap=2
@@ -50,7 +51,7 @@ def test_chunk_messages():
     # Test message list smaller than window
     chunks = chunk_messages(messages[:3], window=8, overlap=3)
     assert len(chunks) == 1
-    assert len(chunks[0]) == 3
+    assert len(chunks[0].metadata['message_ids']) == 3
 
 
 async def test_embeddings_client_save_embeddings(mocker):
@@ -62,7 +63,7 @@ async def test_embeddings_client_save_embeddings(mocker):
 
     mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=mock_qdrant)
 
-    client = EmbeddingsClient('test_collection', 'test_model', 128)
+    client = MessageEmbeddingsClient('test_collection', 'test_model', 128)
 
     # Mock the internal API call
     mock_embedding = [0.1] * 128
@@ -70,7 +71,7 @@ async def test_embeddings_client_save_embeddings(mocker):
 
     messages = [create_mock_message(i, f'text {i}') for i in range(5)]
 
-    await client.save_embeddings(messages)
+    await client.save(messages)
 
     # Verify collection check and creation
     assert mock_qdrant.collection_exists.call_count == 1
@@ -110,7 +111,7 @@ async def test_embeddings_client_search(mocker):
 
     mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=mock_qdrant)
 
-    client = EmbeddingsClient('test_collection', 'test_model', 128)
+    client = MessageEmbeddingsClient('test_collection', 'test_model', 128)
     client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
 
     # Mock get_messages from history
@@ -118,8 +119,8 @@ async def test_embeddings_client_search(mocker):
         create_mock_message(1, 'text 1'),
         create_mock_message(2, 'text 2')
     ]
-    mock_get_messages = mocker.patch( # todo replace by real db fetching
-        'src.embeddings.client.get_messages_by_ids', AsyncMock(return_value=mock_messages)
+    mock_get_messages = mocker.patch(  # todo replace by real db fetching
+        'src.embeddings.messages.get_messages_by_ids', AsyncMock(return_value=mock_messages)
     )
 
     results = await client.search(123, 'test query', limit=5)
@@ -149,14 +150,14 @@ async def test_update_chat_embeddings(mocker):
 
     # Mock client
     mock_client = mocker.patch('src.processors.context.embeddings.messages_embeddings_client')
-    mock_client.save_embeddings = AsyncMock()
+    mock_client.save = AsyncMock()
 
     await update_chat_embeddings(123)
 
     assert mock_get_messages.call_count == 1
     assert mock_get_messages.call_args == call(123, size=ANY, from_date=None)
-    assert mock_client.save_embeddings.call_count == 1
-    assert mock_client.save_embeddings.call_args == call(messages)
+    assert mock_client.save.call_count == 1
+    assert mock_client.save.call_args == call(messages)
     assert mock_db.embedding_tasks.insert_one.call_count == 1
 
     # Check what was saved to DB
@@ -189,7 +190,7 @@ async def test_search_related_messages_media(mocker):
 
 async def test_get_embedding_vectors_api(mocker):
     # This tests the httpx call in _get_embedding_vectors
-    client = EmbeddingsClient('test', 'test_model', 128)
+    client = MessageEmbeddingsClient('test', 'test_model', 128)
 
     mock_response = MagicMock()
     mock_response.json.return_value = {
@@ -211,3 +212,72 @@ async def test_get_embedding_vectors_api(mocker):
             "encoding_format": "float"
         }
     )
+
+
+async def test_facts_embedding_client_save_fact(mocker):
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists = AsyncMock(return_value=False)
+    mock_qdrant.create_collection = AsyncMock()
+    mock_qdrant.upsert = AsyncMock()
+
+    mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=mock_qdrant)
+
+    client = FactsEmbeddingClient('facts', 'test_model', 128)
+    client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
+
+    fact = UserFact(_id='abc123', nickname='bob', text='likes pizza', confidence=0.8,
+                    created_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+
+    await client.save_fact(fact)
+
+    assert mock_qdrant.upsert.call_count == 1
+    _, kwargs = mock_qdrant.upsert.call_args
+    assert kwargs['collection_name'] == 'facts'
+    point = kwargs['points'][0]
+    assert point.id == 'abc123'
+    assert point.vector == [0.1] * 128
+    assert point.payload['id'] == 'abc123'
+    assert point.payload['nickname'] == 'bob'
+    assert point.payload['confidence'] == 0.8
+    assert client._get_embedding_vectors.call_args == call('likes pizza')
+
+
+async def test_facts_embedding_client_search_facts_empty(mocker):
+    mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=MagicMock(
+        collection_exists=AsyncMock(return_value=True),
+        query_points=AsyncMock(return_value=QueryResponse(points=[]))
+    ))
+
+    client = FactsEmbeddingClient('facts', 'test_model', 128)
+    client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
+
+    results = await client.search_facts('bob', 'likes pizza', limit=5)
+
+    assert results == []
+
+
+async def test_facts_embedding_client_search_facts(mocker):
+    fact = UserFact(_id='abc123', nickname='bob', text='likes pizza', confidence=0.8)
+
+    mock_scored_point = ScoredPoint(
+        id='abc123',
+        version=1,
+        score=0.85,
+        payload={'id': 'abc123', 'nickname': 'bob', 'confidence': 0.8},
+    )
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists = AsyncMock(return_value=True)
+    mock_qdrant.query_points = AsyncMock(return_value=QueryResponse(points=[mock_scored_point]))
+
+    mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=mock_qdrant)
+    mocker.patch('src.embeddings.facts.get_fact_by_id', AsyncMock(return_value=fact))
+
+    client = FactsEmbeddingClient('facts', 'test_model', 128)
+    client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
+
+    results = await client.search_facts('bob', 'likes pizza', limit=5)
+
+    assert len(results) == 1
+    assert isinstance(results[0], FactsSearchResult)
+    assert results[0].fact == fact
+    assert results[0].score == 0.85

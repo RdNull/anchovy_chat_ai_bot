@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from src import mongo as db, settings
-from src.embeddings.client import messages_embeddings_client
+from src.embeddings.messages import messages_embeddings_client
 from src.logs import logger
 from src.messages.repository import get_messages
 from src.models import EmbeddingTask, Message, RelatedMessagesData
@@ -36,7 +36,7 @@ async def update_chat_embeddings(chat_id: int):
         return
 
     try:
-        await messages_embeddings_client.save_embeddings(messages)
+        await messages_embeddings_client.save(messages)
         await save_embedding_task(chat_id, messages[-1].created_at)
         logger.info(f"Embeddings updated for chat {chat_id}")
     except Exception as e:

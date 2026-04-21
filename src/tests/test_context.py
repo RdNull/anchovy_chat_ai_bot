@@ -23,7 +23,7 @@ def mock_memory_llm(mocker, return_value=None):
 
 def mock_embeddings_client(mocker):
     return mocker.patch(
-        'src.processors.context.embeddings.messages_embeddings_client.save_embeddings',
+        'src.processors.context.embeddings.messages_embeddings_client.save',
         new_callable=AsyncMock,
     )
 

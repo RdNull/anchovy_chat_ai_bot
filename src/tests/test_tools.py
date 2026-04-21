@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 from langchain_core.messages import ToolMessage
 
-from src.characters.tools import get_user_facts, save_user_fact, search_messages
+from src.characters.tools import get_user_facts, keep_user_fact, search_messages
+from src.embeddings.facts import FactsSearchResult
 from src.models import Message, RelatedMessagesData, UserFact, UserRole
 from src.tools import ToolContext, ToolRegistry
 
@@ -63,16 +64,14 @@ async def test_save_user_fact_tool(mocker):
         'src.characters.tools.save_fact',
         AsyncMock(return_value=UserFact(nickname='bob', text='likes pizza', confidence=0.8))
     )
-
+    mocker.patch('src.characters.tools.facts_embedding_client.search_facts',
+                 AsyncMock(return_value=[]))
     # Execute with @ nickname
-    result = await save_user_fact.ainvoke(
+    result = await keep_user_fact.ainvoke(
         {'nickname': '@bob', 'text': 'likes pizza', 'confidence': 0.8}
     )
 
-    # Assert
-    assert result.nickname == 'bob'
-    assert result.text == 'likes pizza'
-    assert result.confidence == 0.8
+    assert result == 'ok'
     assert mock_save.call_count == 1
     assert mock_save.call_args == call('bob', 'likes pizza', 0.8)
 
@@ -81,14 +80,52 @@ async def test_save_user_fact_tool_invalid_confidence(mocker):
     mock_save = mocker.patch('src.characters.tools.save_fact', AsyncMock())
 
     # Confidence too low
-    result = await save_user_fact.ainvoke({'nickname': 'bob', 'text': 'test', 'confidence': 0.4})
-    assert result is None
+    result = await keep_user_fact.ainvoke({'nickname': 'bob', 'text': 'test', 'confidence': 0.4})
+    assert result == 'Wrong confidence: 0.4'
     assert mock_save.call_count == 0
 
     # Confidence too high
-    result = await save_user_fact.ainvoke({'nickname': 'bob', 'text': 'test', 'confidence': 1.1})
-    assert result is None
+    result = await keep_user_fact.ainvoke({'nickname': 'bob', 'text': 'test', 'confidence': 1.1})
+    assert result == 'Wrong confidence: 1.1'
     assert mock_save.call_count == 0
+
+
+async def test_save_user_fact_tool_similar_fact_higher_confidence(mocker):
+    existing_fact = UserFact(nickname='bob', text='likes pizza', confidence=0.9)
+    similar = FactsSearchResult(fact=existing_fact, score=0.85)
+
+    mocker.patch('src.characters.tools.facts_embedding_client.search_facts',
+                 AsyncMock(return_value=[similar]))
+    mock_update = mocker.patch('src.characters.tools.update_fact', AsyncMock())
+    mock_save = mocker.patch('src.characters.tools.save_fact', AsyncMock())
+
+    result = await keep_user_fact.ainvoke(
+        {'nickname': 'bob', 'text': 'loves pizza', 'confidence': 0.8})
+
+    assert result == 'This fact is already saved.'
+    assert mock_save.call_count == 0
+    assert mock_update.call_count == 1
+    # existing confidence (0.9) >= new (0.8) → bump by 0.1
+    assert mock_update.call_args == call(existing_fact.id, confidence=min(0.9 + 0.1, 1))
+
+
+async def test_save_user_fact_tool_similar_fact_lower_confidence(mocker):
+    existing_fact = UserFact(nickname='bob', text='likes pizza', confidence=0.6)
+    similar = FactsSearchResult(fact=existing_fact, score=0.85)
+
+    mocker.patch('src.characters.tools.facts_embedding_client.search_facts',
+                 AsyncMock(return_value=[similar]))
+    mock_update = mocker.patch('src.characters.tools.update_fact', AsyncMock())
+    mock_save = mocker.patch('src.characters.tools.save_fact', AsyncMock())
+
+    result = await keep_user_fact.ainvoke(
+        {'nickname': 'bob', 'text': 'loves pizza', 'confidence': 0.9})
+
+    assert result == 'This fact is already saved.'
+    assert mock_save.call_count == 0
+    assert mock_update.call_count == 1
+    # existing confidence (0.6) < new (0.9) → update text + confidence
+    assert mock_update.call_args == call(existing_fact.id, confidence=0.9, text='loves pizza')
 
 
 async def test_get_user_facts_tool(mocker):

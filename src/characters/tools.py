@@ -1,13 +1,14 @@
 from langchain.tools import tool
 
-from src.embeddings.client import messages_embeddings_client
+from src.embeddings.facts import facts_embedding_client
+from src.embeddings.messages import messages_embeddings_client
 from src.logs import logger
-from src.models import UserFact
-from src.processors.context.facts import get_facts, save_fact
+from src.processors.context.facts import get_facts, save_fact, update_fact
 from src.tools import ToolContext
 
 SEARCH_MESSAGES_DESCRIPTION = '''
-COST: MEDIUM | Поиск сообщений чата по запросу. 
+Поиск сообщений чата по запросу. 
+Не используй для того, что уже есть в текущей истории.
 
 Args:
     search_query: Текст запроса для поиска в свободном формате; Максимум 2 предложения.
@@ -15,7 +16,7 @@ Args:
 
 Returns:
     Список найденных блоков сообщений с оценками релевантности (`score`; 0..1) и сообщениями (`messages`).
-    Блоки расположены не в хронологическом порядке; сообщения внутри блока идут по порядку.
+    Блоки расположены в порядке релевантности; сообщения внутри блока идут по порядку.
 '''
 
 
@@ -38,8 +39,8 @@ async def search_messages(search_query: str, limit: int = 3) -> list[dict]:
     ]
 
 
-SAVE_USER_FACT_TOOL_DESCRIPTION = '''
-COST: LOW | Сохранить СТАБИЛЬНЫЙ и ВАЖНЫЙ факт о пользователе
+KEEP_USER_FACT_TOOL_DESCRIPTION = '''
+Сохранить СТАБИЛЬНЫЙ и ВАЖНЫЙ факт о пользователе
 Факты сохраняются с оценкой уверенности о факте (confidence).
 
 Args:
@@ -51,22 +52,42 @@ Args:
 '''
 
 
-@tool(description=SAVE_USER_FACT_TOOL_DESCRIPTION)
-async def save_user_fact(nickname: str, text: str, confidence: float) -> UserFact | None:
+@tool(description=KEEP_USER_FACT_TOOL_DESCRIPTION)
+async def keep_user_fact(nickname: str, text: str, confidence: float) -> str:
     if confidence < 0.5 or confidence > 1:
         logger.warning(
             f"[TOOL] save_user_fact call with invalid confidence: {confidence}, aborting. ({nickname=} {text=})"
         )
-        return None
+        return f'Wrong confidence: {confidence}'
 
     nickname = nickname.replace('@', '')
+
+    similar_facts = await facts_embedding_client.search_facts(nickname, text, limit=1)
+    if similar_facts:
+        similar_fact = similar_facts[0]
+        similar_fact_confidence = similar_fact.fact.confidence
+        if similar_fact_confidence >= confidence:
+            new_confidence = min(similar_fact_confidence + 0.1, 1)
+            await update_fact(similar_fact.fact.id, confidence=new_confidence)
+            logger.info(
+                f"[TOOL] Updated fact {similar_fact.fact.id} confidence to {new_confidence}"
+            )
+        else:
+            await update_fact(similar_fact.fact.id, confidence=confidence, text=text)
+            logger.info(
+                f"[TOOL] Updated fact {similar_fact.fact.id} with new confidence {confidence}"
+            )
+
+        return 'This fact is already saved.'
+
     fact = await save_fact(nickname, text, confidence)
     logger.info(f"[TOOL] Saved fact {fact}")
-    return fact
+
+    return 'ok'
 
 
 GET_USER_FACT_TOOL_DESCRIPTION = '''
-COST: LOW | Получить КЛЮЧЕВЫЕ факты о пользователе
+Получить КЛЮЧЕВЫЕ факты о пользователе
 Args:
 - nickname: Никнейм пользователя
 - limit: Максимальное количество фактов для получения; От 1 до 20.
