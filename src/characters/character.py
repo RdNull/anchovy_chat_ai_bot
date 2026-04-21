@@ -98,17 +98,20 @@ class Character:
         llm: BaseChatModel,
         messages: list[BaseMessage],
         tools_registry: ToolRegistry,
+        _depth=1,
     ) -> AIMessage:
-        llm_with_tools = llm.bind_tools(tools_registry.tools)
+        if _depth > 5:
+            logger.warning(f"LLM loop depth exceeded for {self.name}, returning response")
+            return await llm.ainvoke(messages)
 
+        llm_with_tools = llm.bind_tools(tools_registry.tools)
         response = await llm_with_tools.ainvoke(messages)
         if not response.tool_calls:
             return response
 
         messages.append(response)
-        # todo implement tool call limits
         for tool_call in response.tool_calls:  # type: ToolCall
             tool_result = await tools_registry.execute(tool_call)
             messages.append(tool_result)
 
-        return await self._run_llm_loop(llm, messages, tools_registry)
+        return await self._run_llm_loop(llm, messages, tools_registry, _depth + 1)
