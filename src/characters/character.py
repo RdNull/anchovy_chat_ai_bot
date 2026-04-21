@@ -10,6 +10,8 @@ from src.logs import logger
 from src.models import MemoryData, Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
 from . import tools
+from .rate_limit import ChatRateLimiter
+from ..settings import CHAT_RATE_LIMIT
 from ..tools import ToolContext, ToolRegistry
 
 
@@ -39,6 +41,7 @@ class Character:
         self.display_name = display_name
         self.description = description
         self.style_prompt = style_prompt
+        self.rate_limiter = ChatRateLimiter(CHAT_RATE_LIMIT)
 
     @property
     def system_message(self):
@@ -57,6 +60,9 @@ class Character:
         user_message: Message,
         last_messages: list[Message] = None,
     ) -> str:
+        if self.rate_limiter.is_exceeded(user_message.chat_id):
+            return 'Не гони, дай отдышаться...'
+
         llm = ai.get_model(version='v5-hard')
         messages = [
             self.system_message,
