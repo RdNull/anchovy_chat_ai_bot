@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -6,6 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from src import settings
 from src.characters.character import Character
+from src.characters.rate_limit import ChatRateLimiter
 from src.models import MemoryData, Message, StructuredMemory, UserRole
 from src.tools import ToolRegistry
 
@@ -120,6 +122,51 @@ async def test_respond_exception_returns_fallback(mocker):
     result = await make_character().respond(make_user_message(), last_messages=[])
 
     assert result == 'Голова чё-то разболелась, давай потом...'
+
+
+# --- rate limiting ---
+
+def test_rate_limiter_allows_calls_under_limit():
+    rl = ChatRateLimiter(rate_limit=3)
+    assert not rl.is_exceeded(chat_id=1)
+    assert not rl.is_exceeded(chat_id=1)
+    assert not rl.is_exceeded(chat_id=1)
+
+
+def test_rate_limiter_blocks_when_limit_reached(mocker):
+    mocker.patch.object(settings, 'CHAT_RATE_LIMIT', 2)
+    rl = ChatRateLimiter()
+    rl.is_exceeded(1)
+    rl.is_exceeded(1)
+    assert rl.is_exceeded(1)
+
+
+def test_rate_limiter_independent_per_chat(mocker):
+    mocker.patch.object(settings, 'CHAT_RATE_LIMIT', 1)
+    rl = ChatRateLimiter()
+    rl.is_exceeded(1)
+    assert rl.is_exceeded(1)
+    assert not rl.is_exceeded(2)
+
+
+def test_rate_limiter_allows_after_window_expires(mocker):
+    mocker.patch.object(settings, 'CHAT_RATE_LIMIT', 1)
+    rl = ChatRateLimiter()
+    rl._call_times[1].append(time.monotonic() - 61)
+    assert not rl.is_exceeded(1)
+
+
+async def test_respond_rate_limited_returns_message(mocker):
+    mocker.patch('src.characters.rate_limit.ChatRateLimiter.is_exceeded', return_value=True)
+    result = await make_character().respond(make_user_message(), last_messages=[])
+    assert result == 'Не гони, дай отдышаться...'
+
+
+async def test_respond_not_rate_limited_proceeds(mocker):
+    mocker.patch('src.characters.rate_limit.ChatRateLimiter.is_exceeded', return_value=False)
+    mock_chat_llm(mocker, [AIMessage(content='ответ')])
+    result = await make_character().respond(make_user_message(), last_messages=[])
+    assert result == 'ответ'
 
 
 # --- system_message ---
