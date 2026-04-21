@@ -29,16 +29,16 @@ class FactsEmbeddingClient(EmbeddingsClient):
         await self._save(chunks)
 
     async def search_facts(self, nickname: str, text, limit=5) -> list[FactsSearchResult]:
-        results = await self._search(text, limit=limit, nickname=nickname, score_threshold=0.7)
-        if not results:
+        search_results = await self._search(text, limit=limit, nickname=nickname, score_threshold=0.7)
+        if not search_results:
             return []
 
-        results = []
-        for result in results:
+        found = []
+        for result in search_results:
             if fact := await get_fact_by_id(result.payload['id']):
-                results.append(FactsSearchResult(fact, result.score))
+                found.append(FactsSearchResult(fact, result.score))
 
-        return sorted((r for r in results if r.fact), key=lambda r: r.score, reverse=True)
+        return sorted((r for r in found if r.fact), key=lambda r: r.score, reverse=True)
 
 
 facts_embedding_client = FactsEmbeddingClient(
