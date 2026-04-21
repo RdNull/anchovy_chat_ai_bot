@@ -47,9 +47,9 @@ class Character:
     def system_message(self):
         setup_prompt = prompt_manager.get_prompt(
             'character_setup',
-            version='v2',
+            version='v3',
             character_description=self.style_prompt,
-            memory=self.memory.content.model_dump_json(indent=2) if self.memory else None,
+            memory=self.memory.content.model_dump_json(indent=1) if self.memory else None,
             related_messages=self.related_messages or None,
         )
         return SystemMessage(setup_prompt)
