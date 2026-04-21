@@ -29,14 +29,10 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_message(user_message)
     )
 
-    last_memory, related_messages = await asyncio.gather(
-        get_last_memory(chat_id),
-        search_related_messages(user_message)
-    )
+    last_memory = await get_last_memory(chat_id)
     character = get_chat_character(
         context=context,
         memory=last_memory if last_memory else None,
-        related_messages=related_messages,
     )
     last_messages = await get_messages(
         chat_id,
