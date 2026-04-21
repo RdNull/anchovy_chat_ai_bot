@@ -1,8 +1,9 @@
 from langchain.tools import tool
 
+from src.embeddings.facts import facts_embedding_client
 from src.embeddings.messages import messages_embeddings_client
 from src.logs import logger
-from src.processors.context.facts import get_facts, save_fact
+from src.processors.context.facts import get_facts, save_fact, update_fact
 from src.tools import ToolContext
 
 SEARCH_MESSAGES_DESCRIPTION = '''
@@ -60,6 +61,25 @@ async def keep_user_fact(nickname: str, text: str, confidence: float) -> str:
         return f'Wrong confidence: {confidence}'
 
     nickname = nickname.replace('@', '')
+
+    similar_facts = await facts_embedding_client.search_facts(nickname, text, limit=1)
+    if similar_facts:
+        similar_fact = similar_facts[0]
+        similar_fact_confidence = similar_fact.fact.confidence
+        if similar_fact_confidence >= confidence:
+            new_confidence = min(similar_fact_confidence + 0.1, 1)
+            await update_fact(similar_fact.fact.id, confidence=new_confidence)
+            logger.info(
+                f"[TOOL] Updated fact {similar_fact.fact.id} confidence to {new_confidence}"
+            )
+        else:
+            await update_fact(similar_fact.fact.id, confidence=confidence, text=text)
+            logger.info(
+                f"[TOOL] Updated fact {similar_fact.fact.id} with new confidence {confidence}"
+            )
+
+        return 'This fact is already saved.'
+
     fact = await save_fact(nickname, text, confidence)
     logger.info(f"[TOOL] Saved fact {fact}")
 
