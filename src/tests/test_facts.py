@@ -1,3 +1,9 @@
+from datetime import datetime, timezone
+from decimal import Decimal
+
+from bson import Decimal128, ObjectId
+
+from src import mongo
 from src.models import UserFact
 from src.processors.context.facts import get_facts, save_fact
 
@@ -57,3 +63,32 @@ async def test_get_facts_isolates_by_nickname():
 async def test_get_facts_unknown_user_returns_empty():
     result = await get_facts('nobody')
     assert result == []
+
+
+# --- UserFact model validation ---
+
+def test_user_fact_model_validate_decimal_confidence():
+    # Decimal128 is converted to Decimal by the mongo codec; pydantic coerces Decimal -> float
+    data = {
+        '_id': ObjectId(),
+        'nickname': 'alice',
+        'text': 'likes coffee',
+        'confidence': Decimal('0.9'),
+        'created_at': None,
+    }
+    fact = UserFact.model_validate(data)
+    assert isinstance(fact.confidence, float)
+    assert fact.confidence == 0.9
+
+
+async def test_get_facts_handles_decimal128_stored_in_mongo():
+    await mongo.facts.insert_one({
+        'nickname': 'alice',
+        'text': 'likes coffee',
+        'confidence': Decimal128('0.9'),
+        'created_at': datetime.now(timezone.utc).timestamp(),
+    })
+    facts = await get_facts('alice')
+    assert len(facts) == 1
+    assert isinstance(facts[0].confidence, float)
+    assert facts[0].confidence == 0.9
