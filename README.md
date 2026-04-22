@@ -20,7 +20,7 @@ Characters are defined as YAML configs (name, description, detailed system promp
 Messages are chunked with a sliding window, embedded via OpenAI `text-embedding-3-small`, and stored in Qdrant. The `search_messages` tool lets the LLM semantically retrieve relevant past conversation chunks at inference time, filtered by chat ID.
 
 **Structured Persistent Memory**
-Each chat accumulates a `StructuredMemory` document in MongoDB — tracking facts, decisions, active topics, open loops, participant profiles, constraints, and preferences. Memory is updated hourly via a background scheduler and also triggered when message volume crosses a threshold. Updates use GPT-4o-mini with structured output mode for reliable JSON extraction.
+Each chat accumulates a `StructuredMemory` document in MongoDB — tracking facts, decisions, active topics, open loops, participant profiles, constraints, and preferences. Memory is updated hourly via a background scheduler and also triggered when message volume crosses a threshold. Updates use GPT-5-mini with structured output mode for reliable JSON extraction.
 
 **User Fact Tracking with Confidence Scoring**
 The `save_user_fact` tool lets the LLM persist facts about individual users with a decimal confidence score. Facts are embedded and stored in Qdrant; the `get_user_facts` tool retrieves them via similarity search.
@@ -43,24 +43,24 @@ LangSmith tracing is integrated via `@traceable` decorators across the LLM call 
 
 ## Tech Stack
 
-| Layer                | Technology                                      | Role                                               |
-|----------------------|-------------------------------------------------|----------------------------------------------------|
-| Language & Runtime   | Python 3.14, asyncio                            | Async-first throughout                             |
-| Telegram Integration | python-telegram-bot (HTTP/2)                    | Bot API, polling, persistence                      |
-| LLM Orchestration    | LangChain                                       | Tool binding, structured output, model routing     |
-| Cloud LLM Provider   | OpenRouter API                                  | Access to Grok, GPT-4o-mini, Gemini 2.5 Flash     |
-| Local LLM            | Ollama                                          | Self-hosted fallback for all tasks                 |
-| Embeddings           | OpenAI text-embedding-3-small (via OpenRouter)  | 1536-dim vectors for RAG                           |
-| Vector Database      | Qdrant (AsyncQdrantClient)                      | Message and fact retrieval                         |
-| Document Database    | MongoDB (AsyncIOMotorClient)                    | Chat history, memory, facts, media descriptions    |
-| Data Validation      | Pydantic v2                                     | Models, structured LLM output, settings            |
-| Prompt Templating    | Jinja2                                          | Versioned, task-specific prompt files              |
-| Media Processing     | Pillow, OpenCV, Lottie, CairoSVG                | Image resizing, GIF/sticker frame extraction       |
-| Scheduling           | scheduler                                       | Hourly memory update jobs with timezone support    |
-| Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks            |
-| Observability        | LangSmith                                       | LLM call tracing and span visualization            |
-| Containerization     | Docker Compose                                  | Bot, MongoDB, and Qdrant services                  |
-| Testing              | pytest, pytest-asyncio, pytest-mock, freezegun  | Async test suite with time mocking                 |
+| Layer                | Technology                                      | Role                                            |
+|----------------------|-------------------------------------------------|-------------------------------------------------|
+| Language & Runtime   | Python 3.14, asyncio                            | Async-first throughout                          |
+| Telegram Integration | python-telegram-bot (HTTP/2)                    | Bot API, polling, persistence                   |
+| LLM Orchestration    | LangChain                                       | Tool binding, structured output, model routing  |
+| Cloud LLM Provider   | OpenRouter API                                  | Access to Grok, GPT-5-mini, Gemini 2.5 Flash    |
+| Local LLM            | Ollama                                          | Self-hosted fallback for all tasks              |
+| Embeddings           | OpenAI text-embedding-3-small (via OpenRouter)  | 1536-dim vectors for RAG                        |
+| Vector Database      | Qdrant (AsyncQdrantClient)                      | Message and fact retrieval                      |
+| Document Database    | MongoDB (AsyncIOMotorClient)                    | Chat history, memory, facts, media descriptions |
+| Data Validation      | Pydantic v2                                     | Models, structured LLM output, settings         |
+| Prompt Templating    | Jinja2                                          | Versioned, task-specific prompt files           |
+| Media Processing     | Pillow, OpenCV, Lottie, CairoSVG                | Image resizing, GIF/sticker frame extraction    |
+| Scheduling           | scheduler                                       | Hourly memory update jobs with timezone support |
+| Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks         |
+| Observability        | LangSmith                                       | LLM call tracing and span visualization         |
+| Containerization     | Docker Compose                                  | Bot, MongoDB, and Qdrant services               |
+| Testing              | pytest, pytest-asyncio, pytest-mock, freezegun  | Async test suite with time mocking              |
 
 ---
 
