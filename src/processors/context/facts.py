@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from bson import ObjectId
 
@@ -27,15 +26,7 @@ async def get_facts(nickname: str, limit: int = 5) -> list[UserFact]:
     cursor = mongo.facts.find({'nickname': nickname}).sort('confidence', -1).limit(limit)
     facts = await cursor.to_list(length=limit)
 
-    return [
-        UserFact( # todo check why not validated as is
-            _id=str(f['_id']),
-            nickname=f['nickname'],
-            text=f['text'],
-            confidence=float(Decimal(f['confidence'])),
-            created_at=datetime.fromtimestamp(f['created_at'], tz=timezone.utc),
-        ) for f in facts
-    ]
+    return [UserFact.model_validate(f) for f in facts]
 
 
 async def get_fact_by_id(fact_id: str) -> UserFact | None:

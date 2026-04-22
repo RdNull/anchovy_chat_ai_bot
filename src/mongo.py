@@ -1,3 +1,5 @@
+from bson.codec_options import CodecOptions, TypeRegistry
+from bson.decimal128 import DecimalDecoder
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.collection import AsyncCollection
 
@@ -11,8 +13,10 @@ __all__ = (
     'embedding_tasks',
 )
 
+_codec_options = CodecOptions(type_registry=TypeRegistry([DecimalDecoder()]))
+
 db_client = AsyncMongoClient(settings.DATABASE_URL)
-db = db_client[settings.DATABASE_NAME]
+db = db_client.get_database(settings.DATABASE_NAME, codec_options=_codec_options)
 
 messages: AsyncCollection = db.messages
 memory: AsyncCollection = db.memory
