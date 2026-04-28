@@ -1,4 +1,4 @@
-# ShizoDedBot
+# anchovy_chat_ai_bot
 
 ![coverage](coverage.svg)
 

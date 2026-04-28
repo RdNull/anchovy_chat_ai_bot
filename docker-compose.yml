@@ -1,4 +1,4 @@
-name: shizo_ded_bot
+name: anchovy_chat_ai_bot
 
 x-environment-vars: &environment-vars
   TERM: linux

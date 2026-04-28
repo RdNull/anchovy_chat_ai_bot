@@ -3,7 +3,7 @@ name: write-tests
 description: >
   Use this skill when the user asks to write, add, or implement tests for this
   project. Covers pytest patterns, fixture usage, mock strategies, and
-  assertion style for shizo_ded_bot.
+  assertion style for anchovy_chat_ai_bot.
 disable-model-invocation: true
 ---
 

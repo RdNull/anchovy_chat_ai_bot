@@ -1,4 +1,4 @@
-# Project Overview: Shizo Ded Bot
+# Project Overview: anchovy_chat_ai_bot
 
 This project is a Telegram bot designed for complex character-based interactions, utilizing LLMs with RAG (Retrieval-Augmented Generation) and memory capabilities.
 

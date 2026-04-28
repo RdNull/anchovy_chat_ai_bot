@@ -1,12 +1,12 @@
 import os
 
-APP_NAME = 'shizo_ded_bot'
+APP_NAME = 'anchovy_chat_ai_bot'
 BOT_PERSISTENCE_FILE = f'data/{APP_NAME}.tg'
 CHARACTERS_DIRECTORY = 'src/characters/repository'
 PROMPTS_DIR = 'src/prompts'
 
 TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
-BOT_NICKNAME = os.environ.get('BOT_NICKNAME', 'ShizoDedAnchovyBot')
+BOT_NICKNAME = os.environ.get('BOT_NICKNAME', 'AnchovyAiBot')
 DATABASE_URL = os.environ['DATABASE_URL']
 DATABASE_NAME = os.environ.get('DATABASE_NAME', 'data')
 
