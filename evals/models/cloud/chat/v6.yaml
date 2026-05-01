@@ -1,0 +1,8 @@
+id: openrouter:anthropic/claude-haiku-4.5
+label: "v6.2"
+config:
+  temperature: 0.85
+  max_tokens: 150
+  showThinking: false
+  reasoning:
+    effort: minimal
