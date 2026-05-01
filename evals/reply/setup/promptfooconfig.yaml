@@ -3,8 +3,8 @@
 description: "Character setup eval"
 
 prompts:
-  - id: file://../prompts/v2.js
-    label: "Character v2"
+  id: file://../prompts/v3.js
+  label: "Character v3"
 
 providers:
   - file://../../models/cloud/chat/v1.yaml
