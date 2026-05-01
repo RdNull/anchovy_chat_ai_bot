@@ -1,63 +1,38 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from bson import ObjectId
+from langchain_core.messages import SystemMessage
+from langsmith import traceable
 
-from src import mongo
+from src import ai
+from src.facts.handlers import decay_facts, upsert_fact
 from src.logs import logger
-from src.models import UserFact
+from src.models import ExtractedFacts, Message
+from src.prompt_manager import prompt_manager
 
 
-async def save_fact(nickname: str, text: str, confidence: float) -> UserFact:
-    logger.info(f"Saving fact for chat {nickname}")
-    fact = UserFact(
-        nickname=nickname,
-        text=text,
-        confidence=confidence,
-    )
-    return await _save_fact(fact)
+@traceable
+async def extract_facts(new_messages: list[Message]):
+    formatted_messages = "\n".join([m.ai_format for m in new_messages])
+    llm = ai.get_facts_model(version='v1')
+    model_with_structure = llm.with_structured_output(ExtractedFacts)
 
-
-async def get_facts(nickname: str, limit: int = 5) -> list[UserFact]:
-    logger.debug(f"Fetching facts for {nickname}")
-    if 'facts' not in await mongo.db.list_collection_names():
-        await mongo.db.create_collection('facts')
-        return []
-
-    cursor = mongo.facts.find({'nickname': nickname}).sort('confidence', -1).limit(limit)
-    facts = await cursor.to_list(length=limit)
-
-    return [UserFact.model_validate(f) for f in facts]
-
-
-async def get_fact_by_id(fact_id: str) -> UserFact | None:
-    logger.debug(f"Fetching fact by id {fact_id}")
-    fact = await mongo.facts.find_one({'_id': fact_id})
-    return UserFact.model_validate(fact) if fact else None
-
-
-async def update_fact(fact_id: str, confidence: float | None = None, text: str | None = None):
-    update_data = {}
-    if confidence is not None:
-        update_data['confidence'] = confidence
-
-    if text is not None:
-        update_data['text'] = text
-
-    if not update_data:
-        return
-
-    await mongo.facts.update_one(
-        {'_id': ObjectId(fact_id)},
-        {'$set': update_data}
+    system_prompt = prompt_manager.get_prompt(
+        'facts', version='v1', messages=formatted_messages
     )
 
-async def _save_fact(fact: UserFact):
-    data = {
-        'nickname': fact.nickname,
-        'text': fact.text,
-        'confidence': fact.confidence,
-        'created_at': datetime.now(timezone.utc).timestamp()
-    }
-    result = await mongo.facts.insert_one(data)
-    fact.id = result.inserted_id
-    return fact
+    try:
+        result: ExtractedFacts = await model_with_structure.ainvoke([
+            SystemMessage(content=system_prompt)
+        ])
+
+        for fact in result.facts:
+            await upsert_fact(fact.nickname, fact.text, fact.confidence)
+
+        logger.info(f"Extracted and saved {len(result.facts)} facts from messages")
+    except Exception as e:
+        logger.error(f"Error extracting facts from messages: {e}", exc_info=True)
+
+
+async def decay_all_facts(decay_amount: float = 0.1) -> None:
+    one_week_ago_ts = datetime.now(timezone.utc) - timedelta(weeks=1)
+    await decay_facts(one_week_ago_ts, decay_amount)

@@ -1,42 +1,21 @@
-import asyncio
 from typing import Any
 
 from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
-from src import ai, settings
+from src import ai
 from src.logs import logger
-from src.memory.repository import get_last_memory, save_memory
-from src.messages.repository import get_messages
-from src.models import StructuredMemory
+from src.memory.repository import save_memory
+from src.models import Message, StructuredMemory
 from src.prompt_manager import prompt_manager
-
-MEMORY_LOCK = asyncio.Lock()
-
-
-async def update_chat_memory(chat_id: int):
-    logger.info(f"Updating memory for chat {chat_id}")
-    try:
-        async with MEMORY_LOCK:
-            await _update_chat_memory(chat_id)
-    except Exception as e:
-        logger.error(f"Error updating memory for chat {chat_id}: {e}", exc_info=True)
 
 
 @traceable
-async def _update_chat_memory(chat_id: int):
-    last_memory_data = await get_last_memory(chat_id)
-    current_memory = last_memory_data.content if last_memory_data else StructuredMemory()
-
-    from_date = last_memory_data.created_at if last_memory_data else None
-    new_messages = await get_messages(
-        chat_id, size=settings.MESSAGES_MEMORY_MAX_SIZE, from_date=from_date
-    )
-
-    if not new_messages:
-        logger.info(f"No new messages for memory update in chat {chat_id}")
-        return
-
+async def extract_memory(
+    chat_id: int,
+    current_memory: StructuredMemory,
+    new_messages: list[Message],
+):
     formatted_messages = "\n".join([m.ai_format for m in new_messages])
 
     llm = ai.get_memory_model(version='v1')

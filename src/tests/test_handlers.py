@@ -184,11 +184,6 @@ async def test_handle_conversation_skips_random_reply_if_last_was_ai(
 
 async def test_generate_answer_full_flow(make_update, make_context, mock_llm, mocker):
     mocker.patch(
-        'src.messages.response.search_related_messages',
-        new_callable=AsyncMock,
-        return_value=[],
-    )
-    mocker.patch(
         'src.messages.response.run_context_checks', new_callable=AsyncMock
     )
     update = make_update(text='question', chat_id=222)

@@ -9,10 +9,9 @@ from src.logs import logger
 from src.memory.repository import get_last_memory
 from src.models import Message, MessageReply, UserRole
 from .parsing import parse_user_message
-from .repository import get_messages, save_message, register_chat
+from .repository import get_messages, register_chat, save_message
 from .utils import get_chat_character, send_action
-from ..processors.context import run_context_checks
-from ..processors.context.embeddings import search_related_messages
+from ..processors.context.handlers import run_context_checks
 
 
 @send_action(ChatAction.TYPING)

@@ -2,6 +2,7 @@ import asyncio
 import datetime as dt
 
 from scheduler.asyncio import Scheduler
+from scheduler.trigger import Monday
 from telegram.ext import (
     ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, PicklePersistence,
     filters,
@@ -16,7 +17,11 @@ async def setup_scheduler():
     schedule = Scheduler(tzinfo=const.TIMEZONE_ALMATY)
     schedule.hourly(
         dt.time(minute=0, tzinfo=const.TIMEZONE_ALMATY),
-        tasks.memory.update_all_chats_memory
+        tasks.context.update_all_chats_context
+    )
+    schedule.weekly(
+        Monday(dt.time(3, 0, tzinfo=const.TIMEZONE_ALMATY)),
+        tasks.facts.run_fact_decay,
     )
     while True:
         await asyncio.sleep(1)
