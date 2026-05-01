@@ -75,6 +75,7 @@ async def test_run_context_checks_triggers_embedding_update(mocker):
 async def test_update_chat_memory_saves_to_db(mocker):
     expected = StructuredMemory(constraints=['updated'])
     mock_memory_llm(mocker, return_value=expected)
+    mocker.patch('src.processors.context.handlers.extract_facts', new_callable=AsyncMock)
 
     await save_message(make_message())
     await update_chat_context(1)
@@ -147,15 +148,15 @@ async def test_update_chat_context_lock_held(mocker):
 
 async def test_update_chat_memory_db_error(mocker):
     # Mocking save_memory in src.processors.context.memory
-    mock_save = mocker.patch(
-        "src.processors.context.memory.save_memory",
-        AsyncMock(side_effect=Exception("DB memory error"))
+    mocker.patch(
+        'src.processors.context.memory.save_memory',
+        AsyncMock(side_effect=Exception('DB memory error'))
     )
     mock_logger = mocker.patch("src.processors.context.handlers.logger")
 
-    # Needs some messages to trigger update
     msg = MagicMock()
-    mocker.patch("src.processors.context.handlers.get_messages", AsyncMock(return_value=[msg] * 10))
+    mocker.patch('src.processors.context.handlers.get_messages', AsyncMock(return_value=[msg] * 10))
+    mocker.patch('src.processors.context.handlers.extract_facts', new_callable=AsyncMock)
     mocker.patch("src.processors.context.memory.ai.get_memory_model", MagicMock())
     mocker.patch("src.processors.context.memory.prompt_manager.get_prompt", return_value="p")
 
