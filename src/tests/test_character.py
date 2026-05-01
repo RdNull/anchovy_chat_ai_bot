@@ -8,7 +8,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from src import settings
 from src.characters.character import Character
 from src.characters.rate_limit import ChatRateLimiter
-from src.models import MemoryData, Message, StructuredMemory, UserRole
+from src.models import Message, UserRole
+from src.memory.models import MemoryData, StructuredMemory
 from src.tools import ToolRegistry
 
 

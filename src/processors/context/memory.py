@@ -5,8 +5,9 @@ from langsmith import traceable
 
 from src import ai
 from src.logs import logger
+from src.memory.models import StructuredMemory
 from src.memory.repository import save_memory
-from src.models import Message, StructuredMemory
+from src.models import Message
 from src.prompt_manager import prompt_manager
 
 
@@ -18,12 +19,12 @@ async def extract_memory(
 ):
     formatted_messages = "\n".join([m.ai_format for m in new_messages])
 
-    llm = ai.get_memory_model(version='v1')
+    llm = ai.get_memory_model(version='v2')
     model_with_structure = llm.with_structured_output(StructuredMemory)
 
     system_prompt = prompt_manager.get_prompt(
         'memory',
-        version='v1',
+        version='v2',
         current_memory=current_memory.model_dump_json(indent=2),
         new_messages=formatted_messages
     )

@@ -5,7 +5,8 @@ import yaml
 
 from src import settings
 from src.characters.character import Character
-from src.models import MemoryData, RelatedMessagesData
+from src.models import RelatedMessagesData
+from src.memory.models import MemoryData
 
 CHARACTERS = {}
 for path in Path(settings.CHARACTERS_DIRECTORY).rglob('*.yaml'):

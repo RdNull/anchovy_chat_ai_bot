@@ -7,7 +7,8 @@ from telegram.ext import (ContextTypes, filters)
 from src import settings
 from src.characters.repository import get_character
 from src.logs import logger
-from src.models import MemoryData, RelatedMessagesData
+from src.models import RelatedMessagesData
+from src.memory.models import MemoryData
 
 
 class ReplyToBotFilter(filters.MessageFilter):
