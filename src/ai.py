@@ -15,6 +15,10 @@ def get_memory_model(version: str = 'v1') -> BaseChatModel:
     return _get_model('memory', version)
 
 
+def get_facts_model(version: str = 'v1') -> BaseChatModel:
+    return _get_model('facts', version)
+
+
 def get_image_descriptor_model(version: str = 'v1') -> BaseChatModel:
     return _get_model('image_describe', version)
 
