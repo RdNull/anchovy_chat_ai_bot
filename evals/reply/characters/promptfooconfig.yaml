@@ -1,14 +1,13 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
 
-description: "Character setup eval"
+description: "Character response eval"
 
 prompts:
-  - id: file://../prompts/v2.js
-    label: "Character v2"
+  - id: file://../prompts/v3.js
+    label: "Character v3"
 
 providers:
-  - id: file://../../models/cloud/chat/v5-soft.yaml
-  - id: file://../../models/cloud/chat/v5-hard.yaml
+  - id: file://../../models/cloud/chat/v6.yaml
 
 defaultTest:
   vars:
@@ -27,7 +26,7 @@ defaultTest:
     - type: llm-rubric
       metric: personality
       provider:
-        id: openrouter:openai/gpt-4o-mini
+        id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
       value: |
@@ -39,7 +38,7 @@ defaultTest:
     - type: llm-rubric
       metric: personality
       provider:
-        id: openrouter:openai/gpt-4o-mini
+        id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
       value: |
@@ -52,7 +51,7 @@ defaultTest:
     - type: llm-rubric # delivery checks
       metric: humor
       provider:
-        id: openrouter:openai/gpt-4o-mini
+        id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
       value: |
@@ -77,7 +76,7 @@ defaultTest:
     - type: llm-rubric # reaction checks
       metric: humor
       provider:
-        id: openrouter:openai/gpt-4o-mini
+        id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
       value: |
@@ -102,7 +101,7 @@ defaultTest:
     - type: llm-rubric # context checks
       metric: humor
       provider:
-        id: openrouter:openai/gpt-4o-mini
+        id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
       value: |
@@ -148,3 +147,7 @@ tests:
   - description: "toxic_joke"
     vars:
       messages: file://toxic_joke/messages.json
+
+  - description: "image_explain_real"
+    vars:
+      messages: file://image_explain_real/messages.json
