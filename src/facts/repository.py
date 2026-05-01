@@ -20,7 +20,7 @@ async def get_facts(nickname: str, limit: int = 5) -> list[UserFact]:
 
 async def get_fact_by_id(fact_id: str) -> UserFact | None:
     logger.debug(f"Fetching fact by id {fact_id}")
-    fact = await mongo.facts.find_one({'_id': fact_id})
+    fact = await mongo.facts.find_one({'_id': ObjectId(fact_id)})
     return UserFact.model_validate(fact) if fact else None
 
 

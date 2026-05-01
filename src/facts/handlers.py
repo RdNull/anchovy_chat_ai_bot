@@ -40,7 +40,7 @@ async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
             {'updated_at': {'$exists': False}, 'created_at': {'$lt': up_to_date_ts}},
         ]
     })
-    facts = await cursor.to_list(length=None)
+    facts = await cursor.to_list(length=1000)
     logger.info(f"Decaying {len(facts)} stale facts")
 
     for fact_data in facts:
