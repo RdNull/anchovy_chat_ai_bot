@@ -2,9 +2,9 @@ import asyncio
 
 from src import settings
 from src.logs import logger
+from src.memory.models import StructuredMemory
 from src.memory.repository import get_last_memory
 from src.messages.repository import get_messages, get_messages_count, get_messages_count_since
-from src.models import StructuredMemory
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
 from src.processors.context.facts import extract_facts
 from src.processors.context.memory import extract_memory
