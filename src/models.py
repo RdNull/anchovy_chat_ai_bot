@@ -197,3 +197,14 @@ class UserFact(BaseModel):
     text: str
     confidence: float
     created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ExtractedFact(BaseModel):
+    nickname: str
+    text: str
+    confidence: float
+
+
+class ExtractedFacts(BaseModel):
+    facts: list[ExtractedFact]
