@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import Field
 
-from models import BaseModel
+from src.models import BaseModel
 
 
 class RecentItem(BaseModel):
