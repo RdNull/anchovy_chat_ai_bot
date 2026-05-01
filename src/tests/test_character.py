@@ -8,7 +8,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from src import settings
 from src.characters.character import Character
 from src.characters.rate_limit import ChatRateLimiter
-from src.models import MemoryData, Message, StructuredMemory, UserRole
+from src.memory.models import ChatState, MemoryData, StructuredMemory
+from src.models import Message, UserRole
 from src.tools import ToolRegistry
 
 
@@ -191,8 +192,10 @@ def test_system_message_with_memory_includes_memory_section():
     character.memory = MemoryData(
         chat_id=1,
         created_at=datetime.now(timezone.utc),
-        content=StructuredMemory(constraints=['test constraint']),
+        content=StructuredMemory(
+            state=ChatState(open_questions=['oppa'])
+        )
     )
 
     assert 'ПАМЯТЬ' in character.system_message.content
-    assert 'test constraint' in character.system_message.content
+    assert 'oppa' in character.system_message.content

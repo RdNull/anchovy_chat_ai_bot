@@ -7,8 +7,9 @@ from langsmith import traceable
 
 from src import ai, settings
 from src.logs import logger
-from src.models import MemoryData, Message, RelatedMessagesData, UserRole
+from src.models import Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
+from src.memory.models import MemoryData
 from . import tools
 from .rate_limit import ChatRateLimiter
 from ..settings import CHAT_RATE_LIMIT

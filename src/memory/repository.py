@@ -2,9 +2,7 @@ from datetime import datetime, timezone
 
 from src import mongo
 from src.logs import logger
-from src.models import (
-    MemoryData, StructuredMemory,
-)
+from .models import MemoryData, StructuredMemory
 
 
 async def save_memory(chat_id: int, memory: StructuredMemory):

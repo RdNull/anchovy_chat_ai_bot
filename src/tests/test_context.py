@@ -1,11 +1,12 @@
 from unittest.mock import AsyncMock, MagicMock, call
 
+from src.memory.models import ChatState
 from src import settings
 from src.memory.repository import get_last_memory
 from src.messages.repository import save_message
 from src.models import Message, UserRole
-from src.processors.context.handlers import run_context_checks, update_chat_context
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
+from src.processors.context.handlers import run_context_checks, update_chat_context
 from src.processors.context.memory import StructuredMemory
 
 
@@ -73,7 +74,9 @@ async def test_run_context_checks_triggers_embedding_update(mocker):
 # --- update_chat_memory ---
 
 async def test_update_chat_memory_saves_to_db(mocker):
-    expected = StructuredMemory(constraints=['updated'])
+    expected = StructuredMemory(
+        state=ChatState(open_questions=['oppa'])
+    )
     mock_memory_llm(mocker, return_value=expected)
     mocker.patch('src.processors.context.handlers.extract_facts', new_callable=AsyncMock)
 
@@ -83,7 +86,7 @@ async def test_update_chat_memory_saves_to_db(mocker):
     result = await get_last_memory(1)
     assert result is not None
     assert result.chat_id == 1
-    assert result.content.constraints == ['updated']
+    assert result.content.state.open_questions == ['oppa']
 
 
 async def test_update_chat_memory_no_op_when_no_messages(mocker):
@@ -163,7 +166,7 @@ async def test_update_chat_memory_db_error(mocker):
     # Mock LLM return
     mock_llm = MagicMock()
     mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
-        return_value=StructuredMemory(facts=[])
+        return_value=StructuredMemory()
     )
     mocker.patch("src.processors.context.memory.ai.get_memory_model", return_value=mock_llm)
 
