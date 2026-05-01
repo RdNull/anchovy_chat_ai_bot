@@ -21,7 +21,7 @@ from .utils import (
     escape_markdown_v2, get_chat_character, restricted, send_action,
     set_chat_character,
 )
-from ..processors.context import run_context_checks
+from ..processors.context.handlers import run_context_checks
 
 
 async def start(update: Update, context: CallbackContext):
