@@ -14,7 +14,7 @@ from src.prompt_manager import prompt_manager
 @traceable
 async def extract_memory(
     chat_id: int,
-    current_memory: StructuredMemory,
+    current_memory: StructuredMemory | None,
     new_messages: list[Message],
 ):
     formatted_messages = "\n".join([m.ai_format for m in new_messages])
@@ -25,13 +25,16 @@ async def extract_memory(
     system_prompt = prompt_manager.get_prompt(
         'memory',
         version='v2',
-        current_memory=current_memory.model_dump_json(indent=2),
+        current_memory=current_memory.model_dump_json(indent=2) if current_memory else '{}',
         new_messages=formatted_messages
     )
 
     updated_memory: StructuredMemory | dict[str, Any] = await model_with_structure.ainvoke([
         SystemMessage(content=system_prompt)
     ])
+    if not updated_memory:
+        logger.error(f"No memory extracted for chat {chat_id}")
+        return
 
     try:
         await save_memory(chat_id, updated_memory)
