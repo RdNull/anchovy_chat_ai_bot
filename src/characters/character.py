@@ -63,7 +63,7 @@ class Character:
         if self.rate_limiter.is_exceeded(user_message.chat_id):
             return 'Не гони, дай отдышаться...'
 
-        llm = ai.get_model(version='v5-hard')
+        llm = ai.get_model(version='v6')
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
