@@ -28,7 +28,7 @@ async def update_chat_context(chat_id: int):
 
 async def _update_chat_memory(chat_id: int):
     last_memory_data = await get_last_memory(chat_id)
-    current_memory = last_memory_data.content if last_memory_data else StructuredMemory()
+    current_memory = last_memory_data.content if last_memory_data else None
 
     from_date = last_memory_data.created_at if last_memory_data else None
     new_messages = await get_messages(
