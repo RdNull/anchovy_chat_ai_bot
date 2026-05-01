@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from src import settings
 from src.embeddings.client import ChunkData, EmbeddingsClient
 from src.models import UserFact
-from src.processors.context.facts import get_fact_by_id
+from src.facts.repository import get_fact_by_id
 
 
 @dataclass
