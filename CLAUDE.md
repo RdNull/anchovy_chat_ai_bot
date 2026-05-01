@@ -34,7 +34,8 @@ This is a Telegram bot that simulates character personalities using LLMs with RA
 1. **Message received** → `src/messages/handlers.py` routes based on mention/reply/random chance
 2. **Context enrichment** → `src/processors/context/` updates memory (MongoDB) and embeddings (Qdrant) asynchronously
 3. **Character response** → `src/characters/character.py` builds prompt, invokes LLM in agentic loop with tools
-4. **Hourly scheduler** → `src/tasks/memory.py` updates structured memory for all active chats
+4. **Hourly scheduler** → `src/tasks/context.py` updates structured memory and extracts facts for all active chats
+5. **Weekly scheduler** → `src/tasks/facts.py` decays confidence of stale facts; deletes facts that reach zero
 
 ### Key subsystems
 
@@ -46,15 +47,17 @@ This is a Telegram bot that simulates character personalities using LLMs with RA
 
 **Memory** (`src/processors/context/memory.py`): Structured memory (`StructuredMemory` model) stores facts, decisions, topics, open loops, participants, and constraints in MongoDB per chat.
 
+**Facts** (`src/facts/`): User facts are extracted automatically after each memory update. `src/processors/context/facts.py` calls an LLM with structured output to pull stable facts (with confidence 0.5–1.0) from new messages. `src/facts/handlers.py` upserts each fact — reinforcing confidence if a similar fact exists in Qdrant, creating a new record otherwise. `src/facts/repository.py` handles raw MongoDB CRUD. A weekly decay job (`src/tasks/facts.py`) lowers confidence of facts not updated in 7 days and deletes those that reach zero.
+
 **Embeddings/RAG** (`src/embeddings/client.py` + `src/processors/context/embeddings.py`): Messages are chunked (window=8, overlap=3) and stored in Qdrant. LLM tool `search_messages` performs semantic search with cosine similarity.
 
 **Media pipeline** (`src/processors/media/`): Images go through a vision LLM for description+OCR. Animations/GIFs have key frames extracted (via OpenCV/Lottie), resized to ≤300k pixels, and described in a single vision LLM call.
 
-**Tools available to LLM**: `search_messages` (Qdrant semantic search), `save_user_fact` (persist fact with confidence score), `get_user_facts` (retrieve known facts about a user).
+**Tools available to LLM**: `search_messages` (Qdrant semantic search), `get_user_facts` (retrieve known facts about a user).
 
 ### Data flow for context
 
-`run_context_checks()` in `src/processors/context/__init__.py` is called after each message. It uses `asyncio.Lock` per chat to prevent concurrent memory/embedding updates.
+`run_context_checks()` in `src/processors/context/handlers.py` is called after each message. It uses `asyncio.Lock` per chat to prevent concurrent memory/embedding updates. When memory is updated, fact extraction runs in the same pass over the new messages.
 
 ### Configuration access
 

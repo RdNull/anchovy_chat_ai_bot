@@ -23,7 +23,7 @@ Messages are chunked with a sliding window, embedded via OpenAI `text-embedding-
 Each chat accumulates a `StructuredMemory` document in MongoDB — tracking facts, decisions, active topics, open loops, participant profiles, constraints, and preferences. Memory is updated hourly via a background scheduler and also triggered when message volume crosses a threshold. Updates use GPT-5-mini with structured output mode for reliable JSON extraction.
 
 **User Fact Tracking with Confidence Scoring**
-The `save_user_fact` tool lets the LLM persist facts about individual users with a decimal confidence score. Facts are embedded and stored in Qdrant; the `get_user_facts` tool retrieves them via similarity search.
+Facts about individual users are extracted automatically after each memory update cycle: a dedicated LLM pass reads new messages and emits a list of stable facts per `@username`, each scored with a confidence value (0.5–1.0). Facts are upserted into MongoDB — if a semantically similar fact already exists (Qdrant cosine search), its confidence is reinforced or updated; otherwise a new record is created. A weekly background job decays the confidence of facts not updated in the past week; facts that reach zero confidence are deleted. The `get_user_facts` tool lets the character LLM retrieve the top facts about a user at inference time.
 
 **Async Media Pipeline**
 - Images: downloaded, hashed for deduplication, described by a vision LLM (Gemini 2.5 Flash) with OCR
@@ -56,7 +56,7 @@ LangSmith tracing is integrated via `@traceable` decorators across the LLM call 
 | Data Validation      | Pydantic v2                                     | Models, structured LLM output, settings         |
 | Prompt Templating    | Jinja2                                          | Versioned, task-specific prompt files           |
 | Media Processing     | Pillow, OpenCV, Lottie, CairoSVG                | Image resizing, GIF/sticker frame extraction    |
-| Scheduling           | scheduler                                       | Hourly memory update jobs with timezone support |
+| Scheduling           | scheduler                                       | Hourly context updates, weekly fact decay       |
 | Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks         |
 | Observability        | LangSmith                                       | LLM call tracing and span visualization         |
 | Containerization     | Docker Compose                                  | Bot, MongoDB, and Qdrant services               |
@@ -83,6 +83,8 @@ Message Handlers  (handlers.py)
      |
      +---> [async] Context checks (per-chat lock)
      |          Memory update (if threshold reached)
+     |            +---> Fact extraction from new messages (LLM structured output)
+     |            |         upsert into MongoDB (confidence-based merge via Qdrant similarity)
      |          Embeddings update (if threshold reached)
      |
      +---> Character.respond()
@@ -92,9 +94,13 @@ Message Handlers  (handlers.py)
                Agentic loop (max depth 5):
                    LLM call
                      |-- tool_call: search_messages  --> Qdrant vector search
-                     |-- tool_call: get_user_facts   --> Qdrant fact search
-                     |-- tool_call: save_user_fact   --> MongoDB + Qdrant upsert
+                     |-- tool_call: get_user_facts   --> MongoDB fact lookup
                      |-- text response               --> send to Telegram
+
+[weekly scheduler]
+     +---> Fact confidence decay
+               Facts not updated in 7 days lose 0.1 confidence
+               Facts at zero confidence are deleted
 ```
 
 **Configuration model:** Characters (YAML), prompts (Jinja2 templates), and model configs (versioned JSON) are all loaded from the filesystem at startup. This makes it straightforward to add new characters, tune prompts, or swap models without touching application code.
