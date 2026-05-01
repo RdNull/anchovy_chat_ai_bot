@@ -6,7 +6,7 @@ from bson import Decimal128, ObjectId
 
 from src import mongo
 from src.facts.handlers import upsert_fact
-from src.facts.repository import create_fact, get_facts, update_fact
+from src.facts.repository import create_fact, get_fact_by_id, get_facts, update_fact
 from src.models import UserFact
 from src.processors.context.facts import decay_all_facts
 
@@ -75,6 +75,25 @@ async def test_get_facts_isolates_by_nickname():
 async def test_get_facts_unknown_user_returns_empty():
     result = await get_facts('nobody')
     assert result == []
+
+
+# --- get_fact_by_id ---
+
+async def test_get_fact_by_id_returns_fact():
+    fact = await create_fact('alice', 'likes coffee', 0.9)
+
+    result = await get_fact_by_id(str(fact.id))
+
+    assert result is not None
+    assert result.nickname == 'alice'
+    assert result.text == 'likes coffee'
+    assert result.confidence == 0.9
+
+
+async def test_get_fact_by_id_returns_none_for_unknown_id():
+    result = await get_fact_by_id(str(ObjectId()))
+
+    assert result is None
 
 
 # --- update_fact ---
