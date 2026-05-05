@@ -50,7 +50,7 @@ class Character:
             'character_setup',
             version='v4',
             character_description=self.style_prompt,
-            memory=self.memory.content.model_dump_json(indent=1) if self.memory else None,
+            memory=self.memory.content.prompt_format() if self.memory else None,
             related_messages=self.related_messages or None,
         )
         return SystemMessage(setup_prompt)

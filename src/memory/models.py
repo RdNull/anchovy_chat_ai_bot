@@ -25,6 +25,28 @@ class StructuredMemory(BaseModel):
     participants: dict[str, ParticipantInfo] = Field(default_factory=dict)
     state: ChatState = Field(default_factory=ChatState)
 
+    def prompt_format(self) -> str:
+        lines = ['=== ПАМЯТЬ ===']
+
+        if self.participants:
+            lines.append('УЧАСТНИКИ:')
+            for nick, info in self.participants.items():
+                lines.append(nick)
+                lines.extend(f'  • {t}' for t in info.traits)
+                if info.recent:
+                    lines.append('  recent:')
+                    lines.extend(f'  - [{r.last_seen_at}] {r.text}' for r in info.recent)
+
+        for header, items in [
+            ('\nОБСУЖДАЕТСЯ:', self.state.active_topics),
+            ('\nТЕКУЩИЕ ВОПРОСЫ:', self.state.open_questions),
+            ('\nТЕКУЩИЕ ШУТКИ:', self.state.running_jokes),
+        ]:
+            if items:
+                lines.append(header)
+                lines.extend(f'- {t}' for t in items)
+
+        return '\n'.join(lines)
 
 class MemoryData(BaseModel):
     chat_id: int
