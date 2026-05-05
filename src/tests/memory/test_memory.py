@@ -163,3 +163,36 @@ def test_prompt_format_empty_state_sections_omitted():
         '\nОБСУЖДАЕТСЯ:\n'
         '- x'
     )
+
+
+def test_trim_keeps_last_five():
+    items = [str(i) for i in range(8)]
+    memory = StructuredMemory(
+        participants={
+            '@alice': ParticipantInfo(
+                traits=items,
+                recent=[RecentItem(text=str(i), last_seen_at='26-05-01 10:00') for i in range(8)],
+            )
+        },
+        state=ChatState(
+            active_topics=items,
+            open_questions=items,
+            running_jokes=items,
+        ),
+    )
+    memory.trim()
+    assert memory.participants['@alice'].traits == ['3', '4', '5', '6', '7']
+    assert [r.text for r in memory.participants['@alice'].recent] == ['3', '4', '5', '6', '7']
+    assert memory.state.active_topics == ['3', '4', '5', '6', '7']
+    assert memory.state.open_questions == ['3', '4', '5', '6', '7']
+    assert memory.state.running_jokes == ['3', '4', '5', '6', '7']
+
+
+def test_trim_noop_when_under_limit():
+    memory = StructuredMemory(
+        participants={'@bob': ParticipantInfo(traits=['a', 'b'])},
+        state=ChatState(active_topics=['x']),
+    )
+    memory.trim()
+    assert memory.participants['@bob'].traits == ['a', 'b']
+    assert memory.state.active_topics == ['x']

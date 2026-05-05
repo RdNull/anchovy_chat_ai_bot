@@ -5,9 +5,10 @@ from src import settings
 from src.memory.repository import get_last_memory
 from src.messages.repository import save_message
 from src.models import Message, UserRole
+from src.memory.models import ParticipantInfo, RecentItem
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
 from src.processors.context.handlers import run_context_checks, update_chat_context
-from src.processors.context.memory import StructuredMemory
+from src.processors.context.memory import StructuredMemory, extract_memory
 
 
 def make_message(chat_id=1, role=UserRole.USER, text='hello', nickname='user1'):
@@ -174,3 +175,47 @@ async def test_update_chat_memory_db_error(mocker):
 
     assert mock_logger.error.call_count == 1
     assert "Error updating memory for chat 123" in mock_logger.error.call_args[0][0]
+
+
+# --- extract_memory ---
+
+async def test_extract_memory_trims_oversized_lists(mocker):
+    data_items = [str(i) for i in range(8)]
+    bloated = StructuredMemory(
+        participants={
+            '@alice': ParticipantInfo(
+                traits=data_items,
+                recent=[RecentItem(text=str(i), last_seen_at='26-05-01 10:00') for i in range(8)],
+            )
+        },
+        state=ChatState(
+            active_topics=data_items,
+            open_questions=data_items,
+            running_jokes=data_items,
+        ),
+    )
+    mock_memory_llm(mocker, return_value=bloated)
+    mocker.patch('src.processors.context.memory.prompt_manager.get_prompt', return_value='p')
+
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
+
+    saved = await get_last_memory(1)
+    assert saved is not None
+    assert saved.content.participants['@alice'].traits == ['3', '4', '5', '6', '7']
+    assert [r.text for r in saved.content.participants['@alice'].recent] == ['3', '4', '5', '6', '7']
+    assert saved.content.state.active_topics == ['3', '4', '5', '6', '7']
+    assert saved.content.state.open_questions == ['3', '4', '5', '6', '7']
+    assert saved.content.state.running_jokes == ['3', '4', '5', '6', '7']
+
+
+async def test_extract_memory_no_op_when_llm_returns_falsy(mocker):
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=None)
+    mocker.patch('src.processors.context.memory.ai.get_memory_model', return_value=mock_llm)
+    mocker.patch('src.processors.context.memory.prompt_manager.get_prompt', return_value='p')
+    mock_logger = mocker.patch('src.processors.context.memory.logger')
+
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
+
+    assert await get_last_memory(1) is None
+    assert mock_logger.error.call_count == 1
