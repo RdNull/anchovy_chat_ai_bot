@@ -86,3 +86,80 @@ async def test_register_chat_db_error(mocker):
 
     with pytest.raises(Exception, match='DB update error'):
         await register_chat(123)
+
+
+# --- prompt_format unit tests (no DB) ---
+
+def test_prompt_format_empty():
+    result = StructuredMemory().prompt_format()
+    assert result == '=== ПАМЯТЬ ==='
+
+
+def test_prompt_format_participants_traits_only():
+    memory = StructuredMemory(
+        participants={'@bob': ParticipantInfo(traits=['сарказм', 'ночная сова'])}
+    )
+    assert memory.prompt_format() == (
+        '=== ПАМЯТЬ ===\n'
+        'УЧАСТНИКИ:\n'
+        '@bob\n'
+        '  • сарказм\n'
+        '  • ночная сова'
+    )
+
+
+def test_prompt_format_participants_with_recent():
+    memory = StructuredMemory(
+        participants={
+            '@alice': ParticipantInfo(
+                traits=['любит кофе'],
+                recent=[RecentItem(text='обсуждала деплой', last_seen_at='26-05-01 10:00')],
+            )
+        }
+    )
+    assert memory.prompt_format() == (
+        '=== ПАМЯТЬ ===\n'
+        'УЧАСТНИКИ:\n'
+        '@alice\n'
+        '  • любит кофе\n'
+        '  recent:\n'
+        '  - [26-05-01 10:00] обсуждала деплой'
+    )
+
+
+def test_prompt_format_participant_no_traits_no_recent():
+    memory = StructuredMemory(participants={'@ghost': ParticipantInfo()})
+    assert memory.prompt_format() == (
+        '=== ПАМЯТЬ ===\n'
+        'УЧАСТНИКИ:\n'
+        '@ghost'
+    )
+
+
+def test_prompt_format_state_sections():
+    memory = StructuredMemory(
+        state=ChatState(
+            active_topics=['деплой', 'тесты'],
+            open_questions=['когда релиз?'],
+            running_jokes=['сервер снова лежит'],
+        )
+    )
+    assert memory.prompt_format() == (
+        '=== ПАМЯТЬ ===\n'
+        '\nОБСУЖДАЕТСЯ:\n'
+        '- деплой\n'
+        '- тесты\n'
+        '\nТЕКУЩИЕ ВОПРОСЫ:\n'
+        '- когда релиз?\n'
+        '\nТЕКУЩИЕ ШУТКИ:\n'
+        '- сервер снова лежит'
+    )
+
+
+def test_prompt_format_empty_state_sections_omitted():
+    memory = StructuredMemory(state=ChatState(active_topics=['x']))
+    assert memory.prompt_format() == (
+        '=== ПАМЯТЬ ===\n'
+        '\nОБСУЖДАЕТСЯ:\n'
+        '- x'
+    )
