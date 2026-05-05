@@ -29,7 +29,7 @@ async def extract_memory(
         new_messages=formatted_messages
     )
 
-    updated_memory: StructuredMemory | dict[str, Any] = await model_with_structure.ainvoke([
+    updated_memory: StructuredMemory = await model_with_structure.ainvoke([
         SystemMessage(content=system_prompt)
     ])
     if not updated_memory:
@@ -37,7 +37,7 @@ async def extract_memory(
         return
 
     try:
-        await save_memory(chat_id, updated_memory)
+        await save_memory(chat_id, updated_memory.trim())
         logger.info(f"Memory updated and saved for chat {chat_id}")
     except Exception as e:
         logger.error(

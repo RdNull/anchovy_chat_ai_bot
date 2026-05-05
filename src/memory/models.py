@@ -25,6 +25,15 @@ class StructuredMemory(BaseModel):
     participants: dict[str, ParticipantInfo] = Field(default_factory=dict)
     state: ChatState = Field(default_factory=ChatState)
 
+    def trim(self, keep: int = 5) -> 'StructuredMemory':
+        for info in self.participants.values():
+            info.traits = info.traits[-keep:]
+            info.recent = info.recent[-keep:]
+        self.state.active_topics = self.state.active_topics[-keep:]
+        self.state.open_questions = self.state.open_questions[-keep:]
+        self.state.running_jokes = self.state.running_jokes[-keep:]
+        return self
+
     def prompt_format(self) -> str:
         lines = ['=== ПАМЯТЬ ===']
 
