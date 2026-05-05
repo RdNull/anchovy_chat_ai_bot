@@ -19,7 +19,7 @@ async def extract_memory(
 ):
     formatted_messages = "\n".join([m.ai_format for m in new_messages])
 
-    llm = ai.get_memory_model(version='v2')
+    llm = ai.get_memory_model(version='v3-cheap')
     model_with_structure = llm.with_structured_output(StructuredMemory)
 
     system_prompt = prompt_manager.get_prompt(
