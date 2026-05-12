@@ -1,8 +1,27 @@
 id: openrouter:anthropic/claude-haiku-4.5
-label: "v6.2"
+label: "v6.3"
 config:
   temperature: 0.85
   max_tokens: 150
   showThinking: false
-  reasoning:
-    effort: minimal
+  tools:
+    - type: function
+      function:
+        name: get_user_facts
+        description: Получить факты о конкретном пользователе
+        parameters:
+          type: object
+          properties:
+            username: { type: string }
+          required: [ username ]
+    - type: function
+      function:
+        name: search_messages
+        description: Поиск по истории сообщений чата
+        parameters:
+          type: object
+          properties:
+            query: { type: string }
+          required: [ query ]
+
+  functionToolCallbacks: file://tool_callbacks.js
