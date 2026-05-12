@@ -3,16 +3,15 @@
 description: "Character response eval"
 
 prompts:
-  - id: file://../prompts/v4.js
-    label: "Character v4"
+  - id: file://../prompts/v5.js
+    label: "Character v5"
 
 providers:
   - id: file://../../models/cloud/chat/v6.yaml
 
 defaultTest:
   vars:
-    memory: '{{memory_data | safe}}'
-    character_description: file://../../../src/characters/repository/whyzzzy.yaml
+    character_description: file://whyzzzy.js
   assert:
     # response must be between 1 and 20 words long
     - type: word-count
@@ -67,9 +66,6 @@ defaultTest:
         Memory:
         {{memory}}
         
-        Related messages:
-        {{related_messages}}
-        
         Last messages:
         {{messages}}
 
@@ -92,9 +88,6 @@ defaultTest:
         Memory:
         {{memory}}
         
-        Related messages:
-        {{related_messages}}
-        
         Last messages:
         {{messages}}
 
@@ -116,9 +109,6 @@ defaultTest:
         
         Memory:
         {{memory}}
-        
-        Related messages:
-        {{related_messages}}
         
         Last messages:
         {{messages}}
