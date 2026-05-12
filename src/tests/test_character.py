@@ -39,6 +39,15 @@ def mock_chat_llm(mocker, responses):
 
 # --- respond() ---
 
+async def test_respond_adds_version_tag_to_run_tree(mocker, mock_langsmith):
+    mock_chat_llm(mocker, [AIMessage(content='ответ')])
+    mocker.patch('src.characters.character.random.choice', return_value='test-version')
+
+    await make_character().respond(make_user_message(), last_messages=[])
+
+    assert mock_langsmith.tags == ['test-version']
+
+
 async def test_respond_returns_llm_text(mocker):
     llm = mock_chat_llm(mocker, [AIMessage(content='привет!')])
     user_msg = make_user_message()

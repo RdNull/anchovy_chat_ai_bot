@@ -79,3 +79,4 @@ def mock_langsmith(mocker):
     run_tree = MagicMock()
     run_tree.tags = []
     mocker.patch('langsmith.get_current_run_tree', return_value=run_tree)
+    return run_tree
