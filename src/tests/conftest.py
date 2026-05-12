@@ -73,3 +73,10 @@ def mock_llm(mocker):
     llm.ainvoke = AsyncMock(return_value=AIMessage(content='мок ответ'))
     mocker.patch('src.characters.character.ai.get_model', return_value=llm)
     return llm
+
+@pytest.fixture(autouse=True)
+def mock_langsmith(mocker):
+    run_tree = MagicMock()
+    run_tree.tags = []
+    mocker.patch('langsmith.get_current_run_tree', return_value=run_tree)
+    return run_tree

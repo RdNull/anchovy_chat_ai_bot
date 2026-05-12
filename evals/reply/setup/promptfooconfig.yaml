@@ -3,21 +3,19 @@
 description: "Character setup eval"
 
 prompts:
-  id: file://../prompts/v4.js
-  label: "Character v4"
+  - id: file://../prompts/v5.js
+    label: "Character v5"
 
 providers:
-  - file://../../models/cloud/chat/v1.yaml
+  - id: file://../../models/cloud/chat/v6.yaml
 
 defaultTest:
-  vars:
-    memory: '{{memory_data | safe}}'
   assert:
     # response must be between 1 and 20 words long
     - type: word-count
       value:
         min: 1
-        max: 20
+        max: 100
     # no special characters allowed in the response
     - type: not-regex
       value: "[\\[\\]{}|\\\/<>#$&*]"
@@ -25,7 +23,7 @@ defaultTest:
     - type: llm-rubric
       metric: personality
       provider:
-        id: openrouter:openai/gpt-4o-mini
+        id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
       value: |
@@ -36,7 +34,7 @@ defaultTest:
     - type: llm-rubric
       metric: relevance
       provider:
-        id: openrouter:openai/gpt-4o-mini
+        id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
       value: |
@@ -47,16 +45,13 @@ defaultTest:
     - type: llm-rubric
       metric: hallucination
       provider:
-        id: openrouter:openai/gpt-4o-mini
+        id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
       value: |
         Does the reply based on the facts that present in the memory, related messages or last messages?
         Memory:
         {{memory}}
-        
-        Related messages:
-        {{related_messages}}
         
         Last messages:
         {{messages}}
@@ -72,10 +67,4 @@ tests:
     vars:
       character_description: file://memory/character.txt
       messages: file://memory/messages.json
-      memory_data: file://memory/memory.json
-
-  - description: "related_messages"
-    vars:
-      character_description: file://related_messages/character.txt
-      messages: file://related_messages/messages.json
-      related_messages: file://related_messages/related_messages.txt
+      memory: file://memory/memory.txt

@@ -1,8 +1,8 @@
-id: openrouter:anthropic/claude-haiku-4.5
-label: "v6.3"
+id: openrouter:google/gemini-3-flash-preview
+label: "v7-cheap-gemini-3-flash"
 config:
   temperature: 0.85
-  max_tokens: 150
+  max_tokens: 200
   showThinking: false
   tools:
     - type: function

@@ -1,9 +1,11 @@
-id: openrouter:anthropic/claude-haiku-4.5
-label: "v6.3"
+id: openrouter:x-ai/grok-4.3
+label: "v7-hard-grok-4.3"
 config:
-  temperature: 0.85
-  max_tokens: 150
+  temperature: 0.8
+  max_tokens: 200
   showThinking: false
+  reasoning:
+    effort: none
   tools:
     - type: function
       function:
