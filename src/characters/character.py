@@ -1,15 +1,17 @@
 import asyncio
+import random
 from typing import Generator
 
+import langsmith
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolCall
 from langsmith import traceable
 
 from src import ai, settings
 from src.logs import logger
+from src.memory.models import MemoryData
 from src.models import Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
-from src.memory.models import MemoryData
 from . import tools
 from .rate_limit import ChatRateLimiter
 from ..settings import CHAT_RATE_LIMIT
@@ -64,7 +66,7 @@ class Character:
         if self.rate_limiter.is_exceeded(user_message.chat_id):
             return 'Не гони, дай отдышаться...'
 
-        llm = ai.get_model(version='v6')
+        llm = self._get_llm()
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
@@ -93,6 +95,13 @@ class Character:
 
         logger.info(f"LLM response from {self.name}: {response.content[:50]}...")
         return response.content
+
+    @classmethod
+    def _get_llm(cls):
+        version = random.choice(('v7-cheap', 'v7-hard'))  # an A/B test
+        rt = langsmith.get_current_run_tree()
+        rt.tags.append(version)
+        return ai.get_model(version=version)
 
     async def _run_llm_loop(
         self,
