@@ -1,0 +1,27 @@
+id: openrouter:google/gemini-3-flash-preview
+label: "v7-cheap-gemini-3-flash"
+config:
+  temperature: 0.85
+  max_tokens: 150
+  showThinking: false
+  tools:
+    - type: function
+      function:
+        name: get_user_facts
+        description: Получить факты о конкретном пользователе
+        parameters:
+          type: object
+          properties:
+            username: { type: string }
+          required: [ username ]
+    - type: function
+      function:
+        name: search_messages
+        description: Поиск по истории сообщений чата
+        parameters:
+          type: object
+          properties:
+            query: { type: string }
+          required: [ query ]
+
+  functionToolCallbacks: file://tool_callbacks.js
