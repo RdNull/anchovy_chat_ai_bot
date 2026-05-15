@@ -1,5 +1,5 @@
 from src.logs import logger
-from src.facts.processors import decay_all_facts
+from src.facts.handlers import decay_all_facts
 
 
 async def run_fact_decay():

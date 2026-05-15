@@ -8,7 +8,7 @@ from src import mongo
 from src.facts.handlers import upsert_fact
 from src.facts.repository import create_fact, get_fact_by_id, get_facts, update_fact
 from src.models import UserFact
-from src.facts.processors import decay_all_facts
+from src.facts.handlers import decay_all_facts
 
 
 
