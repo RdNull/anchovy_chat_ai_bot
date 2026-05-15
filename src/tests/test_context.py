@@ -75,6 +75,7 @@ async def test_run_context_checks_triggers_embedding_update(mocker):
 # --- update_chat_memory ---
 
 async def test_update_chat_memory_saves_to_db(mocker):
+    mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
     expected = StructuredMemory(
         state=ChatState(open_questions=['oppa'])
     )
@@ -93,6 +94,19 @@ async def test_update_chat_memory_saves_to_db(mocker):
 async def test_update_chat_memory_no_op_when_no_messages(mocker):
     llm = mock_memory_llm(mocker)
 
+    await update_chat_context(1)
+
+    assert llm.with_structured_output.return_value.ainvoke.call_count == 0
+    assert await get_last_memory(1) is None
+
+
+async def test_update_chat_memory_no_op_below_min_size(mocker):
+    mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 3)
+    llm = mock_memory_llm(mocker)
+    mocker.patch('src.facts.processors.extract_facts', new_callable=AsyncMock)
+
+    await save_message(make_message(text='msg1'))
+    await save_message(make_message(text='msg2'))  # 2 < min_size 3
     await update_chat_context(1)
 
     assert llm.with_structured_output.return_value.ainvoke.call_count == 0
