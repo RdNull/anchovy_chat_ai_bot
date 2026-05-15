@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from unittest.mock import ANY, AsyncMock, MagicMock, call
+from uuid import UUID
 
 from qdrant_client.http.models import QueryResponse, ScoredPoint
 
@@ -29,6 +30,7 @@ def test_chunk_messages():
     # Chunk 2: [5, 6, 7, 8, 9]
     chunks = chunk_messages(messages, window=8, overlap=3)
     assert len(chunks) == 2
+    assert isinstance(chunks[0].chunk_id, UUID)
     assert len(chunks[0].metadata['message_ids']) == 8
     assert len(chunks[1].metadata['message_ids']) == 5
     assert 'text 7' in chunks[0].payload
@@ -85,6 +87,7 @@ async def test_embeddings_client_save_embeddings(mocker):
     points = kwargs['points']
     assert len(points) == 1
     point = points[0]
+    assert isinstance(point.id, UUID)
     assert point.vector == mock_embedding
     assert point.payload['chat_id'] == 123
     assert point.payload['message_ids'] == [str(m.id) for m in messages]
@@ -234,7 +237,7 @@ async def test_facts_embedding_client_save_fact(mocker):
     _, kwargs = mock_qdrant.upsert.call_args
     assert kwargs['collection_name'] == 'facts'
     point = kwargs['points'][0]
-    assert point.id == 'abc123'
+    assert isinstance(point.id, UUID)
     assert point.vector == [0.1] * 128
     assert point.payload['id'] == 'abc123'
     assert point.payload['nickname'] == 'bob'
