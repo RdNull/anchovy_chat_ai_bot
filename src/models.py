@@ -32,6 +32,13 @@ class MessageMediaStatus(str, Enum):
     READY = 'ready'
     ERROR = 'error'
 
+    @property
+    def is_pending(self) -> bool:
+        return self not in {MessageMediaStatus.READY, MessageMediaStatus.ERROR}
+
+    @property
+    def is_finished(self) -> bool:
+        return self in {MessageMediaStatus.READY, MessageMediaStatus.ERROR}
 
 class MessageReply(BaseModel):
     telegram_id: int | None = Field(default=None)

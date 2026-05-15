@@ -1,3 +1,5 @@
+import asyncio
+
 from telegram.ext import ContextTypes
 
 from src.logs import logger
@@ -70,6 +72,29 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
         ocr_text=image_description.ocr_text,
         status=MessageMediaStatus.READY,
     )
+
+
+async def wait_for_media_ready(unique_ids: list[str], timeout: float) -> None:
+    pending = set(unique_ids)
+    deadline = asyncio.get_event_loop().time() + timeout
+
+    while pending:
+        if asyncio.get_event_loop().time() >= deadline:
+            logger.warning(
+                f'Media processing timed out, proceeding without descriptions for: {pending}'
+            )
+            return
+
+        for uid in list(pending):
+            description = await get_media_description_by_media_id(uid)
+            if not description:
+                continue
+
+            if description.status.is_finished:
+                pending.discard(uid)
+
+        if pending:
+            await asyncio.sleep(0.5)
 
 
 def _skip_media_description_generation(status: MessageMediaStatus) -> bool:

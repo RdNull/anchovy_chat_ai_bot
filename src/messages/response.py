@@ -8,6 +8,7 @@ from src import settings
 from src.logs import logger
 from src.memory.repository import get_last_memory
 from src.models import Message, MessageReply, UserRole
+from .media.pipeline import wait_for_media_ready
 from .parsing import parse_user_message
 from .repository import get_messages, register_chat, save_message
 from .utils import get_chat_character, send_action
@@ -21,7 +22,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-    logger.info(f"Generating answer for chat {chat_id} (user: {user_message.nickname})")
+    logger.info(f'Generating answer for chat {chat_id} (user: {user_message.nickname})')
 
     await asyncio.gather(
         register_chat(chat_id),
@@ -33,11 +34,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context=context,
         memory=last_memory if last_memory else None,
     )
-    last_messages = await get_messages(
-        chat_id,
-        size=settings.LAST_MESSAGES_SIZE,
-    )
-    last_messages = last_messages[:-1]  # to trim the current user message from history
+    last_messages = await _get_last_messages(chat_id)
     response = await character.respond(user_message, last_messages)
 
     reply_message = await update.message.reply_text(response)
@@ -58,3 +55,24 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     )
     asyncio.create_task(run_context_checks(chat_id))
+
+
+async def _get_last_messages(chat_id: int) -> list[Message]:
+    last_messages = await get_messages(
+        chat_id,
+        size=settings.LAST_MESSAGES_SIZE,
+    )
+    pending_media_ids = [
+        m.media.unique_id
+        for m in last_messages
+        if m.media and m.media.status.is_pending
+    ]
+    if not pending_media_ids:
+        return last_messages[:-1]  # to trim the current user message from history
+
+    await wait_for_media_ready(
+        pending_media_ids,
+        timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
+    )
+    last_messages = await get_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
+    return last_messages[:-1]
