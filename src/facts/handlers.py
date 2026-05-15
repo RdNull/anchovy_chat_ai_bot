@@ -28,6 +28,7 @@ async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
         return
 
     fact = await create_fact(nickname, text, confidence)
+    await facts_embedding_client.save_fact(fact)
     logger.info(f'Saved new fact {fact.id} for {nickname}')
 
 async def decay_all_facts(decay_amount: float = 0.1) -> None:
