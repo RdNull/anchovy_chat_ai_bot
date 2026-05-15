@@ -16,6 +16,7 @@ Jinja2
 lottie
 cairosvg # for lottie gif export
 qdrant-client
+async-cache
 
 pytest
 pytest-asyncio

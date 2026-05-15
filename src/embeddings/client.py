@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from cache import AsyncCache
 from httpx import AsyncClient
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.grpc import VectorParams
@@ -35,9 +36,10 @@ class EmbeddingsClient:
         self.vector_size = vector_size
         self.qdrant_client: AsyncQdrantClient = AsyncQdrantClient(QDRANT_URL)
         self.api_client = AsyncClient(base_url=settings.OPENROUTER_API_URL, headers={
-            "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
+            'Authorization': f'Bearer {settings.OPENROUTER_API_KEY}',
+            'Content-Type': 'application/json',
         })
+        self.embeddings_cache = AsyncCache(maxsize=128)
 
     async def _check_collection(self):
         if await self.qdrant_client.collection_exists(self.collection_name):
@@ -65,7 +67,7 @@ class EmbeddingsClient:
                     )
                 ]
             )
-            logger.info(f"Saved embedding for chunk {chunk.chunk_id}")
+            logger.info(f'Saved embedding for chunk {chunk.chunk_id}')
 
     async def _search(self, query: str, limit=5, score_threshold=0.2,  **filters) -> list[EmbeddingSearchDataItem]:
         await self._check_collection()
@@ -91,15 +93,20 @@ class EmbeddingsClient:
         ]
 
     async def _get_embedding_vectors(self, text: str) -> list[float]:
-        response = await self.api_client.post(
-            '/embeddings',
-            json={
-                "model": self.model_name,
-                "input": text,
-                "encoding_format": "float"
-            })
+        async def _run_embedding_request():
+            response = await self.api_client.post(
+                '/embeddings',
+                json={
+                    'model': self.model_name,
+                    'input': text,
+                    'encoding_format': 'float'
+                })
 
-        response.raise_for_status()
-        data = response.json()
+            response.raise_for_status()
+            data = response.json()
 
-        return data["data"][0]["embedding"]
+            return data['data'][0]['embedding']
+
+        return await self.embeddings_cache.get(
+            f'{self.model_name}:{text}', loader=_run_embedding_request
+        )

@@ -215,6 +215,11 @@ async def test_get_embedding_vectors_api(mocker):
             "encoding_format": "float"
         }
     )
+    # cache
+    await client._get_embedding_vectors("test text")
+    assert client.api_client.post.call_count == 1
+    assert client.embeddings_cache.misses == 1
+    assert client.embeddings_cache.hits == 1
 
 
 async def test_facts_embedding_client_save_fact(mocker):
