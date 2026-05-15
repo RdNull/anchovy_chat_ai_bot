@@ -8,7 +8,7 @@ from src.messages.media import (
     create_media_description, get_media_description_by_media_id, handle_media_message,
 )
 from src.messages.media.download import _parse_animation_file, _parse_image_file, get_message_media
-from src.messages.media.pipeline import _generate_media_description
+from src.messages.media.pipeline import _generate_media_description, wait_for_media_ready
 from src.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescriptionData, MediaDetectionData,
     Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UserRole,
@@ -274,3 +274,91 @@ def test_parse_animation_file():
     assert isinstance(result, AnimationDetectionData)
     assert result.format == 'tgs'
     assert result.content == raw_bytes
+
+
+# --- wait_for_media_ready ---
+
+async def test_wait_for_media_ready_empty_list(mocker):
+    mock_get = mocker.patch('src.messages.media.pipeline.get_media_description_by_media_id')
+
+    await wait_for_media_ready([], timeout=5.0)
+
+    assert mock_get.call_count == 0
+
+
+async def test_wait_for_media_ready_already_finished(mocker):
+    ready_desc = MagicMock()
+    ready_desc.status.is_finished = True
+    mocker.patch(
+        'src.messages.media.pipeline.get_media_description_by_media_id',
+        return_value=ready_desc,
+    )
+    mock_sleep = mocker.patch('src.messages.media.pipeline.asyncio.sleep', new_callable=AsyncMock)
+
+    await wait_for_media_ready(['uid1'], timeout=5.0)
+
+    assert mock_sleep.call_count == 0
+
+
+async def test_wait_for_media_ready_polls_until_ready(mocker):
+    pending_desc = MagicMock()
+    pending_desc.status.is_finished = False
+    ready_desc = MagicMock()
+    ready_desc.status.is_finished = True
+    mocker.patch(
+        'src.messages.media.pipeline.get_media_description_by_media_id',
+        side_effect=[pending_desc, ready_desc],
+    )
+    mock_sleep = mocker.patch('src.messages.media.pipeline.asyncio.sleep', new_callable=AsyncMock)
+
+    await wait_for_media_ready(['uid1'], timeout=5.0)
+
+    assert mock_sleep.call_count == 1
+
+
+async def test_wait_for_media_ready_treats_none_as_not_ready(mocker):
+    ready_desc = MagicMock()
+    ready_desc.status.is_finished = True
+    mocker.patch(
+        'src.messages.media.pipeline.get_media_description_by_media_id',
+        side_effect=[None, ready_desc],
+    )
+    mock_sleep = mocker.patch('src.messages.media.pipeline.asyncio.sleep', new_callable=AsyncMock)
+
+    await wait_for_media_ready(['uid1'], timeout=5.0)
+
+    assert mock_sleep.call_count == 1
+
+
+async def test_wait_for_media_ready_times_out(mocker):
+    mock_get = mocker.patch('src.messages.media.pipeline.get_media_description_by_media_id')
+    mock_sleep = mocker.patch('src.messages.media.pipeline.asyncio.sleep', new_callable=AsyncMock)
+    mock_logger = mocker.patch('src.messages.media.pipeline.logger')
+
+    await wait_for_media_ready(['uid1'], timeout=-1.0)
+
+    assert mock_logger.warning.call_count == 1
+    assert mock_get.call_count == 0
+    assert mock_sleep.call_count == 0
+
+
+async def test_wait_for_media_ready_multiple_ids_waits_for_all(mocker):
+    pending_desc = MagicMock()
+    pending_desc.status.is_finished = False
+    ready_desc = MagicMock()
+    ready_desc.status.is_finished = True
+
+    results = {'uid1': [ready_desc], 'uid2': [pending_desc, ready_desc]}
+
+    def get_by_uid(uid):
+        return results[uid].pop(0)
+
+    mocker.patch(
+        'src.messages.media.pipeline.get_media_description_by_media_id',
+        side_effect=get_by_uid,
+    )
+    mock_sleep = mocker.patch('src.messages.media.pipeline.asyncio.sleep', new_callable=AsyncMock)
+
+    await wait_for_media_ready(['uid1', 'uid2'], timeout=5.0)
+
+    assert mock_sleep.call_count == 1

@@ -1,14 +1,18 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
-from src import mongo
+from src import mongo, settings
 from src.characters.repository import CHARACTERS
 from src.messages import handlers
 from src.messages.parsing import _get_message_medium
 from src.messages.repository import (
     get_messages, save_message,
 )
-from src.models import Message, UpdateMessage, UserRole
+from src.messages.response import _get_last_messages
+from src.models import (
+    Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UpdateMessage,
+    UserRole,
+)
 
 
 # --- /start ---
@@ -433,6 +437,86 @@ async def test_handle_message_edit_no_message_found(mocker, make_update, make_co
     await handlers.handle_message_edit(update, make_context)
 
     assert update_message_mock.call_count == 0
+
+
+# --- _get_last_messages ---
+
+async def test_get_last_messages_no_pending_media_returns_without_wait(mocker):
+    msg1 = Message(chat_id=222, nickname='user', role=UserRole.USER, text='hi')
+    msg2 = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
+    mocker.patch('src.messages.response.get_messages', return_value=[msg1, msg2])
+    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+
+    result = await _get_last_messages(222)
+
+    assert result == [msg1]
+    assert mock_wait.call_count == 0
+
+
+async def test_get_last_messages_with_ready_media_no_wait(mocker):
+    msg_ready = Message(
+        chat_id=222, nickname='user', role=UserRole.USER, text=None,
+        media=MessageMedia(
+            unique_id='uid1', media_id='fid1',
+            type=MessageMediaTypes.IMAGE, status=MessageMediaStatus.READY,
+        ),
+    )
+    msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
+    mocker.patch('src.messages.response.get_messages', return_value=[msg_ready, msg_current])
+    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+
+    result = await _get_last_messages(222)
+
+    assert mock_wait.call_count == 0
+    assert result == [msg_ready]
+
+
+async def test_get_last_messages_pending_media_waits_and_refetches(mocker):
+    msg_pending = Message(
+        chat_id=222, nickname='user', role=UserRole.USER, text=None,
+        media=MessageMedia(
+            unique_id='uid1', media_id='fid1',
+            type=MessageMediaTypes.IMAGE, status=MessageMediaStatus.PENDING,
+        ),
+    )
+    msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
+    mock_get = mocker.patch(
+        'src.messages.response.get_messages',
+        side_effect=[[msg_pending, msg_current], [msg_pending, msg_current]],
+    )
+    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+
+    result = await _get_last_messages(222)
+
+    assert mock_wait.call_count == 1
+    assert mock_wait.call_args == call(
+        ['uid1'], timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
+    )
+    assert mock_get.call_count == 2
+    assert result == [msg_pending]
+
+
+async def test_get_last_messages_processing_media_waits(mocker):
+    msg_processing = Message(
+        chat_id=222, nickname='user', role=UserRole.USER, text=None,
+        media=MessageMedia(
+            unique_id='uid2', media_id='fid2',
+            type=MessageMediaTypes.IMAGE, status=MessageMediaStatus.PROCESSING,
+        ),
+    )
+    msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
+    mocker.patch(
+        'src.messages.response.get_messages',
+        side_effect=[[msg_processing, msg_current], [msg_processing, msg_current]],
+    )
+    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+
+    await _get_last_messages(222)
+
+    assert mock_wait.call_count == 1
+    assert mock_wait.call_args == call(
+        ['uid2'], timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
+    )
 
 
 # --- _get_message_medium ---
