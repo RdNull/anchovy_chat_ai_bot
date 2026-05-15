@@ -1,12 +1,12 @@
 import asyncio
 
 from src import settings
+from src.facts.processors import extract_facts
 from src.logs import logger
+from src.memory.processors import extract_memory
 from src.memory.repository import get_last_memory
 from src.messages.repository import get_messages, get_messages_count, get_messages_count_since
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
-from src.facts.processors import extract_facts
-from src.memory.processors import extract_memory
 
 CHAT_CONTEXT_LOCK = asyncio.Lock()
 
@@ -34,7 +34,7 @@ async def _update_chat_memory(chat_id: int):
         chat_id, size=settings.MESSAGES_MEMORY_MAX_SIZE, from_date=from_date
     )
 
-    if not new_messages:
+    if len(new_messages) < settings.LAST_MESSAGES_MIN_SIZE:
         logger.info(f'No new messages for memory update in chat {chat_id}')
         return
 

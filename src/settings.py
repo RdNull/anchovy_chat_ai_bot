@@ -26,6 +26,7 @@ MESSAGES_EMBEDDINGS_MAX_SIZE = int(os.environ.get('MESSAGES_EMBEDDINGS_MAX_SIZE'
 
 MESSAGES_MEMORY_MAX_SIZE = int(os.environ.get('MESSAGES_MEMORY_MAX_SIZE', 40))
 LAST_MESSAGES_SIZE = int(os.environ.get('LAST_MESSAGES_SIZE', 40))
+LAST_MESSAGES_MIN_SIZE = int(os.environ.get('LAST_MESSAGES_MIN_SIZE', 5))
 
 OPENROUTER_API_URL = os.environ.get('OPENROUTER_API_URL', 'https://openrouter.ai/api/v1')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
