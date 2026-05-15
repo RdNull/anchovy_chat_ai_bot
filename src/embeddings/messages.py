@@ -1,4 +1,5 @@
 import hashlib
+from uuid import UUID
 
 from src import settings
 from src.embeddings.client import ChunkData, EmbeddingsClient
@@ -10,9 +11,9 @@ from src.models import Message, RelatedMessagesData
 def chunk_messages(messages: list[Message], window=8, overlap=3) -> list[ChunkData]:
     chat_id = messages[0].chat_id
 
-    def get_chunk_id(_chunk: list[Message]):
+    def get_chunk_id(_chunk: list[Message]) -> UUID:
         key = f'{chat_id}-{"-".join(str(m.id) for m in _chunk)}'
-        return hashlib.md5(key.encode()).hexdigest()
+        return UUID(hashlib.md5(key.encode()).hexdigest())
 
     chunks = []
     for i in range(0, len(messages), window - overlap):

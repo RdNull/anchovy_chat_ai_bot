@@ -1,10 +1,13 @@
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 from httpx import AsyncClient
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.grpc import VectorParams
-from qdrant_client.http.models import FieldCondition, Filter, MatchValue, QueryResponse
+from qdrant_client.http.models import (
+    FieldCondition, Filter, MatchValue, QueryResponse,
+)
 from qdrant_client.models import (Distance, PointStruct, VectorParams)
 
 from src import settings
@@ -14,7 +17,7 @@ from src.settings import QDRANT_URL
 
 @dataclass
 class ChunkData:
-    chunk_id: str
+    chunk_id: UUID
     payload: str
     metadata: dict
 

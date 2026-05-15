@@ -1,3 +1,4 @@
+import uuid
 from dataclasses import dataclass
 
 from src import settings
@@ -16,7 +17,7 @@ class FactsEmbeddingClient(EmbeddingsClient):
     async def save_fact(self, fact: UserFact):
         chunks = [
             ChunkData(
-                chunk_id=str(fact.id),
+                chunk_id=uuid.uuid4(),
                 payload=fact.text,
                 metadata={
                     'id': str(fact.id),
