@@ -3,8 +3,8 @@ from dataclasses import dataclass
 
 from src import settings
 from src.embeddings.client import ChunkData, EmbeddingsClient
-from src.models import UserFact
 from src.facts.repository import get_fact_by_id
+from src.models import UserFact
 
 
 @dataclass
@@ -30,7 +30,9 @@ class FactsEmbeddingClient(EmbeddingsClient):
         await self._save(chunks)
 
     async def search_facts(self, nickname: str, text, limit=5) -> list[FactsSearchResult]:
-        search_results = await self._search(text, limit=limit, nickname=nickname, score_threshold=0.7)
+        search_results = await self._search(
+            text, limit=limit, nickname=nickname, score_threshold=0.6
+        )
         if not search_results:
             return []
 
