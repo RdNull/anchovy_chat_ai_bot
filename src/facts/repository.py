@@ -59,5 +59,5 @@ async def save_fact(fact: UserFact) -> UserFact:
         'updated_at': now_ts,
     }
     result = await mongo.facts.insert_one(data)
-    fact.id = result.inserted_id
-    return fact
+    data['_id'] = result.inserted_id
+    return UserFact.model_validate(data)
