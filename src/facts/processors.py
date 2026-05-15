@@ -11,7 +11,7 @@ from src.prompt_manager import prompt_manager
 @traceable
 async def extract_facts(new_messages: list[Message]):
     formatted_messages = '\n'.join([m.ai_format for m in new_messages])
-    llm = ai.get_facts_model(version='v1')
+    llm = ai.get_facts_model(version='v2')
     model_with_structure = llm.with_structured_output(ExtractedFacts)
 
     system_prompt = prompt_manager.get_prompt(
