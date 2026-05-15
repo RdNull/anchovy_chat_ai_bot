@@ -8,7 +8,7 @@ from src.models import Message, UserRole
 from src.memory.models import ParticipantInfo, RecentItem
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
 from src.processors.context.handlers import run_context_checks, update_chat_context
-from src.processors.context.memory import StructuredMemory, extract_memory
+from src.memory.processors import StructuredMemory, extract_memory
 
 
 def make_message(chat_id=1, role=UserRole.USER, text='hello', nickname='user1'):
@@ -19,7 +19,7 @@ def mock_memory_llm(mocker, return_value=None):
     result = return_value if return_value is not None else StructuredMemory()
     mock_llm = MagicMock()
     mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=result)
-    mocker.patch('src.processors.context.memory.ai.get_memory_model', return_value=mock_llm)
+    mocker.patch('src.memory.processors.ai.get_memory_model', return_value=mock_llm)
     return mock_llm
 
 
@@ -79,7 +79,7 @@ async def test_update_chat_memory_saves_to_db(mocker):
         state=ChatState(open_questions=['oppa'])
     )
     mock_memory_llm(mocker, return_value=expected)
-    mocker.patch('src.processors.context.handlers.extract_facts', new_callable=AsyncMock)
+    mocker.patch('src.facts.processors.extract_facts', new_callable=AsyncMock)
 
     await save_message(make_message())
     await update_chat_context(1)
@@ -153,23 +153,23 @@ async def test_update_chat_context_lock_held(mocker):
 async def test_update_chat_memory_db_error(mocker):
     # Mocking save_memory in src.processors.context.memory
     mocker.patch(
-        'src.processors.context.memory.save_memory',
+        'src.memory.processors.save_memory',
         AsyncMock(side_effect=Exception('DB memory error'))
     )
     mock_logger = mocker.patch("src.processors.context.handlers.logger")
 
     msg = MagicMock()
     mocker.patch('src.processors.context.handlers.get_messages', AsyncMock(return_value=[msg] * 10))
-    mocker.patch('src.processors.context.handlers.extract_facts', new_callable=AsyncMock)
-    mocker.patch("src.processors.context.memory.ai.get_memory_model", MagicMock())
-    mocker.patch("src.processors.context.memory.prompt_manager.get_prompt", return_value="p")
+    mocker.patch('src.facts.processors.extract_facts', new_callable=AsyncMock)
+    mocker.patch('src.memory.processors.ai.get_memory_model', MagicMock())
+    mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
 
     # Mock LLM return
     mock_llm = MagicMock()
     mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
         return_value=StructuredMemory()
     )
-    mocker.patch("src.processors.context.memory.ai.get_memory_model", return_value=mock_llm)
+    mocker.patch("src.memory.processors.ai.get_memory_model", return_value=mock_llm)
 
     await update_chat_context(123)
 
@@ -195,7 +195,7 @@ async def test_extract_memory_trims_oversized_lists(mocker):
         ),
     )
     mock_memory_llm(mocker, return_value=bloated)
-    mocker.patch('src.processors.context.memory.prompt_manager.get_prompt', return_value='p')
+    mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
 
     await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
 
@@ -211,9 +211,9 @@ async def test_extract_memory_trims_oversized_lists(mocker):
 async def test_extract_memory_no_op_when_llm_returns_falsy(mocker):
     mock_llm = MagicMock()
     mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=None)
-    mocker.patch('src.processors.context.memory.ai.get_memory_model', return_value=mock_llm)
-    mocker.patch('src.processors.context.memory.prompt_manager.get_prompt', return_value='p')
-    mock_logger = mocker.patch('src.processors.context.memory.logger')
+    mocker.patch('src.memory.processors.ai.get_memory_model', return_value=mock_llm)
+    mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
+    mock_logger = mocker.patch('src.memory.processors.logger')
 
     await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
 

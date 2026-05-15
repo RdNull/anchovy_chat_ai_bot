@@ -1,0 +1,141 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+
+description: "Facts extraction eval"
+
+prompts:
+  - id: file://../../src/prompts/facts/v2.j2
+    label: "Facts v2"
+
+providers:
+  - file://../models/cloud/facts/v1.yaml
+  - file://../models/cloud/facts/v2.yaml
+
+defaultTest:
+  options:
+    provider:
+      id: openrouter:deepseek/deepseek-v3.2
+      config:
+        max_tokens: 4000
+        temperature: 0.2
+
+  assert:
+    - type: is-json
+    - type: javascript
+      value: |
+        const result = JSON.parse(output);
+        return Array.isArray(result.facts) &&
+          result.facts.every(f =>
+            typeof f.nickname === 'string' &&
+            f.nickname.startsWith('@') &&
+            typeof f.text === 'string' &&
+            typeof f.confidence === 'number' &&
+            f.confidence >= 0.5 &&
+            f.confidence <= 1.0
+          );
+    - type: llm-rubric
+      value: |
+        Evaluate a fact extraction result from a Telegram group chat.
+        The system extracts stable personal facts about users (confidence 0.5–1.0).
+
+        Rules the extraction must follow:
+        - Exclude: facts of users without @ in username
+        - Exclude: temporary states, jokes/sarcasm, facts true for all members (using Telegram, speaking Russian)
+        - Include: stable facts (job, city, skills, preferences, personality traits)
+        - Confidence 1.0 = direct explicit statement; 0.8–0.9 = repeated behavior; 0.5–0.7 = indirect/single mention
+        
+        Scoring:
+        - 1.0 = all correct facts extracted (including correctly returning an empty list when no valid facts exist)
+        - 0.8 = mostly correct, minor omissions or slightly off confidence
+        - 0.5 = some correct, some missing, or one incorrect fact
+        - 0.3 = key facts missed, hallucinations, or wrong confidence
+        - 0.0 = completely wrong, OR returned empty when clear stable facts were present
+
+        Messages:
+        {{messages}}
+
+
+tests:
+  - description: "direct_statement"
+    vars:
+      messages: file://direct_statement/messages.txt
+    assert:
+      - type: llm-rubric
+        value: |
+          Messages contain direct self-statements. Expected: @petrov has a fact about being a
+          programmer at Yandex (confidence ~1.0), @ivanova has a fact about being a designer
+          (confidence ~1.0).
+
+  - description: "behavioral_inference"
+    vars:
+      messages: file://behavioral_inference/messages.txt
+    assert:
+      - type: llm-rubric
+        value: |
+          Messages show repeated behavioral patterns. Expected: @alex has a fact about programming
+          in Python (confidence 0.8–0.9), @bob has a fact about going to the gym in the mornings
+          (confidence 0.8–0.9).
+
+  - description: "temporal_state"
+    vars:
+      messages: file://temporal_state/messages.txt
+    assert:
+      - type: javascript
+        value: JSON.parse(output).facts.length === 0
+      - type: llm-rubric
+        value: |
+          Messages contain only temporary states (fatigue, headache, going to sleep early).
+          Expected: empty facts list. Any extracted fact is incorrect.
+
+  - description: "sarcasm_irony"
+    vars:
+      messages: file://sarcasm_irony/messages.txt
+    assert:
+      - type: javascript
+        value: JSON.parse(output).facts.length === 0
+      - type: llm-rubric
+        value: |
+          Messages contain obvious sarcasm — @dima jokingly calls himself a great athlete walking
+          from the couch to the fridge. Expected: empty facts list. Extracting any sport-related
+          fact for @dima is incorrect.
+
+  - description: "anonymous_users"
+    vars:
+      messages: file://anonymous_users/messages.txt
+    assert:
+      - type: llm-rubric
+        value: |
+          Messages include users without @usernames (Андрей, Маша) who clearly state their
+          professions. Expected: no facts for Андрей or Маша (no @username). @kirill says only
+          "интересно" — no extractable fact. Result should be an empty list.
+
+  - description: "multiple_users"
+    vars:
+      messages: file://multiple_users/messages.txt
+    assert:
+      - type: llm-rubric
+        value: |
+          Three users state their locations directly. Expected: location facts for @sasha (lives in
+          Питер, originally from Волгоград), @tanya (Москва), and @maks (Берлин, originally from
+          Киева). All confidence ~1.0.
+
+  - description: "common_facts_excluded"
+    vars:
+      messages: file://common_facts_excluded/messages.txt
+    assert:
+      - type: javascript
+        value: JSON.parse(output).facts.length === 0
+      - type: llm-rubric
+        value: |
+          Messages only discuss using Telegram — a universal fact for all chat members by default.
+          Expected: empty facts list. Extracting "использует Telegram" for any user is incorrect.
+
+  - description: "no_extractable_facts"
+    vars:
+      messages: file://no_extractable_facts/messages.txt
+    assert:
+      - type: javascript
+        value: JSON.parse(output).facts.length === 0
+      - type: llm-rubric
+        value: |
+          Messages are pure small talk with no personal information whatsoever.
+          Expected: empty facts list.

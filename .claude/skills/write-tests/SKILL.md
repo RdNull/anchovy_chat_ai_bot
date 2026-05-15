@@ -67,12 +67,21 @@ mocker.patch(
 )
 ```
 
+### AsyncMock is rarely needed
+`mocker.patch` auto-maps async functions — do NOT wrap with `AsyncMock` unless the default doesn't work (e.g. the mock must return a complex object or behave in a non-standard way):
+
+```python
+# GOOD — auto-mapping handles awaiting
+mocker.patch('src.embeddings.facts.facts_embedding_client.search_facts', return_value=[])
+mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
+
+# Only use AsyncMock when auto-mapping falls short
+mocker.patch('some.module.fn', AsyncMock(side_effect=lambda x: x))
+```
+
 ### Qdrant / embeddings
 ```python
-mocker.patch(
-    'src.processors.context.embeddings.messages_embeddings_client.save_embeddings',
-    new_callable=AsyncMock,
-)
+mocker.patch('src.processors.context.embeddings.messages_embeddings_client.save_embeddings')
 ```
 
 ### Tool calls in character.respond()

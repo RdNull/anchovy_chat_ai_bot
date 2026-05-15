@@ -1,16 +1,15 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from src import mongo
+from src.embeddings.facts import facts_embedding_client
 from src.facts.repository import create_fact, update_fact
 from src.logs import logger
 from src.models import UserFact
 
 
 async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
-    from src.embeddings.facts import facts_embedding_client
-
     if confidence < 0.5 or confidence > 1:
-        logger.warning(f"Skipping fact with invalid confidence {confidence} for {nickname}")
+        logger.warning(f'Skipping fact with invalid confidence {confidence} for {nickname}')
         return
 
     nickname = nickname.replace('@', '')
@@ -22,14 +21,19 @@ async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
         if existing_confidence >= confidence:
             new_confidence = min(existing_confidence + 0.1, 1)
             await update_fact(similar_fact.fact.id, confidence=new_confidence)
-            logger.info(f"Reinforced fact {similar_fact.fact.id} confidence to {new_confidence}")
+            logger.info(f'Reinforced fact {similar_fact.fact.id} confidence to {new_confidence}')
         else:
             await update_fact(similar_fact.fact.id, confidence=confidence, text=text)
-            logger.info(f"Updated fact {similar_fact.fact.id} with new confidence {confidence}")
+            logger.info(f'Updated fact {similar_fact.fact.id} with new confidence {confidence}')
         return
 
     fact = await create_fact(nickname, text, confidence)
-    logger.info(f"Saved new fact {fact.id} for {nickname}")
+    await facts_embedding_client.save_fact(fact)
+    logger.info(f'Saved new fact {fact.id} for {nickname}')
+
+async def decay_all_facts(decay_amount: float = 0.1) -> None:
+    one_week_ago_ts = datetime.now(timezone.utc) - timedelta(weeks=1)
+    await decay_facts(one_week_ago_ts, decay_amount)
 
 
 async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
@@ -41,14 +45,14 @@ async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
         ]
     })
     facts = await cursor.to_list(length=1000)
-    logger.info(f"Decaying {len(facts)} stale facts")
+    logger.info(f'Decaying {len(facts)} stale facts')
 
     for fact_data in facts:
         fact = UserFact.model_validate(fact_data)
         new_confidence = round(fact.confidence - decay_amount, 10)
         if new_confidence <= 0:
             await mongo.facts.delete_one({'_id': fact_data['_id']})
-            logger.info(f"Deleted fact {fact_data['_id']} (confidence decayed to zero)")
+            logger.info(f'Deleted fact {fact_data['_id']} (confidence decayed to zero)')
         else:
             await mongo.facts.update_one(
                 {'_id': fact_data['_id']},
