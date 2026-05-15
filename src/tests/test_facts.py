@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 from bson import Decimal128, ObjectId
 
@@ -27,7 +27,7 @@ async def test_save_fact_persists_fields():
 async def test_save_fact_sets_updated_at():
     fact = await create_fact(nickname='alice', text='likes coffee', confidence=0.9)
 
-    stored = await mongo.facts.find_one({'_id': fact.id})
+    stored = await mongo.facts.find_one({'_id': ObjectId(fact.id)})
     assert stored['updated_at'] is not None
     assert stored['updated_at'] == stored['created_at']
 
@@ -100,12 +100,12 @@ async def test_get_fact_by_id_returns_none_for_unknown_id():
 
 async def test_update_fact_refreshes_updated_at():
     fact = await create_fact('alice', 'likes coffee', 0.8)
-    stored_before = await mongo.facts.find_one({'_id': fact.id})
+    stored_before = await mongo.facts.find_one({'_id': ObjectId(fact.id)})
     old_updated_at = stored_before['updated_at']
 
     await update_fact(str(fact.id), confidence=0.9)
 
-    stored_after = await mongo.facts.find_one({'_id': fact.id})
+    stored_after = await mongo.facts.find_one({'_id': ObjectId(fact.id)})
     assert stored_after['updated_at'] >= old_updated_at
     assert stored_after['confidence'] == 0.9
 
@@ -117,6 +117,10 @@ async def test_upsert_fact_creates_new_when_no_similar(mocker):
         'src.embeddings.facts.facts_embedding_client.search_facts',
         AsyncMock(return_value=[])
     )
+    mock_save = mocker.patch(
+        'src.embeddings.facts.facts_embedding_client.save_fact',
+        AsyncMock()
+    )
 
     await upsert_fact('alice', 'likes coffee', 0.8)
 
@@ -124,6 +128,8 @@ async def test_upsert_fact_creates_new_when_no_similar(mocker):
     assert len(facts) == 1
     assert facts[0].text == 'likes coffee'
     assert facts[0].confidence == 0.8
+    assert mock_save.call_count == 1
+    assert mock_save.call_args == call(facts[0])
 
 
 async def test_upsert_fact_skips_low_confidence(mocker):
@@ -131,10 +137,15 @@ async def test_upsert_fact_skips_low_confidence(mocker):
         'src.embeddings.facts.facts_embedding_client.search_facts',
         AsyncMock(return_value=[])
     )
+    mock_save = mocker.patch(
+        'src.embeddings.facts.facts_embedding_client.save_fact',
+        AsyncMock()
+    )
 
     await upsert_fact('alice', 'maybe likes coffee', 0.4)
 
     assert mock_search.call_count == 0
+    assert mock_save.call_count == 0
     facts = await get_facts('alice')
     assert len(facts) == 0
 
@@ -144,12 +155,18 @@ async def test_upsert_fact_strips_at_prefix(mocker):
         'src.embeddings.facts.facts_embedding_client.search_facts',
         AsyncMock(return_value=[])
     )
+    mock_save = mocker.patch(
+        'src.embeddings.facts.facts_embedding_client.save_fact',
+        AsyncMock()
+    )
 
     await upsert_fact('@alice', 'likes coffee', 0.8)
 
     facts = await get_facts('alice')
     assert len(facts) == 1
     assert facts[0].nickname == 'alice'
+    assert mock_save.call_count == 1
+    assert mock_save.call_args == call(facts[0])
 
 
 async def test_upsert_fact_reinforces_existing_higher_confidence(mocker):
@@ -162,11 +179,16 @@ async def test_upsert_fact_reinforces_existing_higher_confidence(mocker):
         'src.embeddings.facts.facts_embedding_client.search_facts',
         AsyncMock(return_value=[similar])
     )
+    mock_save = mocker.patch(
+        'src.embeddings.facts.facts_embedding_client.save_fact',
+        AsyncMock()
+    )
 
     await upsert_fact('alice', 'loves coffee', 0.7)
 
-    stored = await mongo.facts.find_one({'_id': existing.id})
+    stored = await mongo.facts.find_one({'_id': ObjectId(existing.id)})
     assert stored['confidence'] == min(0.9 + 0.1, 1)
+    assert mock_save.call_count == 0
 
 
 async def test_upsert_fact_updates_existing_lower_confidence(mocker):
@@ -179,12 +201,17 @@ async def test_upsert_fact_updates_existing_lower_confidence(mocker):
         'src.embeddings.facts.facts_embedding_client.search_facts',
         AsyncMock(return_value=[similar])
     )
+    mock_save = mocker.patch(
+        'src.embeddings.facts.facts_embedding_client.save_fact',
+        AsyncMock()
+    )
 
     await upsert_fact('alice', 'loves coffee', 0.9)
 
-    stored = await mongo.facts.find_one({'_id': existing.id})
+    stored = await mongo.facts.find_one({'_id': ObjectId(existing.id)})
     assert stored['confidence'] == 0.9
     assert stored['text'] == 'loves coffee'
+    assert mock_save.call_count == 0
 
 
 # --- decay_all_facts ---
