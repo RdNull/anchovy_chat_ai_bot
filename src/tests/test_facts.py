@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import AsyncMock, call
+from unittest.mock import call
 
 from bson import Decimal128, ObjectId
 
@@ -117,9 +117,7 @@ async def test_update_fact_refreshes_updated_at():
 # --- upsert_fact ---
 
 async def test_upsert_fact_creates_new_when_no_similar(mocker):
-    mocker.patch(
-        'src.embeddings.facts.facts_embedding_client.search_facts', AsyncMock(return_value=[])
-    )
+    mocker.patch('src.embeddings.facts.facts_embedding_client.search_facts', return_value=[])
     mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
 
     await upsert_fact('alice', 'likes coffee', 0.8)
@@ -136,7 +134,7 @@ async def test_upsert_fact_creates_new_when_no_similar(mocker):
 async def test_upsert_fact_skips_low_confidence(mocker):
     mock_search = mocker.patch(
         'src.embeddings.facts.facts_embedding_client.search_facts',
-        AsyncMock(return_value=[])
+        return_value=[]
     )
     mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
 
@@ -150,8 +148,7 @@ async def test_upsert_fact_skips_low_confidence(mocker):
 
 async def test_upsert_fact_strips_at_prefix(mocker):
     mocker.patch(
-        'src.embeddings.facts.facts_embedding_client.search_facts',
-        AsyncMock(return_value=[])
+        'src.embeddings.facts.facts_embedding_client.search_facts', return_value=[]
     )
     mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
 
@@ -172,8 +169,7 @@ async def test_upsert_fact_reinforces_existing_higher_confidence(mocker):
     similar = FactsSearchResult(fact=existing, score=0.85)
 
     mocker.patch(
-        'src.embeddings.facts.facts_embedding_client.search_facts',
-        AsyncMock(return_value=[similar])
+        'src.embeddings.facts.facts_embedding_client.search_facts', return_value=[similar]
     )
     mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
 
@@ -192,8 +188,7 @@ async def test_upsert_fact_updates_existing_lower_confidence(mocker):
     similar = FactsSearchResult(fact=existing, score=0.85)
 
     mocker.patch(
-        'src.embeddings.facts.facts_embedding_client.search_facts',
-        AsyncMock(return_value=[similar])
+        'src.embeddings.facts.facts_embedding_client.search_facts', return_value=[similar]
     )
     mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
 
