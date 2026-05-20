@@ -1,14 +1,29 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import call
+from unittest.mock import AsyncMock, MagicMock, call
 
 from bson import Decimal128, ObjectId
 
 from src import mongo
 from src.embeddings.facts import FactsSearchResult
 from src.facts.handlers import decay_all_facts, upsert_fact
+from src.facts.processors import extract_facts
 from src.facts.repository import create_fact, get_fact_by_id, get_facts, update_fact
-from src.models import UserFact
+from src.models import ExtractedFact, ExtractedFacts, Message, UserFact, UserRole
+
+
+def make_message(chat_id=1, role=UserRole.USER, text='hello', nickname='user1'):
+    return Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
+
+
+def mock_facts_llm(mocker, return_value=None):
+    result = return_value if return_value is not None else ExtractedFacts(facts=[])
+    mock_llm = MagicMock()
+    mock_ainvoke = AsyncMock(return_value=result)
+    mock_llm.__or__.return_value.with_retry.return_value.ainvoke = mock_ainvoke
+    mocker.patch('src.facts.processors.ai.get_facts_model', return_value=mock_llm)
+    mocker.patch('src.facts.processors.prompt_manager.get_prompt', return_value='p')
+    return mock_ainvoke
 
 
 # --- save_fact ---
@@ -294,3 +309,44 @@ async def test_get_facts_handles_decimal128_stored_in_mongo():
     assert len(facts) == 1
     assert isinstance(facts[0].confidence, float)
     assert facts[0].confidence == 0.9
+
+
+# --- extract_facts (processor) ---
+
+async def test_extract_facts_upserts_each_fact(mocker):
+    facts = ExtractedFacts(facts=[
+        ExtractedFact(nickname='alice', text='likes coffee', confidence=0.9),
+        ExtractedFact(nickname='bob', text='hates mornings', confidence=0.7),
+    ])
+    mock_facts_llm(mocker, return_value=facts)
+    mock_upsert = mocker.patch('src.facts.processors.upsert_fact')
+
+    await extract_facts([make_message()])
+
+    assert mock_upsert.call_count == 2
+    assert mock_upsert.call_args_list[0] == call('alice', 'likes coffee', 0.9)
+    assert mock_upsert.call_args_list[1] == call('bob', 'hates mornings', 0.7)
+
+
+async def test_extract_facts_empty_result_skips_upsert(mocker):
+    mock_facts_llm(mocker, return_value=ExtractedFacts(facts=[]))
+    mock_upsert = mocker.patch('src.facts.processors.upsert_fact')
+
+    await extract_facts([make_message()])
+
+    assert mock_upsert.call_count == 0
+
+
+async def test_extract_facts_logs_error_on_exception(mocker):
+    mock_llm = MagicMock()
+    mock_llm.__or__.return_value.with_retry.return_value.ainvoke = AsyncMock(
+        side_effect=Exception('LLM failure')
+    )
+    mocker.patch('src.facts.processors.ai.get_facts_model', return_value=mock_llm)
+    mocker.patch('src.facts.processors.prompt_manager.get_prompt', return_value='p')
+    mock_logger = mocker.patch('src.facts.processors.logger')
+
+    await extract_facts([make_message()])
+
+    assert mock_logger.error.call_count == 1
+    assert 'Error extracting facts from messages' in mock_logger.error.call_args[0][0]
