@@ -4,6 +4,5 @@
     "api_key": "env:OPENROUTER_API_KEY",
     "max_tokens": 150,
     "max_completion_tokens": 150,
-    "stream": false,
     "temperature": 0.85
 }
