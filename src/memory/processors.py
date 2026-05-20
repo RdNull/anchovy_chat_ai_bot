@@ -1,4 +1,6 @@
+from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import SystemMessage
+from langchain_core.output_parsers import PydanticOutputParser
 from langsmith import traceable
 
 from src import ai
@@ -15,19 +17,22 @@ async def extract_memory(
     current_memory: StructuredMemory | None,
     new_messages: list[Message],
 ):
-    formatted_messages = '\n'.join([m.ai_format for m in new_messages])
-
     llm = ai.get_memory_model(version='v3-cheap')
-    model_with_structure = llm.with_structured_output(StructuredMemory)
+    parser = PydanticOutputParser(pydantic_object=StructuredMemory)
+    llm_chain = (llm | parser).with_retry(
+        retry_if_exception_type=(OutputParserException,),
+        stop_after_attempt=2,
+    )
 
+    formatted_messages = '\n'.join([m.ai_format for m in new_messages])
     system_prompt = prompt_manager.get_prompt(
         'memory',
         version='v3',
-        current_memory=current_memory.model_dump_json(indent=2) if current_memory else '{}',
+        current_memory=current_memory.model_dump_json() if current_memory else '{}',
         new_messages=formatted_messages
     )
 
-    updated_memory: StructuredMemory = await model_with_structure.ainvoke([
+    updated_memory: StructuredMemory = await llm_chain.ainvoke([
         SystemMessage(content=system_prompt)
     ])
     if not updated_memory:
