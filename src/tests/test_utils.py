@@ -18,6 +18,22 @@ from src.models import (
 )
 
 
+def make_message(
+    chat_id=1,
+    telegram_id=None,
+    role=UserRole.USER,
+    text='hello',
+    nickname='user1',
+):
+    return Message(
+        chat_id=chat_id,
+        telegram_id=telegram_id,
+        role=role,
+        text=text,
+        nickname=nickname
+    )
+
+
 # --- escape_markdown_v2 ---
 
 def test_escape_markdown_v2_special_chars():
@@ -177,12 +193,14 @@ def test_message_ai_format_reply_with_media():
 def test_message_ai_format_with_timestamp():
     # 2026-04-19 10:00 UTC = 2026-04-19 15:00 Almaty (UTC+5)
     created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
-    msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', created_at=created_at)
+    msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello',
+                  created_at=created_at)
     assert msg.ai_format == '[26-04-19 15:00] nick: hello'
 
 
 def test_message_ai_format_reply_with_timestamp():
     created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
     reply = MessageReply(text='quoted', nickname='other')
-    msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', reply=reply, created_at=created_at)
+    msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', reply=reply,
+                  created_at=created_at)
     assert msg.ai_format == '[26-04-19 15:00] nick (reply: "other| quoted"): hello'

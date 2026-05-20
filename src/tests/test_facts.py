@@ -9,11 +9,8 @@ from src.embeddings.facts import FactsSearchResult
 from src.facts.handlers import decay_all_facts, upsert_fact
 from src.facts.processors import extract_facts
 from src.facts.repository import create_fact, get_fact_by_id, get_facts, update_fact
-from src.models import ExtractedFact, ExtractedFacts, Message, UserFact, UserRole
-
-
-def make_message(chat_id=1, role=UserRole.USER, text='hello', nickname='user1'):
-    return Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
+from src.models import ExtractedFact, ExtractedFacts, UserFact
+from src.tests.test_utils import make_message
 
 
 def mock_facts_llm(mocker, return_value=None):

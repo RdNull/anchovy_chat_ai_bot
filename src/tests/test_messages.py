@@ -9,16 +9,7 @@ from src.messages.repository import (
 from src.models import (
     Message, MessageReply, UpdateMessage, UserRole,
 )
-
-
-def make_message(chat_id=1, telegram_id=404, role=UserRole.USER, text='hello', nickname='user1'):
-    return Message(
-        chat_id=chat_id,
-        telegram_id=telegram_id,
-        role=role,
-        text=text,
-        nickname=nickname
-    )
+from src.tests.test_utils import make_message
 
 
 # --- save_message ---

@@ -5,13 +5,9 @@ from src.memory.models import ChatState, ParticipantInfo, RecentItem
 from src.memory.processors import StructuredMemory, extract_memory
 from src.memory.repository import get_last_memory
 from src.messages.repository import save_message
-from src.models import Message, UserRole
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
 from src.processors.context.handlers import run_context_checks, update_chat_context
-
-
-def make_message(chat_id=1, role=UserRole.USER, text='hello', nickname='user1'):
-    return Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
+from src.tests.test_utils import make_message
 
 
 def mock_memory_llm(mocker, return_value=None):
