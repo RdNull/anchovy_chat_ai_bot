@@ -114,20 +114,6 @@ async def get_messages_count(chat_id: int) -> int:
     return await mongo.messages.count_documents({'chat_id': chat_id})
 
 
-async def register_chat(chat_id: int):
-    await mongo.chats.update_one(
-        {'chat_id': chat_id},
-        {'$set': {'last_active': datetime.now(timezone.utc).timestamp()}},
-        upsert=True
-    )
-
-
-async def get_active_chats() -> list[int]:
-    cursor = mongo.chats.find({})
-    chats = await cursor.to_list(length=1000)
-    return [c['chat_id'] for c in chats]
-
-
 async def get_message_media_data(media_id: str, media_unique_id: str):
     media = MessageMedia(
         media_id=media_id,

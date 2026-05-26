@@ -15,10 +15,6 @@ from src.messages.utils import ReplyToBotFilter
 
 async def setup_scheduler():
     schedule = Scheduler(tzinfo=const.TIMEZONE_ALMATY)
-    schedule.hourly(
-        dt.time(minute=0, tzinfo=const.TIMEZONE_ALMATY),
-        tasks.context.update_all_chats_context
-    )
     schedule.weekly(
         Monday(dt.time(3, 0, tzinfo=const.TIMEZONE_ALMATY)),
         tasks.facts.run_fact_decay,

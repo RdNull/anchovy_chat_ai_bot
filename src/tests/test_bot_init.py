@@ -35,5 +35,4 @@ async def test_setup_scheduler(mocker):
         pass
 
     assert mock_scheduler.call_count == 1
-    assert mock_scheduler.return_value.hourly.call_count == 1
     assert mock_scheduler.return_value.weekly.call_count == 1

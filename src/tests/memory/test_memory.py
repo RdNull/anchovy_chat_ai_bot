@@ -5,7 +5,7 @@ import pytest
 
 from src.memory.models import ChatState, ParticipantInfo, RecentItem, StructuredMemory
 from src.memory.repository import get_last_memory, save_memory
-from src.messages.repository import get_messages, register_chat, save_message
+from src.messages.repository import get_messages, save_message
 from src.models import Message, UserRole
 
 
@@ -77,15 +77,6 @@ async def test_get_messages_db_error(mocker):
 
     with pytest.raises(Exception, match='DB find error'):
         await get_messages(123)
-
-
-async def test_register_chat_db_error(mocker):
-    mock_mongo = mocker.patch('src.messages.repository.mongo')
-    mock_mongo.chats.update_one = AsyncMock(side_effect=Exception('DB update error'))
-    mocker.patch('src.messages.repository.logger')
-
-    with pytest.raises(Exception, match='DB update error'):
-        await register_chat(123)
 
 
 # --- prompt_format unit tests (no DB) ---

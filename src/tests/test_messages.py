@@ -2,9 +2,8 @@ from datetime import datetime, timezone
 
 from src import mongo
 from src.messages.repository import (
-    get_active_chats, get_last_message, get_message_by_tg_id, get_messages, get_messages_count,
-    get_messages_count_since,
-    register_chat, save_message, update_message,
+    get_last_message, get_message_by_tg_id, get_messages, get_messages_count,
+    get_messages_count_since, save_message, update_message,
 )
 from src.models import (
     Message, MessageReply, UpdateMessage, UserRole,
@@ -192,20 +191,3 @@ async def test_message_update():
     assert fetched_message.text == 'updated text'
 
 
-# --- register_chat / get_active_chats ---
-
-async def test_register_chat_upsert():
-    await register_chat(42)
-    await register_chat(42)
-
-    chats = await get_active_chats()
-    assert chats.count(42) == 1
-
-
-async def test_get_active_chats():
-    await register_chat(1)
-    await register_chat(2)
-
-    chats = await get_active_chats()
-    assert 1 in chats
-    assert 2 in chats

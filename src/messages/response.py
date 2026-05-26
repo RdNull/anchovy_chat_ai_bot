@@ -10,7 +10,7 @@ from src.memory.repository import get_last_memory
 from src.models import Message, MessageReply, UserRole
 from .media.pipeline import wait_for_media_ready
 from .parsing import parse_user_message
-from .repository import get_messages, register_chat, save_message
+from .repository import get_messages, save_message
 from .utils import get_chat_character, send_action
 from ..processors.context.handlers import run_context_checks
 
@@ -24,10 +24,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f'Generating answer for chat {chat_id} (user: {user_message.nickname})')
 
-    await asyncio.gather(
-        register_chat(chat_id),
-        save_message(user_message)
-    )
+    await save_message(user_message)
 
     last_memory = await get_last_memory(chat_id)
     character = get_chat_character(
