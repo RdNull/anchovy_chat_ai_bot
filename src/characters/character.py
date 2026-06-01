@@ -6,6 +6,7 @@ import langsmith
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolCall
 from langsmith import traceable
+from numpy.random.mtrand import Sequence
 
 from src import ai, settings
 from src.logs import logger
@@ -66,7 +67,7 @@ class Character:
         if self.rate_limiter.is_exceeded(user_message.chat_id):
             return 'Не гони, дай отдышаться...'
 
-        llm = self._get_llm()
+        llm = self._get_llm(versions=('v7-cheap',))
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
@@ -97,8 +98,8 @@ class Character:
         return response.content
 
     @classmethod
-    def _get_llm(cls) -> BaseChatModel:
-        version = random.choice(('v7-cheap', ))  # an A/B test
+    def _get_llm(cls, versions: Sequence[str]) -> BaseChatModel:
+        version = random.choice(versions)  # an A/B test
         rt = langsmith.get_current_run_tree()
         rt.tags.append(version)
         return ai.get_model(version=version)
