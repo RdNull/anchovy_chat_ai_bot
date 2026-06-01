@@ -98,7 +98,7 @@ class Character:
 
     @classmethod
     def _get_llm(cls) -> BaseChatModel:
-        version = random.choice(('v7-cheap', 'v7-hard'))  # an A/B test
+        version = random.choice(('v7-cheap', ))  # an A/B test
         rt = langsmith.get_current_run_tree()
         rt.tags.append(version)
         return ai.get_model(version=version)
