@@ -7,11 +7,12 @@ from telegram.ext import ContextTypes
 from src import settings
 from src.logs import logger
 from src.memory.repository import get_last_memory
-from src.models import Message, MessageReply, UserRole
+from src.models import Message
 from .media.pipeline import wait_for_media_ready
 from .parsing import parse_user_message
 from .repository import get_messages, save_message
 from .utils import get_chat_character, send_action
+from ..characters.reply import Replier
 from ..processors.context.handlers import run_context_checks
 
 
@@ -32,25 +33,9 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         memory=last_memory if last_memory else None,
     )
     last_messages = await _get_last_messages(chat_id)
-    response = await character.respond(user_message, last_messages)
+    replier = Replier(character, update, user_message)
+    await character.respond(replier, user_message, last_messages)
 
-    reply_message = await update.message.reply_text(response)
-
-    await save_message(
-        Message(
-            telegram_id=reply_message.message_id,
-            chat_id=chat_id,
-            nickname=f'{settings.BOT_NICKNAME}({character.name})',
-            role=UserRole.AI,
-            text=response,
-            reply=MessageReply(
-                telegram_id=user_message.telegram_id,
-                text=user_message.text,
-                nickname=user_message.nickname,
-                media=user_message.media
-            ),
-        )
-    )
     asyncio.create_task(run_context_checks(chat_id))
 
 

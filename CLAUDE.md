@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Run the bot
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ### Run tests
@@ -32,28 +32,31 @@ python -m src.scripts.create_embeddings
 This is a Telegram bot that simulates character personalities using LLMs with RAG and persistent memory. Core flow:
 
 1. **Message received** → `src/messages/handlers.py` routes based on mention/reply/random chance
-2. **Context enrichment** → `src/processors/context/` updates memory (MongoDB) and embeddings (Qdrant) asynchronously
-3. **Character response** → `src/characters/character.py` builds prompt, invokes LLM in agentic loop with tools
-4. **Hourly scheduler** → `src/tasks/context.py` updates structured memory and extracts facts for all active chats
-5. **Weekly scheduler** → `src/tasks/facts.py` decays confidence of stale facts; deletes facts that reach zero
+2. **Character response** → `src/characters/character.py` builds prompt, invokes LLM in agentic loop with tools
+3. **Context enrichment (post-response)** → `run_context_checks()` in `src/processors/context/handlers.py` runs after every message; when `messages_count >= settings.LAST_MESSAGES_SIZE` since the last update, it triggers structured-memory update + fact extraction, and a separate counter triggers embedding update
+4. **Weekly scheduler** (`src/bot.py:setup_scheduler`) → `src/tasks/facts.py:run_fact_decay` decays confidence of stale facts and deletes facts that reach zero
 
 ### Key subsystems
 
-**Characters** (`src/characters/`): Defined in `repository/*.yaml`. The `Character` class binds LLM tools and runs an agentic loop, recursively executing tool calls until the model returns a final text response.
+**Characters** (`src/characters/`): Defined in `repository/*.yaml`. The `Character` class binds LLM tools with `tool_choice='any'` and runs an agentic loop. Tools are split into *context tools* (`search_messages`, `get_user_facts`) and *direct tools* (`answer_text`, `set_reaction`, both `return_direct=True`); the loop terminates as soon as a direct tool is invoked. A depth>5 safeguard re-binds only direct tools to force termination. Replies and reactions are dispatched via `Replier` (`src/characters/reply.py`), which also persists them to MongoDB.
 
 **LLM stack**: `src/ai.py` provides cached model instances. `src/model_manager.py` resolves model configs from `src/models/<local|cloud>/<task>/<version>.json`. The `"env:VAR_NAME"` syntax in JSON configs interpolates environment variables at load time. Toggle local vs cloud with `IS_LOCAL`.
 
 **Prompts**: Jinja2 templates in `src/prompts/<task>/<version>.j2`, loaded via `src/prompt_manager.py`.
 
-**Memory** (`src/processors/context/memory.py`): Structured memory (`StructuredMemory` model) stores facts, decisions, topics, open loops, participants, and constraints in MongoDB per chat.
+**Memory** (`src/memory/`): `StructuredMemory` (`models.py`) stores per-chat `participants` (with `traits` and `recent` items) plus a `ChatState` containing `active_topics`, `open_questions`, and `running_jokes`. `processors.py:extract_memory` runs an LLM with structured output against new messages; `repository.py` handles MongoDB CRUD.
 
-**Facts** (`src/facts/`): User facts are extracted automatically after each memory update. `src/processors/context/facts.py` calls an LLM with structured output to pull stable facts (with confidence 0.5–1.0) from new messages. `src/facts/handlers.py` upserts each fact — reinforcing confidence if a similar fact exists in Qdrant, creating a new record otherwise. `src/facts/repository.py` handles raw MongoDB CRUD. A weekly decay job (`src/tasks/facts.py`) lowers confidence of facts not updated in 7 days and deletes those that reach zero.
+**Facts** (`src/facts/`): User facts are extracted automatically after each memory update. `src/facts/processors.py:extract_facts` calls an LLM with structured output to pull stable facts (with confidence 0.5–1.0) from new messages. `src/facts/handlers.py` upserts each fact — reinforcing confidence if a similar fact exists in Qdrant, creating a new record otherwise. `src/facts/repository.py` handles raw MongoDB CRUD. A weekly decay job (`src/tasks/facts.py`) lowers confidence of facts not updated in 7 days and deletes those that reach zero.
 
 **Embeddings/RAG** (`src/embeddings/client.py` + `src/processors/context/embeddings.py`): Messages are chunked (window=8, overlap=3) and stored in Qdrant. LLM tool `search_messages` performs semantic search with cosine similarity.
 
 **Media pipeline** (`src/processors/media/`): Images go through a vision LLM for description+OCR. Animations/GIFs have key frames extracted (via OpenCV/Lottie), resized to ≤300k pixels, and described in a single vision LLM call.
 
-**Tools available to LLM**: `search_messages` (Qdrant semantic search), `get_user_facts` (retrieve known facts about a user).
+**Tools available to LLM** (`src/characters/tools/`):
+- *Context tools* (`context.py`): `search_messages` (Qdrant semantic search), `get_user_facts` (known facts about a user).
+- *Direct tools* (`answer.py`, `return_direct=True`): `answer_text` (text reply via `Replier`), `set_reaction` (emoji reaction from `src.const.ALLOWED_REACTIONS`).
+
+`ToolRegistry` (`src/tools.py`) holds both groups, executes by name, and exposes `is_return_direct` so the character loop knows when to terminate.
 
 ### Data flow for context
 

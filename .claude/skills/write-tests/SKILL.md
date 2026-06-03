@@ -1,9 +1,10 @@
 ---
 name: write-tests
 description: >
-  Use this skill when the user asks to write, add, or implement tests for this
-  project. Covers pytest patterns, fixture usage, mock strategies, and
-  assertion style for anchovy_chat_ai_bot.
+  Use this skill when the user asks to write, add, modify, or fix tests for
+  this project. Covers pytest patterns, fixture usage, mock strategies, and
+  enforces project assertion style (explicit asserts, no mock.assert_*
+  methods) for anchovy_chat_ai_bot.
 disable-model-invocation: false
 ---
 
