@@ -3,7 +3,6 @@ import time
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from src import settings
@@ -28,6 +27,13 @@ def make_user_message(chat_id=1, text='hello'):
     return Message(chat_id=chat_id, role=UserRole.USER, text=text, nickname='user1')
 
 
+def make_replier():
+    replier = MagicMock()
+    replier.reply_message = AsyncMock()
+    replier.reply_reaction = AsyncMock()
+    return replier
+
+
 def mock_chat_llm(mocker, responses):
     """MagicMock base so bind_tools() is sync; ainvoke is AsyncMock."""
     llm = MagicMock()
@@ -37,79 +43,105 @@ def mock_chat_llm(mocker, responses):
     return llm
 
 
+def answer_tool_call(text='ответ', tc_id='tc1'):
+    return AIMessage(content='', tool_calls=[{
+        'id': tc_id, 'name': 'answer_text', 'args': {'text': text}, 'type': 'tool_call'
+    }])
+
+
+def search_tool_call(query='test', tc_id='tc2'):
+    return AIMessage(content='', tool_calls=[{
+        'id': tc_id, 'name': 'search_messages', 'args': {'search_query': query, 'limit': 3},
+        'type': 'tool_call'
+    }])
+
+
 # --- respond() ---
 
 async def test_respond_adds_version_tag_to_run_tree(mocker, mock_langsmith):
-    mock_chat_llm(mocker, [AIMessage(content='ответ')])
+    mock_chat_llm(mocker, [answer_tool_call()])
     mocker.patch('src.characters.character.random.choice', return_value='test-version')
+    mocker.patch.object(
+        ToolRegistry, 'execute',
+        new=AsyncMock(return_value=ToolMessage(tool_call_id='tc1', content=''))
+    )
+    replier = make_replier()
 
-    await make_character().respond(make_user_message(), last_messages=[])
+    await make_character().respond(replier, make_user_message(), last_messages=[])
 
     assert mock_langsmith.tags == ['test-version']
 
 
-async def test_respond_returns_llm_text(mocker):
-    llm = mock_chat_llm(mocker, [AIMessage(content='привет!')])
+async def test_respond_calls_answer_tool(mocker):
+    llm = mock_chat_llm(mocker, [answer_tool_call(text='привет!')])
     user_msg = make_user_message()
+    mock_execute = mocker.patch.object(
+        ToolRegistry, 'execute',
+        new=AsyncMock(return_value=ToolMessage(tool_call_id='tc1', content=''))
+    )
+    replier = make_replier()
 
-    result = await make_character().respond(user_msg, last_messages=[])
+    await make_character().respond(replier, user_msg, last_messages=[])
 
-    assert result == 'привет!'
     assert llm.ainvoke.call_count == 1
     msgs = llm.ainvoke.call_args[0][0]
-    assert len(msgs) == 2  # SystemMessage + HumanMessage
+    # ainvoke was called with [System, Human] (2 msgs); response is appended after → 3 total
+    assert len(msgs) == 3
     assert isinstance(msgs[0], SystemMessage)
     assert isinstance(msgs[1], HumanMessage)
     assert msgs[1].content == user_msg.ai_format
+    assert isinstance(msgs[2], AIMessage)  # the answer_text tool_call response
+    assert mock_execute.call_count == 1
 
 
 async def test_respond_with_history(mocker):
-    llm = mock_chat_llm(mocker, [AIMessage(content='ответ')])
+    llm = mock_chat_llm(mocker, [answer_tool_call(text='ответ')])
     history = [
         Message(chat_id=1, role=UserRole.USER, text='раньше', nickname='user1'),
         Message(chat_id=1, role=UserRole.AI, text='ок', nickname='bot'),
     ]
-    user_msg = make_user_message()
+    user_msg = make_user_message(text='last message')
+    mocker.patch.object(ToolRegistry, 'execute',
+                        new=AsyncMock(return_value=ToolMessage(tool_call_id='tc1', content='')))
+    replier = make_replier()
 
-    result = await make_character().respond(user_msg, last_messages=history)
+    await make_character().respond(replier, user_msg, last_messages=history)
 
-    assert result == 'ответ'
     msgs = llm.ainvoke.call_args[0][0]
-    # SystemMessage + HumanMessage(раньше) + AIMessage(ок) + HumanMessage(current)
-    assert len(msgs) == 4
+    # ainvoke called with [System, Human(раньше), AI(ок), Human(current)] (4 msgs);
+    # response appended after → 5 total
+    assert len(msgs) == 5
     assert isinstance(msgs[1], HumanMessage)
     assert isinstance(msgs[2], AIMessage)
     assert isinstance(msgs[3], HumanMessage)
+    assert isinstance(msgs[4], AIMessage)  # the answer_text tool_call response
 
 
-async def test_respond_executes_tool_call_and_recurses(mocker):
-    tool_call = {
-        'id': 'tc1',
-        'name': 'search_messages',
-        'args': {'search_query': 'test', 'limit': 3},
-    }
-    llm = mock_chat_llm(mocker, [
-        AIMessage(content='', tool_calls=[tool_call]),
-        AIMessage(content='final answer'),
-    ])
+async def test_respond_executes_context_tool_then_direct_tool(mocker):
+    search_call = search_tool_call(tc_id='tc_search')
+    answer_call = answer_tool_call(text='final answer', tc_id='tc_answer')
+    llm = mock_chat_llm(mocker, [search_call, answer_call])
     mock_execute = mocker.patch.object(
         ToolRegistry,
         'execute',
-        new=AsyncMock(return_value=ToolMessage(tool_call_id='tc1', content='[]')),
+        new=AsyncMock(return_value=ToolMessage(tool_call_id='tc_search', content='[]')),
     )
+    replier = make_replier()
 
-    result = await make_character().respond(make_user_message(), last_messages=[])
+    await make_character().respond(replier, make_user_message(), last_messages=[])
 
-    assert result == 'final answer'
     assert llm.ainvoke.call_count == 2
-    assert mock_execute.call_count == 1
-    # Second ainvoke receives the accumulated messages including tool result
-    second_msgs = llm.ainvoke.call_args[0][0]
-    assert len(second_msgs) == 4  # SystemMessage, HumanMessage, AIMessage(tool), ToolMessage
-    assert isinstance(second_msgs[-1], ToolMessage)
+    assert mock_execute.call_count == 2
+    # Both call_args_list entries share the same mutable list reference.
+    # Final state: [System, Human, AIMsg(search), ToolMsg(search), AIMsg(answer)] = 5
+    second_msgs = llm.ainvoke.call_args_list[1][0][0]
+    assert len(second_msgs) == 5
+    assert isinstance(second_msgs[2], AIMessage)  # search_messages tool_call
+    assert isinstance(second_msgs[3], ToolMessage)  # search result
+    assert isinstance(second_msgs[4], AIMessage)  # answer_text tool_call
 
 
-async def test_respond_timeout_returns_fallback(mocker):
+async def test_respond_timeout_calls_replier_fallback(mocker):
     async def slow(*_args, **_kwargs):
         await asyncio.sleep(10)
 
@@ -118,21 +150,78 @@ async def test_respond_timeout_returns_fallback(mocker):
     llm.ainvoke = AsyncMock(side_effect=slow)
     mocker.patch('src.characters.character.ai.get_model', return_value=llm)
     mocker.patch.object(settings, 'AI_TIMEOUT', 0.01)
+    replier = make_replier()
 
-    result = await make_character().respond(make_user_message(), last_messages=[])
+    await make_character().respond(replier, make_user_message(), last_messages=[])
 
-    assert result == 'Чё-то я призадумался и забыл, че хотел сказать...'
+    assert replier.reply_message.call_count == 1
+    error_text = replier.reply_message.call_args[0][0]
+    assert error_text == 'Чё-то я призадумался и забыл, че хотел сказать...'
 
 
-async def test_respond_exception_returns_fallback(mocker):
+async def test_respond_exception_calls_replier_fallback(mocker):
     llm = MagicMock()
     llm.bind_tools.return_value = llm
     llm.ainvoke = AsyncMock(side_effect=RuntimeError('boom'))
     mocker.patch('src.characters.character.ai.get_model', return_value=llm)
+    replier = make_replier()
 
-    result = await make_character().respond(make_user_message(), last_messages=[])
+    await make_character().respond(replier, make_user_message(), last_messages=[])
 
-    assert result == 'Голова чё-то разболелась, давай потом...'
+    assert replier.reply_message.call_count == 1
+    assert replier.reply_message.call_args[0][0] == 'Голова чё-то разболелась, давай потом...'
+
+
+async def test_respond_rate_limited_returns_silently(mocker):
+    mocker.patch('src.characters.rate_limit.ChatRateLimiter.is_exceeded', return_value=True)
+    replier = make_replier()
+
+    await make_character().respond(replier, make_user_message(), last_messages=[])
+
+    assert replier.reply_message.call_count == 0
+
+
+async def test_respond_not_rate_limited_proceeds(mocker):
+    mocker.patch('src.characters.rate_limit.ChatRateLimiter.is_exceeded', return_value=False)
+    mock_chat_llm(mocker, [answer_tool_call(text='ответ')])
+    mock_execute = mocker.patch.object(
+        ToolRegistry, 'execute',
+        new=AsyncMock(return_value=ToolMessage(tool_call_id='tc1', content=''))
+    )
+    replier = make_replier()
+
+    await make_character().respond(replier, make_user_message(), last_messages=[])
+
+    assert mock_execute.call_count == 1
+
+
+async def test_respond_no_tool_calls_triggers_exception_fallback(mocker):
+    mock_chat_llm(mocker, [AIMessage(content='ignoring tools')])
+    replier = make_replier()
+
+    await make_character().respond(replier, make_user_message(), last_messages=[])
+
+    # ValueError from loop is caught by the outer except; replier sends the fallback message
+    assert replier.reply_message.call_count == 1
+    assert 'разболелась' in replier.reply_message.call_args[0][0]
+
+
+async def test_respond_multiple_direct_tools_tags_langsmith(mocker, mock_langsmith):
+    both_calls = AIMessage(content='', tool_calls=[
+        {'id': 'tc1', 'name': 'answer_text', 'args': {'text': 'hi'}, 'type': 'tool_call'},
+        {'id': 'tc2', 'name': 'set_reaction', 'args': {'emoji': '🤡'}, 'type': 'tool_call'},
+    ])
+    mock_chat_llm(mocker, [both_calls])
+    mocker.patch.object(
+        ToolRegistry,
+        'execute',
+        new=AsyncMock(return_value=ToolMessage(tool_call_id='tc1', content=''))
+    )
+    replier = make_replier()
+
+    await make_character().respond(replier, make_user_message(), last_messages=[])
+
+    assert 'multiple_response_called' in mock_langsmith.tags
 
 
 # --- rate limiting ---
@@ -165,19 +254,6 @@ def test_rate_limiter_allows_after_window_expires(mocker):
     rl = ChatRateLimiter()
     rl._call_times[1].append(time.monotonic() - 61)
     assert not rl.is_exceeded(1)
-
-
-async def test_respond_rate_limited_returns_message(mocker):
-    mocker.patch('src.characters.rate_limit.ChatRateLimiter.is_exceeded', return_value=True)
-    result = await make_character().respond(make_user_message(), last_messages=[])
-    assert result == 'Не гони, дай отдышаться...'
-
-
-async def test_respond_not_rate_limited_proceeds(mocker):
-    mocker.patch('src.characters.rate_limit.ChatRateLimiter.is_exceeded', return_value=False)
-    mock_chat_llm(mocker, [AIMessage(content='ответ')])
-    result = await make_character().respond(make_user_message(), last_messages=[])
-    assert result == 'ответ'
 
 
 # --- system_message ---
