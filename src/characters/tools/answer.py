@@ -6,7 +6,7 @@ from src.tools import ToolContext
 from src.types import ReactionEmoji
 
 ANSWER_TEXT_DESCRIPTION = '''
-Ответить текстом (включая эмодзи)
+[answer]: Ответить текстом (включая эмодзи)
 '''
 
 
@@ -20,7 +20,7 @@ async def answer_text(text: str) -> None:
     await tool_context.replier.reply_message(text)
 
 SET_REACTION_DESCRIPTION = '''
-Поставить реакцию на сообщение
+[answer] Поставить реакцию на сообщение
 emoji: ровно один из эмодзи из разрешенного списка
 '''
 
