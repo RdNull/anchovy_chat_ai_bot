@@ -1,34 +1,50 @@
 from dataclasses import dataclass
 from typing import Iterable
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import ToolCall, ToolMessage
 from langchain_core.tools import BaseTool
 
+from src.characters.reply import Replier
 from src.logs import logger
 
 
 @dataclass
 class ToolContext:
     chat_id: int
+    replier: Replier
 
 class ToolRegistry:
-    def __init__(self, tools: Iterable[BaseTool], context: ToolContext):
-        self.tools = tuple(tools)
+    def __init__(
+        self,
+        context_tools: Iterable[BaseTool],
+        direct_tools: Iterable[BaseTool],
+        context: ToolContext
+    ):
+        self.context_tools = tuple(context_tools)
+        self.direct_tools = tuple(direct_tools)
+        self.tools = (*context_tools, *direct_tools)
         self.context = context
-        self._tool_by_name = {tool.name: tool for tool in tools}
+        self._tool_by_name = {tool.name: tool for tool in self.tools}
 
-    async def execute(self, tool_call) -> ToolMessage:
-        tool = self._tool_by_name.get(tool_call["name"])
-        if not tool:
-            raise ValueError(f"Unknown tool: {tool_call['name']}")
-
-        logger.info(f"Executing tool: {tool_call['name']} with arguments: {tool_call['args']}")
+    async def execute(self, tool_call: ToolCall) -> ToolMessage:
+        tool = self._get_tool(tool_call)
+        logger.info(f'Executing tool: {tool_call['name']} with arguments: {tool_call['args']}')
 
         tool.metadata = {'context': self.context}
-        tool_result = await tool.ainvoke(tool_call["args"])
+        tool_result = await tool.ainvoke(tool_call['args'])
 
-        tool_message = ToolMessage(
-            tool_call_id=tool_call["id"],
+        return ToolMessage(
+            tool_call_id=tool_call['id'],
             content=str(tool_result)
         )
-        return tool_message
+
+    def is_return_direct(self, tool_call: ToolCall) -> bool:
+        tool = self._get_tool(tool_call)
+        return tool.return_direct
+
+    def _get_tool(self, tool_call: ToolCall) -> BaseTool:
+        tool: BaseTool | None = self._tool_by_name.get(tool_call['name'])
+        if not tool:
+            raise ValueError(f'Unknown tool: {tool_call['name']}')
+
+        return tool
