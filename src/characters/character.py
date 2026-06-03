@@ -125,7 +125,8 @@ class Character:
 
         if not response.tool_calls:
             # shouldn't happen, but still
-            raise ValueError('Tools requirements has been ignored')
+            logger.warning('Tool requirement was ignored')
+            return
 
         messages.append(response)
         for tool_call in response.tool_calls:  # type: ToolCall

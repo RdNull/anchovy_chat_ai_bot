@@ -13,7 +13,7 @@ ANSWER_TEXT_DESCRIPTION = '''
 @tool(description=ANSWER_TEXT_DESCRIPTION, return_direct=True)
 async def answer_text(text: str) -> None:
     if not text:
-        logger.info('Empty text provided, skipping answer')
+        logger.warning('Empty text provided, skipping answer')
         return
 
     tool_context: ToolContext = answer_text.metadata['context']

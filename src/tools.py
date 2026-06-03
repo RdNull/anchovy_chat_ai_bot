@@ -22,7 +22,7 @@ class ToolRegistry:
     ):
         self.context_tools = tuple(context_tools)
         self.direct_tools = tuple(direct_tools)
-        self.tools = (*context_tools, *direct_tools)
+        self.tools = (*self.context_tools, *self.direct_tools)
         self.context = context
         self._tool_by_name = {tool.name: tool for tool in self.tools}
 
