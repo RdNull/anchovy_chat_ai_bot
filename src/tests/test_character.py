@@ -1,7 +1,7 @@
 import asyncio
 import time
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -195,15 +195,17 @@ async def test_respond_not_rate_limited_proceeds(mocker):
     assert mock_execute.call_count == 1
 
 
-async def test_respond_no_tool_calls_triggers_exception_fallback(mocker):
+async def test_respond_no_tool_calls_stays_silent(mocker):
     mock_chat_llm(mocker, [AIMessage(content='ignoring tools')])
+    mock_warning = mocker.patch('src.characters.character.logger.warning')
     replier = make_replier()
 
     await make_character().respond(replier, make_user_message(), last_messages=[])
 
-    # ValueError from loop is caught by the outer except; replier sends the fallback message
-    assert replier.reply_message.call_count == 1
-    assert 'разболелась' in replier.reply_message.call_args[0][0]
+    # No tool_calls means intended silence — nothing is sent, just a warning logged
+    assert replier.reply_message.call_count == 0
+    assert replier.reply_reaction.call_count == 0
+    assert mock_warning.call_args_list == [call('Tool requirement was ignored')]
 
 
 async def test_respond_multiple_direct_tools_tags_langsmith(mocker, mock_langsmith):
