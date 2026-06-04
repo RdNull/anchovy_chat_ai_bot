@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from src import settings
 from src.characters.repository import CHARACTERS
 from src.messages.utils import (
     ReplyToBotFilter,
@@ -203,3 +204,37 @@ def test_message_embedding_text_reply_with_timestamp():
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', reply=reply,
                   created_at=created_at)
     assert msg.embedding_text == '[26-04-19 15:00] nick (reply: "other| quoted"): hello'
+
+
+# --- Message._render_reactions ---
+
+import pytest
+
+BOT = settings.BOT_NICKNAME
+
+
+def _msg(reactions):
+    return Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hi', reactions=reactions)
+
+
+@pytest.mark.parametrize('reactions, expected', [
+    ({}, None),
+    ({'🖕': [BOT]}, f'⤷ 🖕 {BOT}'),
+    ({'🤡': ['dima', 'sasha']}, '⤷ 🤡 dima, sasha'),
+    ({'👍': [BOT, 'misha']}, f'⤷ 👍 {BOT}, misha'),
+    ({'🤡': ['a', 'b', 'c']}, '⤷ 🤡 a, b, c'),
+    ({'👍': ['a', 'b', 'c', 'd']}, '⤷ 👍 ×4'),
+    ({'👍': [BOT, 'a', 'b', 'c', 'd']}, f'⤷ 👍 {BOT} +4'),
+    ({'🤡': ['dima', 'sasha'], '👍': [BOT, 'misha']}, f'⤷ 🤡 dima, sasha · 👍 {BOT}, misha'),
+    ({'🤡': ['a', 'b', 'c', 'd'], '🖕': [BOT]}, f'⤷ 🤡 ×4 · 🖕 {BOT}'),
+])
+def test_render_reactions(reactions: dict, expected: str | None):
+    assert _msg(reactions)._render_reactions() == expected
+
+
+def test_render_reactions_appears_in_ai_format():
+    assert _msg({'🤡': ['dima']}).ai_format == 'nick: hi\n⤷ 🤡 dima'
+
+
+def test_render_reactions_not_in_embedding_text():
+    assert _msg({'🤡': ['dima']}).embedding_text == 'nick: hi'
