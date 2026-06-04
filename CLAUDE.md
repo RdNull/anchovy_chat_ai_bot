@@ -38,7 +38,7 @@ This is a Telegram bot that simulates character personalities using LLMs with RA
 
 ### Key subsystems
 
-**Characters** (`src/characters/`): Defined in `repository/*.yaml`. The `Character` class binds LLM tools with `tool_choice='any'` and runs an agentic loop. Tools are split into *context tools* (`search_messages`, `get_user_facts`) and *direct tools* (`answer_text`, `set_reaction`, both `return_direct=True`); the loop terminates as soon as a direct tool is invoked. A depth>5 safeguard re-binds only direct tools to force termination. Replies and reactions are dispatched via `Replier` (`src/characters/reply.py`), which also persists them to MongoDB.
+**Characters** (`src/characters/`): Defined in `repository/*.yaml`. The `Character` class binds LLM tools with `tool_choice='any'` and runs an agentic loop. Tools are split into *context tools* (`search_messages`, `get_user_facts`) and *direct tools* (`answer_text`, `set_reaction`, both `return_direct=True`); the loop terminates as soon as a direct tool is invoked. A depth>5 safeguard re-binds only direct tools to force termination. Replies and reactions are dispatched via `Replier` (`src/characters/reply.py`), which persists text replies to MongoDB and writes bot reactions directly onto the reacted-to message's `reactions` field.
 
 **LLM stack**: `src/ai.py` provides cached model instances. `src/model_manager.py` resolves model configs from `src/models/<local|cloud>/<task>/<version>.json`. The `"env:VAR_NAME"` syntax in JSON configs interpolates environment variables at load time. Toggle local vs cloud with `IS_LOCAL`.
 
@@ -47,6 +47,8 @@ This is a Telegram bot that simulates character personalities using LLMs with RA
 **Memory** (`src/memory/`): `StructuredMemory` (`models.py`) stores per-chat `participants` (with `traits` and `recent` items) plus a `ChatState` containing `active_topics`, `open_questions`, and `running_jokes`. `processors.py:extract_memory` runs an LLM with structured output against new messages; `repository.py` handles MongoDB CRUD.
 
 **Facts** (`src/facts/`): User facts are extracted automatically after each memory update. `src/facts/processors.py:extract_facts` calls an LLM with structured output to pull stable facts (with confidence 0.5–1.0) from new messages. `src/facts/handlers.py` upserts each fact — reinforcing confidence if a similar fact exists in Qdrant, creating a new record otherwise. `src/facts/repository.py` handles raw MongoDB CRUD. A weekly decay job (`src/tasks/facts.py`) lowers confidence of facts not updated in 7 days and deletes those that reach zero.
+
+**Reactions** (`src/messages/handlers.py`, `src/messages/repository.py`): User reactions arrive via `message_reaction` Telegram updates (requires bot to be chat admin and `allowed_updates=Update.ALL_TYPES` in `run_polling`). Each update carries the user's full new reaction set as a snapshot. The handler calls `update_message_reactions(message, user_nickname, old_emojis, new_emojis)` which resolves the diff and applies `$pull`/`$addToSet`/`$unset` in a single MongoDB write. Bot reactions are written by `add_bot_reaction(message, settings.BOT_NICKNAME, emoji)` at send time (Telegram never echoes bot reactions). Both write to `reactions: dict[str, list[str]]` on the message document — emoji-keyed, nickname-valued. Reactions render into the LLM prompt via `Message.ai_format` / `Message.response_format` (see Message model below) but are excluded from embeddings via `Message.embedding_text`.
 
 **Embeddings/RAG** (`src/embeddings/client.py` + `src/processors/context/embeddings.py`): Messages are chunked (window=8, overlap=3) and stored in Qdrant. LLM tool `search_messages` performs semantic search with cosine similarity.
 
@@ -57,6 +59,15 @@ This is a Telegram bot that simulates character personalities using LLMs with RA
 - *Direct tools* (`answer.py`, `return_direct=True`): `answer_text` (text reply via `Replier`), `set_reaction` (emoji reaction from `src.const.ALLOWED_REACTIONS`).
 
 `ToolRegistry` (`src/tools.py`) holds both groups, executes by name, and exposes `is_return_direct` so the character loop knows when to terminate.
+
+### Message model text formats (`src/models.py`)
+
+`Message` exposes three text representations:
+- `embedding_text` (property): plain `[ts] nickname: text` format, no reactions. Used by embeddings, memory extraction, and fact extraction.
+- `ai_format` (property): `embedding_text` + rendered reactions line. Used for user turns in the LLM prompt.
+- `response_format` (property): bare `text` + rendered reactions line. Used for bot turns in the LLM prompt history.
+
+Reactions render via `Message._render_reactions()`: bot (`settings.BOT_NICKNAME`) is always named and sorted first, excluded from the ≤3 collapse threshold; beyond threshold, named reactors get `+K`, unnamed-only gets `×N`. Bot reactions are stored under `settings.BOT_NICKNAME` (not character-qualified).
 
 ### Data flow for context
 
