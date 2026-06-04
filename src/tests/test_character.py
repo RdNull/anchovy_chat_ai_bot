@@ -89,7 +89,7 @@ async def test_respond_calls_answer_tool(mocker):
     assert len(msgs) == 3
     assert isinstance(msgs[0], SystemMessage)
     assert isinstance(msgs[1], HumanMessage)
-    assert msgs[1].content == user_msg.ai_format
+    assert msgs[1].content == user_msg.embedding_text
     assert isinstance(msgs[2], AIMessage)  # the answer_text tool_call response
     assert mock_execute.call_count == 1
 

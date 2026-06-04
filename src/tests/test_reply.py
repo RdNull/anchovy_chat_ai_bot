@@ -2,8 +2,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src import settings
 from src.characters.reply import Replier
-from src.messages.repository import get_messages, save_message
+from src.messages.repository import get_message_by_tg_id, get_messages, save_message
 from src.models import Message, UserRole
 
 
@@ -66,13 +67,26 @@ async def test_reply_reaction_raises_when_result_is_false(make_update):
         await replier.reply_reaction('🤡')
 
 
-async def test_reply_reaction_saves_with_none_telegram_id(make_update):
+async def test_reply_reaction_writes_bot_reaction_to_message(make_update):
+    replier = make_replier(make_update)
+    replier.user_message.telegram_id = 1
+    await save_message(replier.user_message)
+
+    await replier.reply_reaction('🤡')
+
+    updated = await get_message_by_tg_id(222, 1)
+    assert updated is not None
+    assert '🤡' in updated.reactions
+    assert settings.BOT_NICKNAME in updated.reactions['🤡']
+
+    history = await get_messages(222)
+    assert all(m.role == UserRole.USER for m in history)
+
+
+async def test_reply_reaction_skips_when_no_telegram_id(make_update):
     replier = make_replier(make_update)
 
     await replier.reply_reaction('🤡')
 
     history = await get_messages(222)
-    assert len(history) == 1
-    assert history[0].telegram_id is None
-    assert history[0].text == '🤡'
-    assert history[0].role == UserRole.AI
+    assert len(history) == 0
