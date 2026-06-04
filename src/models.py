@@ -7,6 +7,7 @@ from typing import Annotated, ClassVar
 
 from pydantic import BaseModel as _BaseModel, BeforeValidator, ConfigDict, Field
 
+from src import settings
 from src.const import TIMEZONE_ALMATY
 
 MongoId = Annotated[str, BeforeValidator(lambda x: str(x))]
@@ -39,6 +40,7 @@ class MessageMediaStatus(str, Enum):
     @property
     def is_finished(self) -> bool:
         return self in {MessageMediaStatus.READY, MessageMediaStatus.ERROR}
+
 
 class MessageReply(BaseModel):
     telegram_id: int | None = Field(default=None)
@@ -82,9 +84,10 @@ class Message(BaseModel):
     reply: MessageReply | None = None
     media: MessageMedia | None = None
     created_at: datetime | None = None
+    reactions: dict[str, list[str]] = Field(default_factory=dict)
 
     @property
-    def ai_format(self):
+    def embedding_text(self) -> str:
         message_part = self.text
         if self.media:
             message_part = f'{message_part} [{self.media.ai_format}]'
@@ -98,6 +101,47 @@ class Message(BaseModel):
             ts = self.created_at.astimezone(TIMEZONE_ALMATY).strftime('%y-%m-%d %H:%M')
             return f'[{ts}] {body}'
         return body
+
+    @property
+    def ai_format(self) -> str:
+        base = self.embedding_text
+        if reactions_line := self._render_reactions():
+            return f'{base}\n{reactions_line}'
+        return base
+
+    @property
+    def response_format(self) -> str:
+        text = self.text or ''
+        if reactions_line := self._render_reactions():
+            return f'{text}\n{reactions_line}'
+        return text
+
+    def _render_reactions(self) -> str | None:
+        if not self.reactions:
+            return None
+
+        bot_nickname = settings.BOT_NICKNAME
+        parts = []
+        for emoji, nicknames in self.reactions.items():
+            if not nicknames:
+                continue
+
+            bot_reacted = bot_nickname in nicknames
+            others = [n for n in nicknames if n != bot_nickname]
+            named = ([bot_nickname] if bot_reacted else [])
+            if len(others) <= 3:
+                named.extend(others)
+            unnamed_count = len(nicknames) - len(named)
+            if named:
+                part = f'{emoji} {", ".join(named)}'
+                if unnamed_count > 0:
+                    part += f' +{unnamed_count}'
+            else:
+                part = f'{emoji} ×{len(nicknames)}'
+
+            parts.append(part)
+
+        return f"⤷ {' · '.join(parts)}" if parts else None
 
 
 class UpdateMessage(BaseModel):
