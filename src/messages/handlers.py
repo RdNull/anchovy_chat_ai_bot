@@ -132,6 +132,7 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 @restricted
 @send_action(ChatAction.TYPING)
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info('Handling media message')
     user_message = await parse_user_message(update)
     if not user_message:
         return
@@ -143,6 +144,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted
 async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info('Handling message reaction')
     reaction_update = update.message_reaction
     if not reaction_update or not reaction_update.user:
         return
@@ -163,6 +165,7 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
 
 @restricted
 async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info('Handling message edit')
     if not update.edited_message:
         return
 
