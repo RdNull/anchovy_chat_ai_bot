@@ -141,3 +141,7 @@ tests:
   - description: "image_explain_real"
     vars:
       messages: file://image_explain_real/messages.json
+
+  - description: "crime-assignment"
+    vars:
+      messages: file://crime-assignment/messages.json
