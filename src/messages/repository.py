@@ -36,6 +36,36 @@ async def save_message(message: Message):
     message.id = result.inserted_id
 
 
+async def update_message_reactions(
+    message: Message,
+    user_nickname: str,
+    old_emojis: list[str],
+    new_emojis: list[str],
+):
+    to_remove = set(old_emojis) - set(new_emojis)
+    to_add = set(new_emojis) - set(old_emojis)
+
+    update: dict = {}
+    for emoji in to_remove:
+        if message.reactions.get(emoji) == [user_nickname]:
+            update.setdefault('$unset', {})[f'reactions.{emoji}'] = ''
+        else:
+            update.setdefault('$pull', {})[f'reactions.{emoji}'] = user_nickname
+
+    for emoji in to_add:
+        update.setdefault('$addToSet', {})[f'reactions.{emoji}'] = user_nickname
+
+    if update:
+        await mongo.messages.update_one({'_id': ObjectId(message.id)}, update)
+
+
+async def add_bot_reaction(message: Message, bot_nickname: str, emoji: str):
+    await mongo.messages.update_one(
+        {'_id': ObjectId(message.id)},
+        {'$addToSet': {f'reactions.{emoji}': bot_nickname}},
+    )
+
+
 async def update_message(update_message_data: UpdateMessage):
     logger.info(f"Updating message {update_message_data.id}: {update_message_data.text}")
     update_payload = update_message_data.model_dump(exclude={'id'}, exclude_unset=True)
@@ -173,5 +203,6 @@ async def _parse_message_record(data: dict) -> Message:
         nickname=data.get('nickname', 'unknown'),
         reply=reply,
         media=media,
-        created_at=datetime.fromtimestamp(data['created_at'], tz=timezone.utc)
+        created_at=datetime.fromtimestamp(data['created_at'], tz=timezone.utc),
+        reactions=data.get('reactions', {}),
     )
