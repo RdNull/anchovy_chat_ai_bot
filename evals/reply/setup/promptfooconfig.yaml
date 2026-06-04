@@ -3,11 +3,11 @@
 description: "Character setup eval"
 
 prompts:
-  - id: file://../prompts/v5.js
-    label: "Character v5"
+  - id: file://../prompts/v6.js
+    label: "Character v6"
 
 providers:
-  - id: file://../../models/cloud/chat/v6.yaml
+  - id: file://../../models/cloud/chat/v7-cheap.yaml
 
 defaultTest:
   assert:

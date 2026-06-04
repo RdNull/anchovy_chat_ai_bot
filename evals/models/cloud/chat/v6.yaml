@@ -1,27 +1,49 @@
-id: openrouter:anthropic/claude-haiku-4.5
+id: ../character_loop_provider.js
 label: "v6.3"
 config:
+  model: anthropic/claude-haiku-4.5
   temperature: 0.85
   max_tokens: 150
-  showThinking: false
+  tool_choice: required
+  maxIterations: 5
   tools:
     - type: function
       function:
         name: get_user_facts
-        description: Получить факты о конкретном пользователе
+        description: '[context]: Получить КЛЮЧЕВЫЕ факты о пользователе'
         parameters:
           type: object
           properties:
-            username: { type: string }
-          required: [ username ]
+            nickname: { type: string }
+            limit: { type: integer }
+          required: [ nickname ]
     - type: function
       function:
         name: search_messages
-        description: Поиск по истории сообщений чата
+        description: '[context]: Поиск сообщений чата по запросу'
         parameters:
           type: object
           properties:
-            query: { type: string }
-          required: [ query ]
+            search_query: { type: string }
+            limit: { type: integer }
+          required: [ search_query ]
+    - type: function
+      function:
+        name: answer_text
+        description: '[answer]: Ответить текстом (включая эмодзи)'
+        parameters:
+          type: object
+          properties:
+            text: { type: string }
+          required: [ text ]
+    - type: function
+      function:
+        name: set_reaction
+        description: '[answer]: Поставить реакцию на сообщение одним эмодзи из разрешенного списка'
+        parameters:
+          type: object
+          properties:
+            emoji: { type: string }
+          required: [ emoji ]
 
-  functionToolCallbacks: file://tool_callbacks.js
+  functionToolCallbacks: tool_callbacks.js

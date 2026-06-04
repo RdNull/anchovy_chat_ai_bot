@@ -3,12 +3,11 @@
 description: "Character response eval"
 
 prompts:
-  - id: file://../prompts/v5.js
-    label: "Character v5"
+  - id: file://../prompts/v6.js
+    label: "Character v6"
 
 providers:
   - id: file://../../models/cloud/chat/v7-cheap.yaml
-  - id: file://../../models/cloud/chat/v7-hard.yaml
 
 defaultTest:
   vars:
