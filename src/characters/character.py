@@ -25,7 +25,8 @@ def _format_previous_messages(last_messages: list[Message]) -> Generator[
         if message.role == UserRole.USER:
             yield HumanMessage(message.ai_format)
         else:
-            yield AIMessage(message.text)
+            yield AIMessage(message.response_format)
+
 
 
 class Character:

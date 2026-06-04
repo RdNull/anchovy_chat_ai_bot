@@ -24,7 +24,7 @@ def chunk_messages(messages: list[Message], window=8, overlap=3) -> list[ChunkDa
         chunks.append(
             ChunkData(
                 chunk_id=get_chunk_id(chunk_messages_),
-                payload='\n'.join(m.ai_format for m in chunk_messages_),
+                payload='\n'.join(m.embedding_text for m in chunk_messages_),
                 metadata={
                     'chat_id': chat_id,
                     'message_ids': [str(m.id) for m in chunk_messages_],
