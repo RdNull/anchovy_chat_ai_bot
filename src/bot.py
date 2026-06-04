@@ -3,6 +3,7 @@ import datetime as dt
 
 from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
     MessageReactionHandler, PicklePersistence, filters,
@@ -88,7 +89,7 @@ def main() -> None:
 
     app.add_error_handler(handlers.error_handler)
 
-    app.run_polling()
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == '__main__':
