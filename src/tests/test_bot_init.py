@@ -18,7 +18,7 @@ async def test_main_initialization(mocker):
 
     assert mock_persistence.call_count == 1
     assert mock_builder.return_value.token.call_count == 1
-    assert mock_app.add_handler.call_count >= 8
+    assert mock_app.add_handler.call_count >= 9
     assert mock_app.add_error_handler.call_count == 1
     assert mock_app.run_polling.call_count == 1
     assert mock_loop.return_value.create_task.call_count == 1

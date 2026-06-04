@@ -31,7 +31,7 @@ async def search_messages(search_query: str, limit: int = 3) -> list[dict]:
     return [
         {
             'score': rm.score,
-            'messages': '\n'.join([m.ai_format for m in rm.messages]),
+            'messages': '\n'.join([m.embedding_text for m in rm.messages]),
         } for rm in related_messages
     ]
 

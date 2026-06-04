@@ -4,7 +4,7 @@ from telegram import Update
 
 from src import settings
 from src.logs import logger
-from src.messages.repository import save_message
+from src.messages.repository import add_bot_reaction, save_message
 from src.models import Message, MessageReply, UserRole
 from src.types import ReactionEmoji
 
@@ -30,7 +30,7 @@ class Replier:
         if not result:
             raise ValueError(f'Failed to set reaction with emoji {emoji}')
 
-        return await self._save_message(message_id=None, text=emoji)
+        await add_bot_reaction(self.user_message, settings.BOT_NICKNAME, str(emoji))
 
     async def _save_message(self, message_id: int | None, text: str) -> Message:
         message = Message(

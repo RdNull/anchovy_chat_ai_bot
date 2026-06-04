@@ -2,7 +2,10 @@ import asyncio
 import random
 from datetime import datetime, timedelta, timezone
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage, Update
+from telegram import (
+    InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage,
+    ReactionTypeEmoji, Update,
+)
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
@@ -14,7 +17,7 @@ from .media import handle_media_message
 from .parsing import parse_user_message
 from .repository import (
     get_last_message, get_message_by_tg_id, save_message,
-    update_message,
+    update_message, update_message_reactions,
 )
 from .response import generate_answer
 from .utils import (
@@ -136,6 +139,26 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_message.media:
         await handle_media_message(user_message, context)
         await generate_answer(update, context)
+
+
+@restricted
+async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reaction_update = update.message_reaction
+    if not reaction_update or not reaction_update.user:
+        return
+
+    message = await get_message_by_tg_id(reaction_update.chat.id, reaction_update.message_id)
+    if not message:
+        return
+
+    user_nickname = reaction_update.user.username or reaction_update.user.first_name
+    old_emojis = [
+        r.emoji for r in reaction_update.old_reaction if isinstance(r, ReactionTypeEmoji)
+    ]
+    new_emojis = [
+        r.emoji for r in reaction_update.new_reaction if isinstance(r, ReactionTypeEmoji)
+    ]
+    await update_message_reactions(message, user_nickname, old_emojis, new_emojis)
 
 
 @restricted

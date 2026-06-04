@@ -4,8 +4,8 @@ import datetime as dt
 from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
 from telegram.ext import (
-    ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, PicklePersistence,
-    filters,
+    ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
+    MessageReactionHandler, PicklePersistence, filters,
 )
 
 from src import const, settings, tasks
@@ -53,6 +53,7 @@ def main() -> None:
         filters.UpdateType.EDITED_MESSAGE & filters.TEXT,
         handlers.handle_message_edit
     )
+    reaction_handler = MessageReactionHandler(handlers.handle_message_reaction)
     media_handler = MessageHandler(
         (filters.PHOTO | filters.Sticker.ALL | filters.ANIMATION) & (
             filters.ChatType.PRIVATE |
@@ -78,6 +79,7 @@ def main() -> None:
 
     # chat meta handlers
     app.add_handler(edits_handler)
+    app.add_handler(reaction_handler)
 
     # chat reply handlers
     app.add_handler(mention_handler)

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from src import settings
 from src.characters.repository import CHARACTERS
 from src.messages.utils import (
     ReplyToBotFilter,
@@ -138,35 +139,34 @@ def test_media_ai_format_ready_no_ocr():
     assert media.ai_format == 'image: a cat | текст: '
 
 
-# --- Message.ai_format ---
+# --- Message.embedding_text ---
 
-def test_message_ai_format_plain():
+def test_message_embedding_text_plain():
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello')
-    assert msg.ai_format == 'nick: hello'
+    assert msg.embedding_text == 'nick: hello'
 
 
-def test_message_ai_format_with_reply_text():
+def test_message_embedding_text_with_reply_text():
     reply = MessageReply(text='quoted', nickname='other')
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', reply=reply)
-    assert msg.ai_format == 'nick (reply: "other| quoted"): hello'
+    assert msg.embedding_text == 'nick (reply: "other| quoted"): hello'
 
 
-def test_message_ai_format_reply_truncates():
+def test_message_embedding_text_reply_truncates():
     long_text = 'x' * 60
     reply = MessageReply(text=long_text, nickname='other')
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', reply=reply)
-    # reply.ai_format truncates text to 50 chars
-    assert 'x' * 50 in msg.ai_format
-    assert 'x' * 51 not in msg.ai_format
+    assert 'x' * 50 in msg.embedding_text
+    assert 'x' * 51 not in msg.embedding_text
 
 
-def test_message_ai_format_with_media_processing():
+def test_message_embedding_text_with_media_processing():
     media = MessageMedia(status=MessageMediaStatus.PENDING)
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', media=media)
-    assert msg.ai_format == 'nick: hello [PROCESSING]'
+    assert msg.embedding_text == 'nick: hello [PROCESSING]'
 
 
-def test_message_ai_format_with_media_ready():
+def test_message_embedding_text_with_media_ready():
     media = MessageMedia(
         status=MessageMediaStatus.READY,
         type=MessageMediaTypes.IMAGE,
@@ -174,10 +174,10 @@ def test_message_ai_format_with_media_ready():
         ocr_text='meow',
     )
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', media=media)
-    assert msg.ai_format == 'nick: hello [image: a cat | текст: meow]'
+    assert msg.embedding_text == 'nick: hello [image: a cat | текст: meow]'
 
 
-def test_message_ai_format_reply_with_media():
+def test_message_embedding_text_reply_with_media():
     media = MessageMedia(
         status=MessageMediaStatus.READY,
         type=MessageMediaTypes.IMAGE,
@@ -186,21 +186,55 @@ def test_message_ai_format_reply_with_media():
     )
     reply = MessageReply(text='look', nickname='other', media=media)
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='nice', reply=reply)
-    assert 'image: a dog' in msg.ai_format
-    assert 'other|' in msg.ai_format
+    assert 'image: a dog' in msg.embedding_text
+    assert 'other|' in msg.embedding_text
 
 
-def test_message_ai_format_with_timestamp():
+def test_message_embedding_text_with_timestamp():
     # 2026-04-19 10:00 UTC = 2026-04-19 15:00 Almaty (UTC+5)
     created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello',
                   created_at=created_at)
-    assert msg.ai_format == '[26-04-19 15:00] nick: hello'
+    assert msg.embedding_text == '[26-04-19 15:00] nick: hello'
 
 
-def test_message_ai_format_reply_with_timestamp():
+def test_message_embedding_text_reply_with_timestamp():
     created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
     reply = MessageReply(text='quoted', nickname='other')
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', reply=reply,
                   created_at=created_at)
-    assert msg.ai_format == '[26-04-19 15:00] nick (reply: "other| quoted"): hello'
+    assert msg.embedding_text == '[26-04-19 15:00] nick (reply: "other| quoted"): hello'
+
+
+# --- Message._render_reactions ---
+
+import pytest
+
+BOT = settings.BOT_NICKNAME
+
+
+def _msg(reactions):
+    return Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hi', reactions=reactions)
+
+
+@pytest.mark.parametrize('reactions, expected', [
+    ({}, None),
+    ({'🖕': [BOT]}, f'⤷ 🖕 {BOT}'),
+    ({'🤡': ['dima', 'sasha']}, '⤷ 🤡 dima, sasha'),
+    ({'👍': [BOT, 'misha']}, f'⤷ 👍 {BOT}, misha'),
+    ({'🤡': ['a', 'b', 'c']}, '⤷ 🤡 a, b, c'),
+    ({'👍': ['a', 'b', 'c', 'd']}, '⤷ 👍 ×4'),
+    ({'👍': [BOT, 'a', 'b', 'c', 'd']}, f'⤷ 👍 {BOT} +4'),
+    ({'🤡': ['dima', 'sasha'], '👍': [BOT, 'misha']}, f'⤷ 🤡 dima, sasha · 👍 {BOT}, misha'),
+    ({'🤡': ['a', 'b', 'c', 'd'], '🖕': [BOT]}, f'⤷ 🤡 ×4 · 🖕 {BOT}'),
+])
+def test_render_reactions(reactions: dict, expected: str | None):
+    assert _msg(reactions)._render_reactions() == expected
+
+
+def test_render_reactions_appears_in_ai_format():
+    assert _msg({'🤡': ['dima']}).ai_format == 'nick: hi\n⤷ 🤡 dima'
+
+
+def test_render_reactions_not_in_embedding_text():
+    assert _msg({'🤡': ['dima']}).embedding_text == 'nick: hi'
