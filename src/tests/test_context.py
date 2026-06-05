@@ -13,10 +13,9 @@ from src.tests.test_utils import make_message
 def mock_memory_llm(mocker, return_value=None):
     result = return_value if return_value is not None else StructuredMemory()
     mock_llm = MagicMock()
-    mock_ainvoke = AsyncMock(return_value=result)
-    mock_llm.__or__.return_value.with_retry.return_value.ainvoke = mock_ainvoke
+    mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=result)
     mocker.patch('src.memory.processors.ai.get_memory_model', return_value=mock_llm)
-    return mock_ainvoke
+    return mock_llm
 
 
 def mock_embeddings_client(mocker):
@@ -166,7 +165,10 @@ async def test_update_chat_memory_db_error(mocker):
     mock_logger = mocker.patch('src.memory.processors.logger')
     mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
 
-    mock_memory_llm(mocker, return_value=StructuredMemory())
+    mock_memory_llm(
+        mocker,
+        return_value=StructuredMemory(state=ChatState(open_questions=['oppa']))
+    )
     mocker.patch(
         'src.processors.context.handlers.get_messages',
         AsyncMock(return_value=[make_message(text='hi')] * 10)
@@ -213,9 +215,7 @@ async def test_extract_memory_trims_oversized_lists(mocker):
 
 
 async def test_extract_memory_no_op_when_llm_returns_falsy(mocker):
-    mock_llm = MagicMock()
-    mock_llm.__or__.return_value.with_retry.return_value.ainvoke = AsyncMock(return_value=None)
-    mocker.patch('src.memory.processors.ai.get_memory_model', return_value=mock_llm)
+    mock_memory_llm(mocker, return_value=None)
     mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
     mock_logger = mocker.patch('src.memory.processors.logger')
 

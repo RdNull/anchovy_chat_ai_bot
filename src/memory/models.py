@@ -57,6 +57,15 @@ class StructuredMemory(BaseModel):
 
         return '\n'.join(lines)
 
+    def __bool__(self):
+        return any(
+            (
+                self.state.active_topics,
+                self.state.open_questions,
+                self.state.running_jokes,
+                self.participants,
+            )
+        )
 class MemoryData(BaseModel):
     chat_id: int
     created_at: datetime
