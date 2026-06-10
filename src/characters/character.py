@@ -70,7 +70,7 @@ class Character:
         if self.rate_limiter.is_exceeded(chat_id):
             return None
 
-        llm = self._get_llm(versions=('v7-cheap',))
+        llm = self._get_llm(versions=('v6',))
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
