@@ -9,6 +9,7 @@ langchain-ollama
 langchain-openrouter
 langchain-anthropic
 pydantic
+pydantic-settings
 scheduler
 Pillow
 opencv-python-headless

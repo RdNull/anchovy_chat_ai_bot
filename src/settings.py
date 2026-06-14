@@ -1,41 +1,78 @@
-import os
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = 'anchovy_chat_ai_bot'
 BOT_PERSISTENCE_FILE = f'data/{APP_NAME}.tg'
 CHARACTERS_DIRECTORY = 'src/characters/repository'
 PROMPTS_DIR = 'src/prompts'
 
-TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
-BOT_NICKNAME = os.environ.get('BOT_NICKNAME') or 'AnchovyAiBot'
-DATABASE_URL = os.environ['DATABASE_URL']
-DATABASE_NAME = os.environ.get('DATABASE_NAME') or 'data'
 
-IS_LOCAL = os.environ.get('IS_LOCAL', 'false').lower() == 'true'
+class _Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_ignore_empty=True)
 
-ALLOWED_CHAT_IDS = [str(i) for i in os.environ.get('ALLOWED_CHAT_IDS', '').split(',') if i]
-ALLOWED_USER_IDS = [str(i) for i in os.environ.get('ALLOWED_USER_IDS', '').split(',') if i]
+    TELEGRAM_TOKEN: str
+    BOT_NICKNAME: str = 'AnchovyAiBot'
+    DATABASE_URL: str
+    DATABASE_NAME: str = 'data'
 
-RANDOM_REPLY_CHANCE = float(os.environ.get('RANDOM_REPLY_CHANCE') or 0.05)
-RANDOM_REPLY_COOLDOWN_MINUTES = int(os.environ.get('RANDOM_REPLY_COOLDOWN_MINUTES') or 30)
+    IS_LOCAL: bool = False
 
-AI_TIMEOUT = int(os.environ.get('AI_TIMEOUT') or 90)
-CHAT_RATE_LIMIT = int(os.environ.get('CHAT_RATE_LIMIT') or 5)  # calls per minute per chat
+    ALLOWED_CHAT_IDS: list[str] = []
+    ALLOWED_USER_IDS: list[str] = []
 
-EMBEDDINGS_SEARCH_MAX_SIZE = int(os.environ.get('EMBEDDINGS_SEARCH_MAX_SIZE') or 3)
-MESSAGES_EMBEDDINGS_MAX_SIZE = int(os.environ.get('MESSAGES_EMBEDDINGS_MAX_SIZE') or 40)
+    RANDOM_REPLY_CHANCE: float = 0.05
+    RANDOM_REPLY_COOLDOWN_MINUTES: int = 30
 
-MESSAGES_MEMORY_MAX_SIZE = int(os.environ.get('MESSAGES_MEMORY_MAX_SIZE') or 40)
-LAST_MESSAGES_SIZE = int(os.environ.get('LAST_MESSAGES_SIZE') or 40)
-LAST_MESSAGES_MIN_SIZE = int(os.environ.get('LAST_MESSAGES_MIN_SIZE') or 5)
-RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT = int(
-    os.environ.get('RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT') or 10
-)  # seconds
+    AI_TIMEOUT: int = 90
+    CHAT_RATE_LIMIT: int = 5
 
-OPENROUTER_API_URL = os.environ.get('OPENROUTER_API_URL') or 'https://openrouter.ai/api/v1'
-OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-QDRANT_URL = os.environ.get('QDRANT_URL') or 'http://qdrant:6333'
+    EMBEDDINGS_SEARCH_MAX_SIZE: int = 3
+    MESSAGES_EMBEDDINGS_MAX_SIZE: int = 40
+    MESSAGES_MEMORY_MAX_SIZE: int = 40
+    LAST_MESSAGES_SIZE: int = 40
+    LAST_MESSAGES_MIN_SIZE: int = 5
+
+    RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT: int = 10
+
+    OPENROUTER_API_URL: str = 'https://openrouter.ai/api/v1'
+    OPENROUTER_API_KEY: str | None = None
+    QDRANT_URL: str = 'http://qdrant:6333'
+
+    EMBEDDINGS_MODEL_NAME: str = 'text-embedding-3-small'
+    EMBEDDINGS_VECTOR_SIZE: int = 1536
+
+    @field_validator('ALLOWED_CHAT_IDS', 'ALLOWED_USER_IDS', mode='before')
+    @classmethod
+    def _parse_csv(cls, v):
+        if isinstance(v, list):
+            return [str(i) for i in v]
+        return [i for i in str(v).split(',') if i]
+
+
+_s = _Settings()
+
+TELEGRAM_TOKEN = _s.TELEGRAM_TOKEN
+BOT_NICKNAME = _s.BOT_NICKNAME
+DATABASE_URL = _s.DATABASE_URL
+DATABASE_NAME = _s.DATABASE_NAME
+IS_LOCAL = _s.IS_LOCAL
+ALLOWED_CHAT_IDS = _s.ALLOWED_CHAT_IDS
+ALLOWED_USER_IDS = _s.ALLOWED_USER_IDS
+RANDOM_REPLY_CHANCE = _s.RANDOM_REPLY_CHANCE
+RANDOM_REPLY_COOLDOWN_MINUTES = _s.RANDOM_REPLY_COOLDOWN_MINUTES
+AI_TIMEOUT = _s.AI_TIMEOUT
+CHAT_RATE_LIMIT = _s.CHAT_RATE_LIMIT
+EMBEDDINGS_SEARCH_MAX_SIZE = _s.EMBEDDINGS_SEARCH_MAX_SIZE
+MESSAGES_EMBEDDINGS_MAX_SIZE = _s.MESSAGES_EMBEDDINGS_MAX_SIZE
+MESSAGES_MEMORY_MAX_SIZE = _s.MESSAGES_MEMORY_MAX_SIZE
+LAST_MESSAGES_SIZE = _s.LAST_MESSAGES_SIZE
+LAST_MESSAGES_MIN_SIZE = _s.LAST_MESSAGES_MIN_SIZE
+RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT = _s.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
+OPENROUTER_API_URL = _s.OPENROUTER_API_URL
+OPENROUTER_API_KEY = _s.OPENROUTER_API_KEY
+QDRANT_URL = _s.QDRANT_URL
 
 EMBEDDINGS_MODEL_SETTINGS = {
-    'model_name': os.environ.get('EMBEDDINGS_MODEL_NAME') or 'text-embedding-3-small',
-    'vector_size': int(os.environ.get('EMBEDDINGS_VECTOR_SIZE') or 1536),
+    'model_name': _s.EMBEDDINGS_MODEL_NAME,
+    'vector_size': _s.EMBEDDINGS_VECTOR_SIZE,
 }
