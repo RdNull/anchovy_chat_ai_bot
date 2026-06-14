@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 from src import mongo, settings
 from src.characters.repository import CHARACTERS
+from src.chat_settings import repository as chat_settings_repository
 from src.messages import handlers
 from src.messages.parsing import _get_message_medium
 from src.messages.repository import (
@@ -28,10 +29,9 @@ async def test_start_replies(make_update, make_context):
 async def test_info_replies_with_character_name(make_update, make_context):
     code = next(iter(CHARACTERS))
     update = make_update()
-    ctx = make_context
-    ctx.chat_data['character_code'] = code
+    await chat_settings_repository.set_character_code(update.effective_chat.id, code)
 
-    await handlers.info(update, ctx)
+    await handlers.info(update, make_context)
 
     text = update.message.reply_text.call_args[0][0]
     display = CHARACTERS[code].display_name
@@ -54,11 +54,11 @@ async def test_list_characters_sends_keyboard(make_update, make_context):
 
 async def test_random_character_sets_valid_code(make_update, make_context):
     update = make_update()
-    ctx = make_context
 
-    await handlers.random_character(update, ctx)
+    await handlers.random_character(update, make_context)
 
-    assert ctx.chat_data['character_code'] in CHARACTERS
+    saved = await chat_settings_repository.get_character_code(update.effective_chat.id)
+    assert saved in CHARACTERS
     assert update.message.reply_text.call_count == 1
 
 
@@ -67,14 +67,14 @@ async def test_random_character_sets_valid_code(make_update, make_context):
 async def test_select_character_updates_context(make_update, make_context):
     code = next(iter(CHARACTERS))
     update = make_update()
-    ctx = make_context
     update.callback_query.data = f'select_char:{code}'
     update.callback_query.answer = AsyncMock()
     update.callback_query.edit_message_text = AsyncMock()
 
-    await handlers.select_character(update, ctx)
+    await handlers.select_character(update, make_context)
 
-    assert ctx.chat_data['character_code'] == code
+    saved = await chat_settings_repository.get_character_code(update.effective_chat.id)
+    assert saved == code
     assert update.callback_query.answer.call_count == 1
     assert update.callback_query.edit_message_text.call_count == 1
 
