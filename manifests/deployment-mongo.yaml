@@ -6,7 +6,7 @@ metadata:
     app: mongo
 spec:
   ports:
-    - port: 27019
+    - port: 27017
       name: mongo
   type: ClusterIP
   clusterIP: None
