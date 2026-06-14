@@ -18,10 +18,3 @@ lottie
 cairosvg # for lottie gif export
 qdrant-client
 async-cache
-
-pytest
-pytest-asyncio
-pytest-cov
-pytest-env
-pytest-mock
-freezegun

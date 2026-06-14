@@ -1,20 +1,34 @@
-FROM python:3.14-slim
-RUN apt-get update && apt-get install -y libcairo2
+ARG PYTHON_VERSION=3.14
+ARG INSTALL_DEV=false
 
-RUN pip install --upgrade pip
+# ---------- builder ----------
+FROM python:${PYTHON_VERSION}-slim AS builder
 
-COPY requirements.txt /tmp/requirements.txt
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-#================================================
-# PIP packages
-#================================================
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+COPY requirements.txt requirements-dev.txt /tmp/
 
-#================================================
-# Code
-#================================================
+ARG INSTALL_DEV
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
+ && if [ "$INSTALL_DEV" = "true" ]; then \
+        pip install --no-cache-dir -r /tmp/requirements-dev.txt; \
+    fi
+
+# ---------- runtime ----------
+FROM python:${PYTHON_VERSION}-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libcairo2 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+
 RUN useradd -m -d /proj -s /bin/bash app
-COPY . /proj
 WORKDIR /proj
+COPY --chown=app:app . /proj
 RUN mkdir -p data && chown -R app:app /proj/data
 USER app
