@@ -43,10 +43,10 @@ class _Settings(BaseSettings):
 
     @field_validator('ALLOWED_CHAT_IDS', 'ALLOWED_USER_IDS', mode='before')
     @classmethod
-    def _parse_csv(cls, v):
+    def _coerce_to_str_list(cls, v):
         if isinstance(v, list):
             return [str(i) for i in v]
-        return [i for i in str(v).split(',') if i]
+        return v
 
 
 _s = _Settings()
