@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anchovy-bot-deployment
+  labels:
+    app: anchovy-bot-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: anchovy-bot-deployment
+  template:
+    metadata:
+      labels:
+        app: anchovy-bot-deployment
+    spec:
+      containers:
+        - name: anchovy-bot-deployment
+          image: ${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "src.bot"]
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: bot-secrets
+            - configMapRef:
+                name: bot-configmap
