@@ -5,6 +5,7 @@ x-environment-vars: &environment-vars
 
 services:
   bot:
+    image: anchovy-bot:latest
     build:
       context: .
       dockerfile: ./Dockerfile
