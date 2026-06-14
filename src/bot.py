@@ -6,7 +6,7 @@ from scheduler.trigger import Monday
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
-    MessageReactionHandler, PicklePersistence, filters,
+    MessageReactionHandler, filters,
 )
 
 from src import const, settings, tasks
@@ -25,15 +25,12 @@ async def setup_scheduler():
 
 
 def main() -> None:
-    persistence = PicklePersistence(filepath=settings.BOT_PERSISTENCE_FILE)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)  # so that both tg app and scheduler run on a single loop
 
     loop.create_task(setup_scheduler())
     app = ApplicationBuilder().token(
         settings.TELEGRAM_TOKEN
-    ).persistence(
-        persistence
     ).http_version('2').build()
 
     mention_handler = MessageHandler(

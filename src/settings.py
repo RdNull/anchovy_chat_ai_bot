@@ -2,7 +2,6 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = 'anchovy_chat_ai_bot'
-BOT_PERSISTENCE_FILE = f'data/{APP_NAME}.tg'
 CHARACTERS_DIRECTORY = 'src/characters/repository'
 PROMPTS_DIR = 'src/prompts'
 
