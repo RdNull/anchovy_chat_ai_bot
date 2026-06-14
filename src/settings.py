@@ -33,7 +33,7 @@ RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT = int(
 
 OPENROUTER_API_URL = os.environ.get('OPENROUTER_API_URL') or 'https://openrouter.ai/api/v1'
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-QDRANT_URL = os.environ.get('QDRANT_URL', 'http://qdrant:6333')
+QDRANT_URL = os.environ.get('QDRANT_URL') or 'http://qdrant:6333'
 
 EMBEDDINGS_MODEL_SETTINGS = {
     'model_name': os.environ.get('EMBEDDINGS_MODEL_NAME') or 'text-embedding-3-small',
