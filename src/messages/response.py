@@ -28,8 +28,8 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await save_message(user_message)
 
     last_memory = await get_last_memory(chat_id)
-    character = get_chat_character(
-        context=context,
+    character = await get_chat_character(
+        chat_id=chat_id,
         memory=last_memory if last_memory else None,
     )
     last_messages = await _get_last_messages(chat_id)

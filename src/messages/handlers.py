@@ -40,7 +40,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info(f"Info requested in chat {chat_id}")
-    character = get_chat_character(context)
+    character = await get_chat_character(chat_id)
     name = escape_markdown_v2(character.display_name)
     description = escape_markdown_v2(character.description)
     await update.message.reply_text(
@@ -71,7 +71,7 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     character_code = query.data.split(":")[1]
     logger.info(f"Character {character_code} selected in chat {chat_id}")
-    set_chat_character(character_code, context)
+    await set_chat_character(chat_id, character_code)
     character = CHARACTERS[character_code]
 
     await query.edit_message_text(f"Персонаж изменён на: {character.display_name}")
@@ -82,7 +82,7 @@ async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     character_code = random.choice(list(CHARACTERS.keys()))
     logger.info(f"Random character {character_code} chosen for chat {chat_id}")
-    set_chat_character(character_code, context)
+    await set_chat_character(chat_id, character_code)
     character = CHARACTERS[character_code]
 
     await update.message.reply_text(f"Выпал персонаж: {character.display_name}")
