@@ -93,5 +93,5 @@ jobs:
 
       - name: Deploy k8s
         env:
-          IMAGE_ID: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          IMAGE_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
         run: ./deploy-k8s.sh
