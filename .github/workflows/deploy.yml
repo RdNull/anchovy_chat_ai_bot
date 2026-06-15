@@ -91,7 +91,12 @@ jobs:
           chmod 600 $HOME/.kube/config
           kubectl cluster-info
 
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+
       - name: Deploy k8s
         env:
-          IMAGE_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          IMAGE_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:sha-${{ github.sha }}
         run: ./deploy-k8s.sh
