@@ -11,6 +11,8 @@ __all__ = (
     'chats',
     'media_descriptions',
     'embedding_tasks',
+    'facts',
+    'chat_settings',
 )
 
 _codec_options = CodecOptions(type_registry=TypeRegistry([DecimalDecoder()]))
@@ -24,3 +26,4 @@ chats: AsyncCollection = db.chats
 media_descriptions: AsyncCollection = db.media_descriptions
 embedding_tasks: AsyncCollection = db.embedding_tasks
 facts: AsyncCollection = db.facts
+chat_settings: AsyncCollection = db.chat_settings

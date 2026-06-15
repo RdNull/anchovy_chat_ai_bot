@@ -5,6 +5,7 @@ x-environment-vars: &environment-vars
 
 services:
   bot:
+    image: anchovy-bot:latest
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -14,7 +15,6 @@ services:
       - .env
     volumes:
       - .:/proj
-      - bot_data:/proj/data
     depends_on:
       - mongo
       - qdrant
@@ -53,6 +53,4 @@ volumes:
   qdrant_data:
     external: true
   shizo_ded_bot:
-    external: true
-  bot_data:
     external: true

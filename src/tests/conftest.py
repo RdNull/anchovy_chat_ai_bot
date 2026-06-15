@@ -14,6 +14,7 @@ async def clean_collections():
     await mongo.facts.drop()
     await mongo.embedding_tasks.drop()
     await mongo.media_descriptions.drop()
+    await mongo.chat_settings.drop()
 
 
 @pytest.fixture
@@ -61,7 +62,6 @@ def make_update():
 @pytest.fixture
 def make_context():
     ctx = MagicMock()
-    ctx.chat_data = {}
     ctx.bot.send_chat_action = AsyncMock()
     return ctx
 

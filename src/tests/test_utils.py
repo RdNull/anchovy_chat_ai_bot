@@ -82,23 +82,16 @@ def test_reply_to_bot_filter_wrong_username():
 
 # --- set_chat_character / get_chat_character ---
 
-def _make_context():
-    ctx = MagicMock()
-    ctx.chat_data = {}
-    return ctx
-
-
-def test_set_get_chat_character():
+async def test_set_get_chat_character():
     code = next(iter(CHARACTERS))
-    ctx = _make_context()
-    set_chat_character(code, ctx)
-    character = get_chat_character(ctx)
+    chat_id = 12345
+    await set_chat_character(chat_id, code)
+    character = await get_chat_character(chat_id)
     assert character.code == code
 
 
-def test_get_chat_character_no_code_returns_valid():
-    ctx = _make_context()
-    character = get_chat_character(ctx)
+async def test_get_chat_character_no_code_returns_valid():
+    character = await get_chat_character(54321)
     assert character.code in CHARACTERS
 
 
