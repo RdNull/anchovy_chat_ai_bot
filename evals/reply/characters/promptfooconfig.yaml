@@ -28,6 +28,7 @@ defaultTest:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
         Given this character:
         {{character_description}}
@@ -40,6 +41,7 @@ defaultTest:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
         Given this character:
         {{character_description}}
@@ -47,71 +49,80 @@ defaultTest:
         Is the toxicity and language level consistent with what's described for this character?
         Not too soft, not beyond what the character allows.
 
-    - type: llm-rubric # delivery checks
-      metric: humor
+    - type: llm-rubric
+      metric: reaction-fit
       provider:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
-        Given this character:
-        {{character_description}}
+        The bot replies to the LAST user message in an ongoing group chat.
 
-        - Does the response match the humor delivery style described for this character?
-        - Does it stop at the right moment without over-extending or explaining the joke?
-        - Is the tone and confidence level consistent with the character?
-
-        Score each question from 0 to 1 and return the average score as the final result.
+        Identify what the LAST message is actually doing — the conversational
+        move (asking the bot something, making a claim, teasing someone,
+        closing a topic). Score whether the reply ENGAGES THAT MOVE.
         
-        Memory:
-        {{memory}}
+        Merely reusing words, names, or topics that appear in the thread is
+        NOT engaging the move. A reply can mention the right people and the
+        right words and still ignore what was actually being said — that is
+        manufacturing with surface camouflage, and it scores LOW.
+        
+        - 1.0: responds to the actual move of the last message; a different
+          reply would be needed if that move changed
+        - 0.5: engages the general topic but sidesteps the specific move
+        - 0.0: grabs words/names/facts from the thread but ignores the move;
+          bolts on a roast or stored fact that the moment didn't call for
+        
+        Test: if you changed ONLY the last message (kept all earlier context),
+        would the reply have to change? If not, it's not engaging the move.
         
         Last messages:
         {{messages}}
 
-    - type: llm-rubric # reaction checks
-      metric: humor
+    - type: llm-rubric
+      metric: baitability
       provider:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
-        Given this character:
-        {{character_description}}
-
-        - Does the response feel like a natural reaction to the conversation rather than a constructed joke?
-        - Does it land confidently on its own, even if it has nothing to do with the conversation?
-        - Does it avoid being try-hard or over-constructed for this character's style?
-
-        Score each question from 0 to 1 and return the average score as the final result.
+        This is a group chat where people bait each other into replying.
         
-        Memory:
-        {{memory}}
+        Score ONE thing: would a real chat member bother to respond to this —
+        reply, dunk, or slap a reaction on it?
         
+        A baitable line is confident and slightly provocative and leaves a
+        thread to pull. A line that resolves itself completely — a closed,
+        bow-tied punchline — kills the volley and scores LOWER even if it's
+        clever. Open and pokeable beats clever and final.
+        
+        - 1.0: plants a flag that demands a comeback; you can't not respond
+        - 0.5: fine, but easy to scroll past
+        - 0.0: dead end — over-explained, self-contained, or so off that no
+          one engages; or breaks frame to deflect ("я же бот, так что…")
+
         Last messages:
         {{messages}}
 
-    - type: llm-rubric # context checks
-      metric: humor
+    - type: llm-rubric
+      metric: delivery
       provider:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
         Given this character:
         {{character_description}}
-
-        - How relevant is the response to the current conversation?
-        - Does it match the character's personality as described?
-        - Does it avoid being try-hard or over-constructed for this character's style?
-
-        Score each question from 0 to 1 and return the average score as the final result.
         
-        Memory:
-        {{memory}}
+        Score the DELIVERY mechanics only (not whether it's funny or relevant):
+        - Does it stop at the right moment instead of over-extending?
+        - Does it avoid explaining its own joke?
+        - Is it one clean beat, not stitched-together clauses?
         
-        Last messages:
-        {{messages}}
+        Score each 0 to 1, return the average.
 
 tests:
   - description: "basic"
@@ -145,3 +156,7 @@ tests:
   - description: "crime-assignment"
     vars:
       messages: file://crime-assignment/messages.json
+
+  - description: "word_play"
+    vars:
+      messages: file://word_play/messages.json
