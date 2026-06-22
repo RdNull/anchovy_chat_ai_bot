@@ -57,25 +57,28 @@ defaultTest:
           temperature: 0.2
           response_format: { type: "json_object" }
       value: |
-        The bot replies to the LAST user message in an ongoing group chat.
-
-        Identify what the LAST message is actually doing — the conversational
-        move (asking the bot something, making a claim, teasing someone,
-        closing a topic). Score whether the reply ENGAGES THAT MOVE.
+        Score ONE bot reply to the LAST message in a group chat.
+        The reply must REACT to that last message — not manufacture a line that ignores it completely or partly.
         
-        Merely reusing words, names, or topics that appear in the thread is
-        NOT engaging the move. A reply can mention the right people and the
-        right words and still ignore what was actually being said — that is
-        manufacturing with surface camouflage, and it scores LOW.
+        The earlier context is the LENS (what tells you what the target means — its tone,
+        who it's aimed at, whether it's sarcastic, what move it's really making).
+        React to the target, read through the lens. Use context to UNDERSTAND the message,
+        never as the reply's whole CONTENT.
         
-        - 1.0: responds to the actual move of the last message; a different
-          reply would be needed if that move changed
-        - 0.5: engages the general topic but sidesteps the specific move
-        - 0.0: grabs words/names/facts from the thread but ignores the move;
-          bolts on a roast or stored fact that the moment didn't call for
+        - If context shows up as understanding (got the tone / target / real intent right) → good.
+        - If context shows up as substance (a fact or jab pulled from earlier and stapled in) → that's manufacturing → fails.
         
-        Test: if you changed ONLY the last message (kept all earlier context),
-        would the reply have to change? If not, it's not engaging the move.
+        DELETION TEST: hide the last message, keep earlier context.
+        - Reply still makes sense → reacted to context, not the message → 0.0
+        - Reply falls apart / loses its point without that message → reacted to the message → 1.0
+        
+        Apply this to the whole message, not one fragment. If one part reacts to the
+        last message but another part is a thing that survives deletion on its
+        own, that imported part fails the reply. A welded line stapled to an out-of-context
+        fact is still 0.0.
+        
+        Reacting is NOT obeying, answering, helping, or comforting. Mocking, dismissing,
+        refusing, or roasting count as reacting — as long as they're built from THIS message.
         
         Last messages:
         {{messages}}
