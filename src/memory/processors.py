@@ -1,7 +1,7 @@
 from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
-from src import ai
+from src import ai, settings
 from src.logs import logger
 from src.memory.models import StructuredMemory
 from src.memory.repository import save_memory
@@ -15,6 +15,11 @@ async def extract_memory(
     current_memory: StructuredMemory | None,
     new_messages: list[Message],
 ):
+    if not settings.ENABLE_MEMORY_PROCESSING:
+        await save_memory(chat_id, StructuredMemory())
+        logger.info(f'Memory processing disabled; saved empty memory for chat {chat_id}')
+        return
+
     llm = ai.get_memory_model(version='v3-cheap')
     model_with_structure = llm.with_structured_output(StructuredMemory)
 

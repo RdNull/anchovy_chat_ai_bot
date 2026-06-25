@@ -223,3 +223,29 @@ async def test_extract_memory_no_op_when_llm_returns_falsy(mocker):
 
     assert await get_last_memory(1) is None
     assert mock_logger.error.call_count == 1
+
+
+async def test_extract_memory_disabled_saves_empty_memory(mocker):
+    mocker.patch.object(settings, 'ENABLE_MEMORY_PROCESSING', False)
+    mock_llm = mock_memory_llm(mocker)
+
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
+
+    mock_llm.with_structured_output.return_value.ainvoke.assert_not_called()
+    saved = await get_last_memory(1)
+    assert saved is not None
+    assert saved.content == StructuredMemory()
+
+
+async def test_extract_memory_enabled_runs_llm(mocker):
+    mocker.patch.object(settings, 'ENABLE_MEMORY_PROCESSING', True)
+    result = StructuredMemory(state=ChatState(active_topics=['topic']))
+    mock_llm = mock_memory_llm(mocker, return_value=result)
+    mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
+
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
+
+    mock_llm.with_structured_output.return_value.ainvoke.assert_called_once()
+    saved = await get_last_memory(1)
+    assert saved is not None
+    assert saved.content.state.active_topics == ['topic']
