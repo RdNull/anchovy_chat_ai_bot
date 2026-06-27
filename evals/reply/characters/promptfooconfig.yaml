@@ -3,8 +3,8 @@
 description: "Character response eval"
 
 prompts:
-  - id: file://../prompts/v6.js
-    label: "Character v6"
+  - id: file://../prompts/v7.js
+    label: "Character v7"
 
 providers:
   - id: file://../../models/cloud/chat/v7-cheap.yaml
@@ -28,6 +28,7 @@ defaultTest:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
         Given this character:
         {{character_description}}
@@ -40,6 +41,7 @@ defaultTest:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
         Given this character:
         {{character_description}}
@@ -47,71 +49,87 @@ defaultTest:
         Is the toxicity and language level consistent with what's described for this character?
         Not too soft, not beyond what the character allows.
 
-    - type: llm-rubric # delivery checks
-      metric: humor
+    - type: llm-rubric
+      metric: reaction-fit
       provider:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
-        Given this character:
-        {{character_description}}
+        You are scoring ONE chat reply against the conversation it follows.
 
-        - Does the response match the humor delivery style described for this character?
-        - Does it stop at the right moment without over-extending or explaining the joke?
-        - Is the tone and confidence level consistent with the character?
-
-        Score each question from 0 to 1 and return the average score as the final result.
-        
-        Memory:
-        {{memory}}
-        
-        Last messages:
+        Transcript (oldest to newest):
         {{messages}}
+        
+        Score ONE thing only: did the reply react to the LAST message in the transcript?
+          
+        "React to the last message" means:
+          - If the last message has real content (a question, claim, story, or jab), the
+            reply engages THAT content. Agreeing, answering, dismissing, mocking, or
+            refusing all count. The reply does NOT have to be helpful, polite, or
+            cooperative — a rude or flat dismissal is a valid reaction.
+          - If the last message is low-content (a bare summon / mention: "ping", "эй бот",
+            just a name, "hey"), it is asking the bot to react to the recent context. So
+            reacting to the recent context counts. Do NOT require the reply to address the
+            summon itself.
+        
+        Fail (0.0) if either:
+          1. The reply ignores what the last message calls for — e.g. the last message has
+          real content but the reply only continues an older topic or drops a fact/detail
+          the last message and recent context never raised.
+          2. The reply reacts, but bolts on a detachable piece about something the last 
+          message and recent context did not raise. Test: remove that piece — if a
+          complete reaction to the last message still remains, the piece was bolted on.
+          
+        Otherwise pass (1.0).
+        
+        Do NOT score whether the reply is funny, clever, helpful, or kind — only whether
+        it reacts to the last message as defined above.
 
-    - type: llm-rubric # reaction checks
-      metric: humor
+    - type: llm-rubric
+      metric: baitability
       provider:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
-        Given this character:
-        {{character_description}}
-
-        - Does the response feel like a natural reaction to the conversation rather than a constructed joke?
-        - Does it land confidently on its own, even if it has nothing to do with the conversation?
-        - Does it avoid being try-hard or over-constructed for this character's style?
-
-        Score each question from 0 to 1 and return the average score as the final result.
+        This is a group chat where people bait each other into replying.
         
-        Memory:
-        {{memory}}
+        Score ONE thing: would a real chat member bother to respond to this —
+        reply, dunk, or slap a reaction on it?
         
+        A baitable line is confident and slightly provocative and leaves a
+        thread to pull. A line that resolves itself completely — a closed,
+        bow-tied punchline — kills the volley and scores LOWER even if it's
+        clever. Open and pokeable beats clever and final.
+        
+        - 1.0: plants a flag that demands a comeback; you can't not respond
+        - 0.5: fine, but easy to scroll past
+        - 0.0: dead end — over-explained, self-contained, or so off that no
+          one engages; or breaks frame to deflect ("я же бот, так что…")
+
         Last messages:
         {{messages}}
 
-    - type: llm-rubric # context checks
-      metric: humor
+    - type: llm-rubric
+      metric: delivery
       provider:
         id: openrouter:openai/gpt-5-mini
         config:
           temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
         Given this character:
         {{character_description}}
-
-        - How relevant is the response to the current conversation?
-        - Does it match the character's personality as described?
-        - Does it avoid being try-hard or over-constructed for this character's style?
-
-        Score each question from 0 to 1 and return the average score as the final result.
         
-        Memory:
-        {{memory}}
+        Score the DELIVERY mechanics only (not whether it's funny or relevant):
+        - Does it stop at the right moment instead of over-extending?
+        - Does it avoid explaining its own joke?
+        - Is it one clean beat, not stitched-together clauses?
         
-        Last messages:
-        {{messages}}
+        Score each 0 to 1, return the average.
 
 tests:
   - description: "basic"
@@ -145,3 +163,7 @@ tests:
   - description: "crime-assignment"
     vars:
       messages: file://crime-assignment/messages.json
+
+  - description: "word_play"
+    vars:
+      messages: file://word_play/messages.json
