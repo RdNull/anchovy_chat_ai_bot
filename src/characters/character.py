@@ -52,7 +52,7 @@ class Character:
     def system_message(self):
         setup_prompt = prompt_manager.get_prompt(
             'character_setup',
-            version='v6',
+            version='v7',
             character_description=self.style_prompt,
             memory=self.memory.content.prompt_format() if self.memory else None,
             related_messages=self.related_messages or None,
@@ -70,7 +70,7 @@ class Character:
         if self.rate_limiter.is_exceeded(chat_id):
             return None
 
-        llm = self._get_llm(versions=('v7-cheap', 'v6'))
+        llm = self._get_llm(versions=('v7-cheap',))
         messages = [
             self.system_message,
             *_format_previous_messages(last_messages),
