@@ -3,8 +3,8 @@
 description: "Character response eval"
 
 prompts:
-  - id: file://../prompts/v6.js
-    label: "Character v6"
+  - id: file://../prompts/v7.js
+    label: "Character v7"
 
 providers:
   - id: file://../../models/cloud/chat/v7-cheap.yaml
@@ -57,31 +57,35 @@ defaultTest:
           temperature: 0.2
           response_format: { type: "json_object" }
       value: |
-        Score ONE bot reply to the LAST message in a group chat.
-        The reply must REACT to that last message — not manufacture a line that ignores it completely or partly.
-        
-        The earlier context is the LENS (what tells you what the target means — its tone,
-        who it's aimed at, whether it's sarcastic, what move it's really making).
-        React to the target, read through the lens. Use context to UNDERSTAND the message,
-        never as the reply's whole CONTENT.
-        
-        - If context shows up as understanding (got the tone / target / real intent right) → good.
-        - If context shows up as substance (a fact or jab pulled from earlier and stapled in) → that's manufacturing → fails.
-        
-        DELETION TEST: hide the last message, keep earlier context.
-        - Reply still makes sense → reacted to context, not the message → 0.0
-        - Reply falls apart / loses its point without that message → reacted to the message → 1.0
-        
-        Apply this to the whole message, not one fragment. If one part reacts to the
-        last message but another part is a thing that survives deletion on its
-        own, that imported part fails the reply. A welded line stapled to an out-of-context
-        fact is still 0.0.
-        
-        Reacting is NOT obeying, answering, helping, or comforting. Mocking, dismissing,
-        refusing, or roasting count as reacting — as long as they're built from THIS message.
-        
-        Last messages:
+        You are scoring ONE chat reply against the conversation it follows.
+
+        Transcript (oldest to newest):
         {{messages}}
+        
+        Score ONE thing only: did the reply react to the LAST message in the transcript?
+          
+        "React to the last message" means:
+          - If the last message has real content (a question, claim, story, or jab), the
+            reply engages THAT content. Agreeing, answering, dismissing, mocking, or
+            refusing all count. The reply does NOT have to be helpful, polite, or
+            cooperative — a rude or flat dismissal is a valid reaction.
+          - If the last message is low-content (a bare summon / mention: "ping", "эй бот",
+            just a name, "hey"), it is asking the bot to react to the recent context. So
+            reacting to the recent context counts. Do NOT require the reply to address the
+            summon itself.
+        
+        Fail (0.0) if either:
+          1. The reply ignores what the last message calls for — e.g. the last message has
+          real content but the reply only continues an older topic or drops a fact/detail
+          the last message and recent context never raised.
+          2. The reply reacts, but bolts on a detachable piece about something the last 
+          message and recent context did not raise. Test: remove that piece — if a
+          complete reaction to the last message still remains, the piece was bolted on.
+          
+        Otherwise pass (1.0).
+        
+        Do NOT score whether the reply is funny, clever, helpful, or kind — only whether
+        it reacts to the last message as defined above.
 
     - type: llm-rubric
       metric: baitability
