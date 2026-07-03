@@ -11,24 +11,28 @@ The bot participates in live group conversations, builds persistent per-chat mem
 ## Key Features
 
 **Agentic LLM Loop**
-Characters run a depth-limited recursive tool-calling loop: the model can invoke tools, receive results, and continue reasoning before producing a final response. Tool binding and structured output are handled via LangChain.
+Characters run a depth-limited recursive tool-calling loop: the model can invoke tools, receive results, and continue reasoning before producing a final response. Tools are split into *context tools* (`search_messages`, `get_user_facts`) that feed information back into the loop, and *direct tools* (`answer_text`, `set_reaction`) that terminate it immediately. A `Replier` handles the actual dispatch — persisting text replies and writing bot reactions onto Telegram messages. A depth-5 safeguard re-binds only direct tools to force a response if the model keeps calling context tools. Tool binding and structured output are handled via LangChain.
 
 **Multi-Character Persona System**
-Characters are defined as YAML configs (name, description, detailed system prompt, style guidelines, behavioral constraints). The character repository loads them at startup; each character instance is independently rate-limited per chat.
+Characters are defined as YAML configs (name, description, detailed system prompt, style guidelines, behavioral constraints). The character repository loads them at startup; each character instance is independently rate-limited per chat. Each chat can run a different character, selected via `/list` (inline keyboard), `/random`, or left on the default; the choice is persisted per chat in MongoDB.
+
+**Message Reactions**
+The bot both reads and writes Telegram message reactions. Incoming `message_reaction` updates are diffed against the stored reaction set and applied as an atomic MongoDB update; the `set_reaction` tool lets a character emoji-react instead of replying (from a curated `ALLOWED_REACTIONS` set). Reactions render into the LLM prompt (collapsed/aggregated once a chat has more than a few reactors) but are excluded from embeddings.
 
 **Retrieval-Augmented Generation (RAG)**
-Messages are chunked with a sliding window, embedded via OpenAI `text-embedding-3-small`, and stored in Qdrant. The `search_messages` tool lets the LLM semantically retrieve relevant past conversation chunks at inference time, filtered by chat ID.
+Messages are chunked with a sliding window, embedded via OpenAI `text-embedding-3-small`, and stored in Qdrant with UUID chunk IDs. An in-memory async cache avoids re-embedding identical text. The `search_messages` tool lets the LLM semantically retrieve relevant past conversation chunks at inference time, filtered by chat ID.
 
 **Structured Persistent Memory**
-Each chat accumulates a `StructuredMemory` document in MongoDB — tracking facts, decisions, active topics, open loops, participant profiles, constraints, and preferences. Memory is updated hourly via a background scheduler and also triggered when message volume crosses a threshold. Updates use GPT-5-mini with structured output mode for reliable JSON extraction.
+Each chat accumulates a `StructuredMemory` document in MongoDB — tracking facts, decisions, active topics, open loops, participant profiles, constraints, and preferences. Memory is updated whenever message volume since the last update crosses a threshold (gated by an `ENABLE_MEMORY_PROCESSING` flag so the pipeline can be disabled without a redeploy). Updates use an LLM with structured output mode (Claude Haiku 4.5 via OpenRouter) for reliable JSON extraction.
 
 **User Fact Tracking with Confidence Scoring**
-Facts about individual users are extracted automatically after each memory update cycle: a dedicated LLM pass reads new messages and emits a list of stable facts per `@username`, each scored with a confidence value (0.5–1.0). Facts are upserted into MongoDB — if a semantically similar fact already exists (Qdrant cosine search), its confidence is reinforced or updated; otherwise a new record is created. A weekly background job decays the confidence of facts not updated in the past week; facts that reach zero confidence are deleted. The `get_user_facts` tool lets the character LLM retrieve the top facts about a user at inference time.
+Facts about individual users are extracted automatically in the same pass as each memory update: a dedicated LLM pass reads new messages and emits a list of stable facts per `@username`, each scored with a confidence value (0.5–1.0). Facts are upserted into MongoDB — if a semantically similar fact already exists (Qdrant cosine search), its confidence is reinforced or updated; otherwise a new record is created. A weekly background job decays the confidence of facts not updated in the past week; facts that reach zero confidence are deleted. The `get_user_facts` tool lets the character LLM retrieve the top facts about a user at inference time.
 
 **Async Media Pipeline**
 - Images: downloaded, hashed for deduplication, described by a vision LLM (Gemini 2.5 Flash) with OCR
 - Animated stickers (Telegram TGS/Lottie format): key frames extracted via OpenCV and the Lottie renderer, resized, and described in a single batched vision LLM call
 - Descriptions are stored in MongoDB and injected into the conversation context
+- If a character is triggered while a referenced image/sticker is still processing, response generation polls (with a bounded timeout) until the media description is ready before building the prompt
 
 **LLM Prompt Evaluation**
 Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suites covering memory extraction, recap generation, image description, and character reply quality, with good/bad sample fixtures for each task.
@@ -37,7 +41,10 @@ Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suite
 A single `IS_LOCAL` flag switches the entire model stack between OpenRouter (cloud) and Ollama (local). Model configs are versioned JSON files per task, supporting environment variable interpolation.
 
 **Observability**
-LangSmith tracing is integrated via `@traceable` decorators across the LLM call graph. Full span trees are captured for each agentic loop execution.
+LangSmith tracing is integrated via `@traceable` decorators across the LLM call graph, including A/B model-version tags on chat completions. Full span trees are captured for each agentic loop execution.
+
+**Kubernetes Deployment & CI/CD**
+A GitHub Actions workflow builds and pushes a multi-stage Docker image to GHCR on every push to `main`, then deploys it to a Kubernetes cluster (bot, MongoDB, and Qdrant manifests under `manifests/`) via `kubectl`, with app config supplied through a ConfigMap/Secret pair populated from repo variables and secrets.
 
 ---
 
@@ -46,20 +53,21 @@ LangSmith tracing is integrated via `@traceable` decorators across the LLM call 
 | Layer                | Technology                                      | Role                                            |
 |----------------------|-------------------------------------------------|-------------------------------------------------|
 | Language & Runtime   | Python 3.14, asyncio                            | Async-first throughout                          |
-| Telegram Integration | python-telegram-bot (HTTP/2)                    | Bot API, polling, persistence                   |
+| Telegram Integration | python-telegram-bot (HTTP/2)                    | Bot API, polling, message reactions             |
 | LLM Orchestration    | LangChain                                       | Tool binding, structured output, model routing  |
-| Cloud LLM Provider   | OpenRouter API                                  | Access to Grok, GPT-5-mini, Gemini 2.5 Flash    |
+| Cloud LLM Provider   | OpenRouter API                                  | Access to Claude Haiku 4.5, GPT-5-mini, Gemini  |
 | Local LLM            | Ollama                                          | Self-hosted fallback for all tasks              |
-| Embeddings           | OpenAI text-embedding-3-small (via OpenRouter)  | 1536-dim vectors for RAG                        |
+| Embeddings           | OpenAI text-embedding-3-small (via OpenRouter)  | 1536-dim vectors for RAG, cached via async-cache|
 | Vector Database      | Qdrant (AsyncQdrantClient)                      | Message and fact retrieval                      |
-| Document Database    | MongoDB (AsyncIOMotorClient)                    | Chat history, memory, facts, media descriptions |
-| Data Validation      | Pydantic v2                                     | Models, structured LLM output, settings         |
+| Document Database    | MongoDB (AsyncIOMotorClient)                    | Chat history, memory, facts, chat settings      |
+| Data Validation      | Pydantic v2 / pydantic-settings                 | Models, structured LLM output, settings         |
 | Prompt Templating    | Jinja2                                          | Versioned, task-specific prompt files           |
 | Media Processing     | Pillow, OpenCV, Lottie, CairoSVG                | Image resizing, GIF/sticker frame extraction    |
-| Scheduling           | scheduler                                       | Hourly context updates, weekly fact decay       |
+| Scheduling           | scheduler                                       | Weekly fact-confidence decay                     |
 | Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks         |
 | Observability        | LangSmith                                       | LLM call tracing and span visualization         |
-| Containerization     | Docker Compose                                  | Bot, MongoDB, and Qdrant services               |
+| Containerization     | Docker (multi-stage build)                      | Bot, MongoDB, and Qdrant services               |
+| Deployment           | Kubernetes, GitHub Actions                      | CI build/push to GHCR, `kubectl`-based deploy   |
 | Testing              | pytest, pytest-asyncio, pytest-mock, freezegun  | Async test suite with time mocking              |
 
 ---
@@ -70,6 +78,8 @@ The system is built around an async message processing pipeline with two paralle
 
 ```
 Telegram API
+     |
+     +---> message_reaction updates --> diff old/new reactions --> $pull/$addToSet on message doc
      |
      v
 Message Handlers  (handlers.py)
@@ -82,12 +92,14 @@ Message Handlers  (handlers.py)
      |          Download -> hash dedup -> vision LLM -> store description
      |
      +---> [async] Context checks (per-chat lock)
-     |          Memory update (if threshold reached)
+     |          Memory update (if message count since last update >= threshold, and enabled)
      |            +---> Fact extraction from new messages (LLM structured output)
      |            |         upsert into MongoDB (confidence-based merge via Qdrant similarity)
-     |          Embeddings update (if threshold reached)
+     |          Embeddings update (if message count since last update >= threshold)
      |
-     +---> Character.respond()
+     +---> Character.respond()  (character resolved per chat from MongoDB chat_settings)
+               |
+               If a referenced media item is still processing, poll until ready
                |
                Build prompt (system + memory + related messages + history)
                |
@@ -95,15 +107,20 @@ Message Handlers  (handlers.py)
                    LLM call
                      |-- tool_call: search_messages  --> Qdrant vector search
                      |-- tool_call: get_user_facts   --> MongoDB fact lookup
-                     |-- text response               --> send to Telegram
+                     |-- tool_call: answer_text       --> Replier sends text, saves to MongoDB
+                     |-- tool_call: set_reaction      --> Replier sets emoji reaction
 
 [weekly scheduler]
      +---> Fact confidence decay
                Facts not updated in 7 days lose 0.1 confidence
                Facts at zero confidence are deleted
+
+[CI/CD]
+     +---> GitHub Actions: build multi-stage Docker image -> push to GHCR
+               -> kubectl apply against manifests/ (bot, MongoDB, Qdrant)
 ```
 
-**Configuration model:** Characters (YAML), prompts (Jinja2 templates), and model configs (versioned JSON) are all loaded from the filesystem at startup. This makes it straightforward to add new characters, tune prompts, or swap models without touching application code.
+**Configuration model:** Characters (YAML), prompts (Jinja2 templates), and model configs (versioned JSON) are all loaded from the filesystem at startup. This makes it straightforward to add new characters, tune prompts, or swap models without touching application code. Per-chat character selection and settings live in MongoDB instead, so they persist across deploys.
 
 ---
 
