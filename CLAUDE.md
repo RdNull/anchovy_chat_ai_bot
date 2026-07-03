@@ -32,13 +32,15 @@ python -m src.scripts.create_embeddings
 This is a Telegram bot that simulates character personalities using LLMs with RAG and persistent memory. Core flow:
 
 1. **Message received** → `src/messages/handlers.py` routes based on mention/reply/random chance
-2. **Character response** → `src/characters/character.py` builds prompt, invokes LLM in agentic loop with tools
-3. **Context enrichment (post-response)** → `run_context_checks()` in `src/processors/context/handlers.py` runs after every message; when `messages_count >= settings.LAST_MESSAGES_SIZE` since the last update, it triggers structured-memory update + fact extraction, and a separate counter triggers embedding update
+2. **Character response** → `src/characters/character.py` builds prompt, invokes LLM in agentic loop with tools. The active character per chat is resolved from `src/chat_settings/repository.py` (MongoDB `chat_settings` collection), selectable via `/list` (inline keyboard), `/random`, or defaulted; `/info` reports the current one.
+3. **Context enrichment (post-response)** → `run_context_checks()` in `src/processors/context/handlers.py` runs after every message; when `messages_count >= settings.LAST_MESSAGES_SIZE` since the last update, it triggers structured-memory update + fact extraction (gated by `settings.ENABLE_MEMORY_PROCESSING`), and a separate counter triggers embedding update
 4. **Weekly scheduler** (`src/bot.py:setup_scheduler`) → `src/tasks/facts.py:run_fact_decay` decays confidence of stale facts and deletes facts that reach zero
 
 ### Key subsystems
 
 **Characters** (`src/characters/`): Defined in `repository/*.yaml`. The `Character` class binds LLM tools with `tool_choice='any'` and runs an agentic loop. Tools are split into *context tools* (`search_messages`, `get_user_facts`) and *direct tools* (`answer_text`, `set_reaction`, both `return_direct=True`); the loop terminates as soon as a direct tool is invoked. A depth>5 safeguard re-binds only direct tools to force termination. Replies and reactions are dispatched via `Replier` (`src/characters/reply.py`), which persists text replies to MongoDB and writes bot reactions directly onto the reacted-to message's `reactions` field.
+
+**Chat settings** (`src/chat_settings/repository.py`): Per-chat character selection, stored as `{chat_id, character_code}` documents in MongoDB — `get_character_code`/`set_character_code`, upserted so a chat keeps its choice across restarts and deploys.
 
 **LLM stack**: `src/ai.py` provides cached model instances. `src/model_manager.py` resolves model configs from `src/models/<local|cloud>/<task>/<version>.json`. The `"env:VAR_NAME"` syntax in JSON configs interpolates environment variables at load time. Toggle local vs cloud with `IS_LOCAL`.
 
@@ -50,15 +52,17 @@ This is a Telegram bot that simulates character personalities using LLMs with RA
 
 **Reactions** (`src/messages/handlers.py`, `src/messages/repository.py`): User reactions arrive via `message_reaction` Telegram updates (requires bot to be chat admin and `allowed_updates=Update.ALL_TYPES` in `run_polling`). Each update carries the user's full new reaction set as a snapshot. The handler calls `update_message_reactions(message, user_nickname, old_emojis, new_emojis)` which resolves the diff and applies `$pull`/`$addToSet`/`$unset` in a single MongoDB write. Bot reactions are written by `add_bot_reaction(message, settings.BOT_NICKNAME, emoji)` at send time (Telegram never echoes bot reactions). Both write to `reactions: dict[str, list[str]]` on the message document — emoji-keyed, nickname-valued. Reactions render into the LLM prompt via `Message.ai_format` / `Message.response_format` (see Message model below) but are excluded from embeddings via `Message.embedding_text`.
 
-**Embeddings/RAG** (`src/embeddings/client.py` + `src/processors/context/embeddings.py`): Messages are chunked (window=8, overlap=3) and stored in Qdrant. LLM tool `search_messages` performs semantic search with cosine similarity.
+**Embeddings/RAG** (`src/embeddings/client.py` + `src/processors/context/embeddings.py`): Messages are chunked (window=8, overlap=3), assigned UUID chunk IDs, and stored in Qdrant. An `AsyncCache` on the embeddings client avoids re-embedding identical text. LLM tool `search_messages` performs semantic search with cosine similarity.
 
-**Media pipeline** (`src/processors/media/`): Images go through a vision LLM for description+OCR. Animations/GIFs have key frames extracted (via OpenCV/Lottie), resized to ≤300k pixels, and described in a single vision LLM call.
+**Media pipeline** (`src/processors/media/`): Images go through a vision LLM for description+OCR. Animations/GIFs have key frames extracted (via OpenCV/Lottie), resized to ≤300k pixels, and described in a single vision LLM call. Media status is tracked as pending/finished on the message; if a character is triggered while a referenced media item is still processing, `src/messages/response.py:_get_last_messages` calls `wait_for_media_ready` to poll (bounded by `settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT`) before building the prompt.
 
 **Tools available to LLM** (`src/characters/tools/`):
 - *Context tools* (`context.py`): `search_messages` (Qdrant semantic search), `get_user_facts` (known facts about a user).
 - *Direct tools* (`answer.py`, `return_direct=True`): `answer_text` (text reply via `Replier`), `set_reaction` (emoji reaction from `src.const.ALLOWED_REACTIONS`).
 
 `ToolRegistry` (`src/tools.py`) holds both groups, executes by name, and exposes `is_return_direct` so the character loop knows when to terminate.
+
+**Deployment**: `Dockerfile` is a multi-stage build (builder venv + slim runtime, non-root `app` user). `.github/workflows/deploy.yml` builds/pushes the image to GHCR on push to `main`, then applies `manifests/*.yaml` (bot, MongoDB, Qdrant Deployments; ConfigMap/Secret populated from repo vars/secrets) to a Kubernetes cluster via `kubectl`. Not relevant to local dev — use `docker compose up -d --build` instead.
 
 ### Message model text formats (`src/models.py`)
 
