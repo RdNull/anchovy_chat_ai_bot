@@ -20,6 +20,10 @@ async def setup_scheduler():
         Monday(dt.time(3, 0, tzinfo=const.TIMEZONE_ALMATY)),
         tasks.facts.run_fact_decay,
     )
+    schedule.daily(
+        dt.time(4, 0, tzinfo=const.TIMEZONE_ALMATY),
+        tasks.memory.run_memory_cleanup,
+    )
     while True:
         await asyncio.sleep(1)
 
