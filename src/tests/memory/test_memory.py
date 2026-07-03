@@ -1,8 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
 
+from src import mongo
+from src.memory.handlers import delete_old_memories
 from src.memory.models import ChatState, ParticipantInfo, RecentItem, StructuredMemory
 from src.memory.repository import get_last_memory, save_memory
 from src.messages.repository import get_messages, save_message
@@ -187,3 +189,63 @@ def test_trim_noop_when_under_limit():
     memory.trim()
     assert memory.participants['@bob'].traits == ['a', 'b']
     assert memory.state.active_topics == ['x']
+
+
+# --- delete_old_memories ---
+
+async def test_delete_old_memories_removes_superseded_stale_record():
+    ten_days_ago = (datetime.now(timezone.utc) - timedelta(days=10)).timestamp()
+    nine_days_ago = (datetime.now(timezone.utc) - timedelta(days=9)).timestamp()
+    await mongo.memory.insert_one({
+        'chat_id': 1, 'content': StructuredMemory().model_dump(), 'created_at': ten_days_ago,
+    })
+    await mongo.memory.insert_one({
+        'chat_id': 1, 'content': StructuredMemory().model_dump(), 'created_at': nine_days_ago,
+    })
+
+    await delete_old_memories(retention_days=7)
+
+    remaining = await mongo.memory.find({'chat_id': 1}).to_list(length=10)
+    assert len(remaining) == 1
+    assert remaining[0]['created_at'] == nine_days_ago
+
+
+async def test_delete_old_memories_keeps_recent_records():
+    one_day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).timestamp()
+    await mongo.memory.insert_one({
+        'chat_id': 2, 'content': StructuredMemory().model_dump(), 'created_at': one_day_ago,
+    })
+
+    await delete_old_memories(retention_days=7)
+
+    remaining = await mongo.memory.find({'chat_id': 2}).to_list(length=10)
+    assert len(remaining) == 1
+
+
+async def test_delete_old_memories_preserves_only_record_even_if_stale():
+    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
+    await mongo.memory.insert_one({
+        'chat_id': 3, 'content': StructuredMemory().model_dump(), 'created_at': thirty_days_ago,
+    })
+
+    await delete_old_memories(retention_days=7)
+
+    remaining = await mongo.memory.find({'chat_id': 3}).to_list(length=10)
+    assert len(remaining) == 1
+
+
+async def test_delete_old_memories_respects_custom_retention_days():
+    three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).timestamp()
+    one_day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).timestamp()
+    await mongo.memory.insert_one({
+        'chat_id': 4, 'content': StructuredMemory().model_dump(), 'created_at': three_days_ago,
+    })
+    await mongo.memory.insert_one({
+        'chat_id': 4, 'content': StructuredMemory().model_dump(), 'created_at': one_day_ago,
+    })
+
+    await delete_old_memories(retention_days=1)
+
+    remaining = await mongo.memory.find({'chat_id': 4}).to_list(length=10)
+    assert len(remaining) == 1
+    assert remaining[0]['created_at'] == one_day_ago
