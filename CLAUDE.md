@@ -34,7 +34,7 @@ This is a Telegram bot that simulates character personalities using LLMs with RA
 1. **Message received** → `src/messages/handlers.py` routes based on mention/reply/random chance
 2. **Character response** → `src/characters/character.py` builds prompt, invokes LLM in agentic loop with tools. The active character per chat is resolved from `src/chat_settings/repository.py` (MongoDB `chat_settings` collection), selectable via `/list` (inline keyboard), `/random`, or defaulted; `/info` reports the current one.
 3. **Context enrichment (post-response)** → `run_context_checks()` in `src/processors/context/handlers.py` runs after every message; when `messages_count >= settings.LAST_MESSAGES_SIZE` since the last update, it triggers structured-memory update + fact extraction (gated by `settings.ENABLE_MEMORY_PROCESSING`), and a separate counter triggers embedding update
-4. **Weekly scheduler** (`src/bot.py:setup_scheduler`) → `src/tasks/facts.py:run_fact_decay` decays confidence of stale facts and deletes facts that reach zero
+4. **Scheduler** (`src/bot.py:setup_scheduler`) → weekly: `src/tasks/facts.py:run_fact_decay` decays confidence of stale facts and deletes facts that reach zero; daily: `src/tasks/memory.py:run_memory_cleanup` deletes `mongo.memory` snapshots older than `settings.MEMORY_RETENTION_DAYS` (default 7), always preserving the most recent snapshot per chat
 
 ### Key subsystems
 
