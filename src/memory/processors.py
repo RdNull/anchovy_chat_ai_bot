@@ -3,6 +3,7 @@ from langsmith import traceable
 
 from src import ai, settings
 from src.logs import logger
+from src.memory.dedup import resolve_attribution_conflicts
 from src.memory.models import StructuredMemory
 from src.memory.repository import save_memory
 from src.models import Message
@@ -37,6 +38,13 @@ async def extract_memory(
     if not updated_memory:
         logger.error(f'No memory extracted for chat {chat_id}')
         return
+
+    for drop in resolve_attribution_conflicts(updated_memory, current_memory):
+        kept = drop.kept_owner or '-'
+        logger.info(
+            f'MEMORY_ATTRIBUTION_DROP chat_id={chat_id} reason={drop.reason} owner={drop.owner} '
+            f'kept={kept} field={drop.field} text={drop.text}'
+        )
 
     try:
         await save_memory(chat_id, updated_memory.trim())
