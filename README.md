@@ -23,7 +23,14 @@ The bot both reads and writes Telegram message reactions. Incoming `message_reac
 Messages are chunked with a sliding window, embedded via OpenAI `text-embedding-3-small`, and stored in Qdrant with UUID chunk IDs. An in-memory async cache avoids re-embedding identical text. The `search_messages` tool lets the LLM semantically retrieve relevant past conversation chunks at inference time, filtered by chat ID.
 
 **Structured Persistent Memory**
-Each chat accumulates a `StructuredMemory` document in MongoDB — tracking facts, decisions, active topics, open loops, participant profiles, constraints, and preferences. Memory is updated whenever message volume since the last update crosses a threshold (gated by an `ENABLE_MEMORY_PROCESSING` flag so the pipeline can be disabled without a redeploy). Updates use an LLM with structured output mode (Claude Haiku 4.5 via OpenRouter) for reliable JSON extraction.
+Each chat accumulates a `StructuredMemory` snapshot in MongoDB — per-participant `traits` (stable properties) and `recent` (things that just happened), plus chat-level active topics, open questions, and running jokes. Memory is rebuilt whenever message volume since the last update crosses a threshold (gated by an `ENABLE_MEMORY_PROCESSING` flag so the pipeline can be disabled without a redeploy), using an LLM in structured output mode (Claude Haiku 4.5 via OpenRouter) for reliable JSON extraction. Everything downstream of the model call is deterministic code:
+
+- **Attribution guard** — one fact must belong to exactly one participant. Entries duplicated across a participant's own `traits`/`recent` collapse to the trait; when several participants claim the same fact, the previous snapshot acts as the incumbent map and decides which copy survives. A fact that is new on everyone is logged but kept, since a string match cannot distinguish a leak from two people who genuinely did the same thing.
+- **Code-owned clock** — the extraction model emits bare strings and never sees or stamps a timestamp. A decay sidecar stored beside the snapshot tracks, per entry, when it was first written and how many cycles it has survived, keyed by a normalized form shared with the guard. The character prompt then renders ages the model cannot get wrong (`вчера`, `3 дня назад`, `больше недели назад`).
+- **Cycle-based decay** — ageing is counted in update cycles rather than wall clock, because updates are triggered by message volume: a wall-clock TTL would wipe a quiet chat's memory and never bind in a busy one. Eviction keeps the newest N `recent` entries by birth and drops anything past a cycle limit, with positional caps on traits and chat state.
+- **Churn accounting** — each cycle reports what was born, carried, promoted from `recent` to a generalized trait, evicted, or silently lost, so memory quality is measurable rather than anecdotal. The decay policy currently ships in log-only mode: it computes what it *would* evict and records the gap against the live baseline before being switched on.
+
+A daily job prunes old snapshots, always preserving the most recent one per chat.
 
 **User Fact Tracking with Confidence Scoring**
 Facts about individual users are extracted automatically in the same pass as each memory update: a dedicated LLM pass reads new messages and emits a list of stable facts per `@username`, each scored with a confidence value (0.5–1.0). Facts are upserted into MongoDB — if a semantically similar fact already exists (Qdrant cosine search), its confidence is reinforced or updated; otherwise a new record is created. A weekly background job decays the confidence of facts not updated in the past week; facts that reach zero confidence are deleted. The `get_user_facts` tool lets the character LLM retrieve the top facts about a user at inference time.
@@ -35,7 +42,7 @@ Facts about individual users are extracted automatically in the same pass as eac
 - If a character is triggered while a referenced image/sticker is still processing, response generation polls (with a bounded timeout) until the media description is ready before building the prompt
 
 **LLM Prompt Evaluation**
-Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suites covering memory extraction, recap generation, image description, and character reply quality, with good/bad sample fixtures for each task.
+Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suites covering memory extraction, fact extraction, recap generation, image description, and character reply quality, with good/bad sample fixtures for each task. Where a property is mechanically checkable it is asserted in JavaScript rather than left to an LLM rubric: the memory suite re-implements the production key normalization so an attribution or timestamp-leak failure in evals predicts a real drop in production.
 
 **Dual Local/Cloud Mode**
 A single `IS_LOCAL` flag switches the entire model stack between OpenRouter (cloud) and Ollama (local). Model configs are versioned JSON files per task, supporting environment variable interpolation.
@@ -63,7 +70,7 @@ A GitHub Actions workflow builds and pushes a multi-stage Docker image to GHCR o
 | Data Validation      | Pydantic v2 / pydantic-settings                 | Models, structured LLM output, settings         |
 | Prompt Templating    | Jinja2                                          | Versioned, task-specific prompt files           |
 | Media Processing     | Pillow, OpenCV, Lottie, CairoSVG                | Image resizing, GIF/sticker frame extraction    |
-| Scheduling           | scheduler                                       | Weekly fact-confidence decay                     |
+| Scheduling           | scheduler                                       | Weekly fact-confidence decay, daily memory cleanup |
 | Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks         |
 | Observability        | LangSmith                                       | LLM call tracing and span visualization         |
 | Containerization     | Docker (multi-stage build)                      | Bot, MongoDB, and Qdrant services               |
@@ -93,6 +100,8 @@ Message Handlers  (handlers.py)
      |
      +---> [async] Context checks (per-chat lock)
      |          Memory update (if message count since last update >= threshold, and enabled)
+     |            |         LLM structured output -> attribution guard -> age sidecar
+     |            |         -> eviction -> churn log -> save snapshot
      |            +---> Fact extraction from new messages (LLM structured output)
      |            |         upsert into MongoDB (confidence-based merge via Qdrant similarity)
      |          Embeddings update (if message count since last update >= threshold)
@@ -114,6 +123,11 @@ Message Handlers  (handlers.py)
      +---> Fact confidence decay
                Facts not updated in 7 days lose 0.1 confidence
                Facts at zero confidence are deleted
+
+[daily scheduler]
+     +---> Memory snapshot cleanup
+               Snapshots older than the retention window are deleted
+               The most recent snapshot per chat is always kept
 
 [CI/CD]
      +---> GitHub Actions: build multi-stage Docker image -> push to GHCR

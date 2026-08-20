@@ -19,7 +19,8 @@ docker compose exec bot pytest -k test_name      # single test
 ### Prompt evaluation (LLM outputs)
 ```bash
 cd evals && promptfoo eval
-cd evals && promptfoo view    # view results in browser
+cd evals && promptfoo view              # view results in browser
+cd evals/memory && promptfoo eval       # one suite (memory, facts, reply, recap, …)
 ```
 
 ### Backfill embeddings
@@ -46,7 +47,7 @@ This is a Telegram bot that simulates character personalities using LLMs with RA
 
 **Prompts**: Jinja2 templates in `src/prompts/<task>/<version>.j2`, loaded via `src/prompt_manager.py`.
 
-**Memory** (`src/memory/`): `StructuredMemory` (`models.py`) stores per-chat `participants` (with `traits` and `recent` items) plus a `ChatState` containing `active_topics`, `open_questions`, and `running_jokes`. `processors.py:extract_memory` runs an LLM with structured output against new messages; `repository.py` handles MongoDB CRUD.
+**Memory** (`src/memory/`): `StructuredMemory` (`models.py`) stores per-chat `participants` (with `traits` and `recent` items) plus a `ChatState` containing `active_topics`, `open_questions`, and `running_jokes`. A snapshot is persisted as `MemoryData` — `content` (what the model emitted) beside a `decay` sidecar the model never sees. `repository.py` handles MongoDB CRUD (append-only snapshots, newest read back by `created_at`). See "Memory pipeline" below for the per-cycle flow.
 
 **Facts** (`src/facts/`): User facts are extracted automatically after each memory update. `src/facts/processors.py:extract_facts` calls an LLM with structured output to pull stable facts (with confidence 0.5–1.0) from new messages. `src/facts/handlers.py` upserts each fact — reinforcing confidence if a similar fact exists in Qdrant, creating a new record otherwise. `src/facts/repository.py` handles raw MongoDB CRUD. A weekly decay job (`src/tasks/facts.py`) lowers confidence of facts not updated in 7 days and deletes those that reach zero.
 
@@ -64,6 +65,26 @@ This is a Telegram bot that simulates character personalities using LLMs with RA
 
 **Deployment**: `Dockerfile` is a multi-stage build (builder venv + slim runtime, non-root `app` user). `.github/workflows/deploy.yml` builds/pushes the image to GHCR on push to `main`, then applies `manifests/*.yaml` (bot, MongoDB, Qdrant Deployments; ConfigMap/Secret populated from repo vars/secrets) to a Kubernetes cluster via `kubectl`. Not relevant to local dev — use `docker compose up -d --build` instead.
 
+### Memory pipeline (`src/memory/`)
+
+`processors.py:extract_memory` is the whole cycle, run from `run_context_checks()`. In order:
+
+1. **Prompt build** — `_prompt_memory()` renders the current snapshot for the model but strips `active_topics`, so stale topics cannot be carried forward: the model cannot re-emit what it never sees. Extraction uses prompt `memory/v4` and model `v3-cheap`, with `with_structured_output(StructuredMemory)`.
+2. **Attribution guard** (`dedup.py:resolve_attribution_conflicts`) — enforces that one fact belongs to exactly one participant. First drops `recent` entries duplicating a trait of the same nick (the trait is the intended survivor), then adjudicates cross-participant collisions against the last snapshot as the incumbent map: exactly one incumbent wins and the other copies are dropped (`incumbent_wins`); every copy an incumbent means the store is already corrupt, so all are dropped to let a later window re-extract (`ambiguous_incumbent`); a fact new on everyone is reported but kept (`no_incumbent`), since a string match cannot separate an intake leak from two people who did the same thing. `state` is untouched — the prompt deliberately allows a fact in both places.
+3. **Reconcile** (`decay.py:reconcile`) — ages the sidecar one cycle. `prior_decay` is the sole authority on what was stored last cycle; each emitted key either gets a fresh `DecayRecord(born=now, cycles=0, field=…)` or inherits `born` with `cycles + 1`. `resolve_now()` stamps the cycle with the newest message timestamp in the window (wall clock only as fallback), so ages sit on the same clock as the message log and tests stay deterministic.
+4. **Eviction** (`decay.py:apply_decay`) — computes two survivor sets and applies one. *Baseline* (current default, `ENABLE_MEMORY_DECAY=False`) is positional caps on every list. *Policy* (when enabled) keeps the newest `RECENT_KEEP` by `born` and hard-drops anything past `RECENT_MAX_CYCLES`; `traits` and `state` keep the baseline caps regardless, since with no confidence or recurrence signal every trait-eviction rule is bad. Both sets are recorded — a policy drop the baseline kept logs `applied=False`, a baseline drop the policy would have kept logs `reason=baseline`. The sidecar is pruned to survivors, so an evicted entry the model re-emits starts fresh instead of resurrecting a stale `born`.
+5. **Churn** (`decay.py:summarize_churn`) — runs last, on the pruned sidecar, so it describes what was actually saved. Events: `birth`, `carry`, `vanish`, `promote`, `promote_candidate`. Exact `promote` (verbatim `recent` → `traits`) fires approximately never, since the model rewords on generalisation; `promote_candidate` covers the real case — every trait born on a nick that lost a `recent` entry, as a *coincidence count, not a pairing*, which is why the log prints `lost_recent` next to it.
+
+Cycles, not wall clock, are the unit: updates trigger on message count, so a wall-clock TTL would empty a quiet chat and never bind in a busy one.
+
+**Keyspace** (`keys.py`): `normalize()` is the single comparison key used by both the guard and the sidecar — lowercase, strip `@nick` tokens, `ё` → `е`, replace every non-letter/digit with a space, collapse whitespace. Keeping only letters and digits is a Mongo constraint, not tidiness: these keys become field names in the `decay` sidecar, where `$`-prefixed names and dots are restricted. `entry_keys()` returns a participant's unified `traits + recent` keyspace so an entry's age survives promotion. `evals/memory/memory_lib.js:norm` mirrors this — change one, change the other.
+
+**Rendering** (`models.py:MemoryData.prompt_format`): builds the `=== ПАМЯТЬ ===` block for the character prompt (`src/characters/character.py`). `recent` entries are prefixed with a Russian relative age (`сегодня` / `вчера` / `N дня|дней назад` / `больше недели назад`) computed in code from the sidecar's `born`, compared by calendar day. A missing or malformed record renders the entry bare rather than raising — this runs on the reply path.
+
+**Observability**: the cycle emits `MEMORY_ATTRIBUTION_CONFLICT`, `MEMORY_TRAIT_OVERFLOW` (logged before eviction reshapes the list), `MEMORY_DECAY` (`evicted` vs `would_evict`), `MEMORY_CHURN`, and `MEMORY_CHURN_LOST` lines. Decay ships off on purpose: phase 1 measures what the policy would evict before it evicts anything.
+
+**Retention**: `handlers.py:delete_old_memories` backs the daily cleanup task, dropping snapshots older than `settings.MEMORY_RETENTION_DAYS` while always preserving the newest per chat.
+
 ### Message model text formats (`src/models.py`)
 
 `Message` exposes three text representations:
@@ -79,7 +100,7 @@ Reactions render via `Message._render_reactions()`: bot (`settings.BOT_NICKNAME`
 
 ### Configuration access
 
-Always use `src/settings.py` (Pydantic `BaseSettings`) for all config — never read env vars directly. Settings include: allowed users/chats, reply chance, history window size, embedding parameters, model selection.
+Always use `src/settings.py` (Pydantic `BaseSettings`) for all config — never read env vars directly. Settings include: allowed users/chats, reply chance, history window size, embedding parameters, model selection, and the memory caps (`ENABLE_MEMORY_DECAY`, `TRAITS_KEEP`, `RECENT_KEEP`, `RECENT_MAX_CYCLES`, `TOPICS_KEEP`, `QUESTIONS_KEEP`, `JOKES_KEEP`), read in one place via `DecayCaps.from_settings()`.
 
 ### Testing notes
 
@@ -87,7 +108,7 @@ Always use `src/settings.py` (Pydantic `BaseSettings`) for all config — never 
 
 Run tests inside Docker: `docker compose exec bot pytest`
 
-All tests live in `src/tests/`. Shared fixtures are in `src/tests/conftest.py`.
+All tests live in `src/tests/`. Shared fixtures are in `src/tests/conftest.py`. Memory tests are split by module under `src/tests/memory/` (`test_memory.py`, `test_dedup.py`, `test_decay.py`); the cleanup task is covered by `src/tests/test_tasks_memory.py`.
 Use `[write-tests](.claude/skills/write-tests)` skill for tests manipulation.
 
 ## Code Style
