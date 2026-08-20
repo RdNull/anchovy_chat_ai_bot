@@ -1,13 +1,9 @@
-import re
 from collections import defaultdict
 from typing import Callable, TypeVar
 
-import unicodedata
-
-from src.memory.models import ParticipantInfo, RecentItem, StructuredMemory
+from src.memory.keys import entry_keys, normalize
+from src.memory.models import RecentItem, StructuredMemory
 from src.models import BaseModel
-
-NICK_PATTERN = re.compile(r'@[\w\d_]+')
 
 TRAITS_FIELD = 'traits'
 RECENT_FIELD = 'recent'
@@ -38,35 +34,6 @@ class ConflictRecord(BaseModel):
     removed: bool
 
 
-def normalize(text: str) -> str:
-    """Reduces an entry to its comparison key.
-
-    Lowercases, strips `@nick` tokens, folds `ё` to `е`, replaces Unicode
-    punctuation with spaces and collapses whitespace. Nick stripping must run
-    before punctuation stripping, since `@` is punctuation itself.
-
-    Args:
-        text: Raw entry text as the model emitted it.
-
-    Returns:
-        The comparison key, or an empty string when the entry carries no
-        content of its own (e.g. a bare nick).
-    """
-    lowered = NICK_PATTERN.sub(' ', text.lower()).replace('ё', 'е')
-    depunctuated = ''.join(
-        ' ' if unicodedata.category(char).startswith('P') else char for char in lowered
-    )
-    return ' '.join(depunctuated.split())
-
-
-def _entry_keys(info: ParticipantInfo) -> set[str]:
-    """Returns the unified `traits` + `recent` keyspace of one participant."""
-    keys = {normalize(trait) for trait in info.traits}
-    keys.update(normalize(item.text) for item in info.recent)
-    keys.discard('')
-    return keys
-
-
 def _key_owners(memory: StructuredMemory | None) -> dict[str, set[str]]:
     """Maps every participant key to the nicks holding it."""
     owners: dict[str, set[str]] = defaultdict(set)
@@ -74,7 +41,7 @@ def _key_owners(memory: StructuredMemory | None) -> dict[str, set[str]]:
         return owners
 
     for nick, info in memory.participants.items():
-        for key in _entry_keys(info):
+        for key in entry_keys(info.traits, [item.text for item in info.recent]):
             owners[key].add(nick)
     return owners
 
