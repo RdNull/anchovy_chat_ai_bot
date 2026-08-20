@@ -1,19 +1,13 @@
 from collections import defaultdict
-from typing import Callable, TypeVar
 
-from src.memory.keys import entry_keys, normalize
-from src.memory.models import RecentItem, StructuredMemory
+from src.memory.keys import RECENT_FIELD, TRAITS_FIELD, entry_keys, normalize
+from src.memory.models import StructuredMemory
 from src.models import BaseModel
-
-TRAITS_FIELD = 'traits'
-RECENT_FIELD = 'recent'
 
 TRAITS_RECENT_OVERLAP = 'traits_recent_overlap'
 INCUMBENT_WINS = 'incumbent_wins'
 NO_INCUMBENT = 'no_incumbent'
 AMBIGUOUS_INCUMBENT = 'ambiguous_incumbent'
-
-Entry = TypeVar('Entry', str, RecentItem)
 
 # `(kept_owner, reason, removes)` — the verdict for one contested key.
 Resolution = tuple[str | None, str, bool]
@@ -41,7 +35,7 @@ def _key_owners(memory: StructuredMemory | None) -> dict[str, set[str]]:
         return owners
 
     for nick, info in memory.participants.items():
-        for key in entry_keys(info.traits, [item.text for item in info.recent]):
+        for key in entry_keys(info.traits, info.recent):
             owners[key].add(nick)
     return owners
 
@@ -59,13 +53,13 @@ def _drop_traits_recent_overlap(updated: StructuredMemory) -> list[ConflictRecor
         trait_keys.discard('')
 
         kept = []
-        for item in info.recent:
-            if normalize(item.text) not in trait_keys:
-                kept.append(item)
+        for entry in info.recent:
+            if normalize(entry) not in trait_keys:
+                kept.append(entry)
                 continue
 
             drops.append(ConflictRecord(
-                text=item.text,
+                text=entry,
                 owner=nick,
                 field=RECENT_FIELD,
                 kept_owner=nick,
@@ -112,29 +106,27 @@ def _resolve_owners(
 
 
 def _filter_entries(
-    entries: list[Entry],
-    get_text: Callable[[Entry], str],
+    entries: list[str],
     nick: str,
     field: str,
     resolutions: dict[str, Resolution],
-) -> tuple[list[Entry], list[ConflictRecord]]:
+) -> tuple[list[str], list[ConflictRecord]]:
     """Records every conflict on one participant list, removing what it must.
 
     An entry whose resolution does not remove is recorded and kept. Survivors are
-    rebuilt by filtering so the original order — which `trim()` relies on, taking
-    the tail — is preserved.
+    rebuilt by filtering so the original order — which `apply_decay` relies on for
+    its positional caps — is preserved.
     """
     kept, records = [], []
     for entry in entries:
-        text = get_text(entry)
-        resolution = resolutions.get(normalize(text))
+        resolution = resolutions.get(normalize(entry))
         if resolution is None or resolution[0] == nick:
             kept.append(entry)
             continue
 
         kept_owner, reason, removes = resolution
         records.append(ConflictRecord(
-            text=text,
+            text=entry,
             owner=nick,
             field=field,
             kept_owner=kept_owner,
@@ -157,12 +149,8 @@ def _resolve_cross_participant(
 
     records = []
     for nick, info in updated.participants.items():
-        traits, trait_records = _filter_entries(
-            info.traits, lambda trait: trait, nick, TRAITS_FIELD, resolutions
-        )
-        recent, recent_records = _filter_entries(
-            info.recent, lambda item: item.text, nick, RECENT_FIELD, resolutions
-        )
+        traits, trait_records = _filter_entries(info.traits, nick, TRAITS_FIELD, resolutions)
+        recent, recent_records = _filter_entries(info.recent, nick, RECENT_FIELD, resolutions)
         info.traits = traits
         info.recent = recent
         records.extend(trait_records)

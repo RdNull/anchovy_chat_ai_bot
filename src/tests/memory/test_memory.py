@@ -4,11 +4,21 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src import mongo
+from src.const import TIMEZONE_ALMATY
 from src.memory.handlers import delete_old_memories
-from src.memory.models import ChatState, ParticipantInfo, RecentItem, StructuredMemory
+from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInfo, StructuredMemory
 from src.memory.repository import get_last_memory, save_memory
 from src.messages.repository import get_messages, save_message
 from src.models import Message, UserRole
+
+TS = '26-05-01 10:00'
+NOW = datetime(2026, 5, 1, 18, 0, tzinfo=TIMEZONE_ALMATY)
+
+
+def make_memory_data(content: StructuredMemory, decay=None) -> MemoryData:
+    return MemoryData(
+        chat_id=1, created_at=NOW, content=content, decay=decay or {}
+    )
 
 
 async def test_save_and_get_last_memory():
@@ -16,7 +26,7 @@ async def test_save_and_get_last_memory():
         participants={
             '@alice': ParticipantInfo(
                 traits=['likes coffee', 'punctual'],
-                recent=[RecentItem(text='talked about testing', last_seen_at='26-05-01 10:00')],
+                recent=['talked about testing'],
             )
         },
         state=ChatState(
@@ -25,14 +35,16 @@ async def test_save_and_get_last_memory():
             running_jokes=['the server is always down'],
         ),
     )
-    await save_memory(1, memory)
+    decay = {'@alice': {'talked about testing': DecayRecord(born=TS, cycles=2, field='recent')}}
+    await save_memory(1, memory, decay)
 
     result = await get_last_memory(1)
     assert result.chat_id == 1
     assert isinstance(result.created_at, datetime)
     assert result.content.participants['@alice'].traits == ['likes coffee', 'punctual']
-    assert result.content.participants['@alice'].recent[0].text == 'talked about testing'
-    assert result.content.participants['@alice'].recent[0].last_seen_at == '26-05-01 10:00'
+    assert result.content.participants['@alice'].recent == ['talked about testing']
+    assert result.decay['@alice']['talked about testing'].born == TS
+    assert result.decay['@alice']['talked about testing'].cycles == 2
     assert result.content.state.active_topics == ['testing', 'deployment']
     assert result.content.state.open_questions == ['when is the release?']
     assert result.content.state.running_jokes == ['the server is always down']
@@ -56,6 +68,7 @@ async def test_save_and_get_empty_memory():
     await save_memory(1, memory)
 
     result = await get_last_memory(1)
+    assert result.decay == {}
     assert result.content.participants == {}
     assert result.content.state.active_topics == []
     assert result.content.state.open_questions == []
@@ -84,14 +97,13 @@ async def test_get_messages_db_error(mocker):
 # --- prompt_format unit tests (no DB) ---
 
 def test_prompt_format_empty():
-    result = StructuredMemory().prompt_format()
-    assert result == '=== ПАМЯТЬ ==='
+    assert make_memory_data(StructuredMemory()).prompt_format() == '=== ПАМЯТЬ ==='
 
 
 def test_prompt_format_participants_traits_only():
-    memory = StructuredMemory(
+    memory = make_memory_data(StructuredMemory(
         participants={'@bob': ParticipantInfo(traits=['сарказм', 'ночная сова'])}
-    )
+    ))
     assert memory.prompt_format() == (
         '=== ПАМЯТЬ ===\n'
         'УЧАСТНИКИ:\n'
@@ -102,26 +114,73 @@ def test_prompt_format_participants_traits_only():
 
 
 def test_prompt_format_participants_with_recent():
-    memory = StructuredMemory(
-        participants={
-            '@alice': ParticipantInfo(
-                traits=['любит кофе'],
-                recent=[RecentItem(text='обсуждала деплой', last_seen_at='26-05-01 10:00')],
-            )
-        }
+    memory = make_memory_data(
+        StructuredMemory(
+            participants={
+                '@alice': ParticipantInfo(traits=['любит кофе'], recent=['обсуждала деплой']),
+            }
+        ),
+        decay={'@alice': {'обсуждала деплой': DecayRecord(born=TS, cycles=0, field='recent')}},
     )
-    assert memory.prompt_format() == (
+    assert memory.prompt_format(now=NOW) == (
         '=== ПАМЯТЬ ===\n'
         'УЧАСТНИКИ:\n'
         '@alice\n'
         '  • любит кофе\n'
         '  recent:\n'
-        '  - [26-05-01 10:00] обсуждала деплой'
+        '  - сегодня: обсуждала деплой'
     )
 
 
+def test_prompt_format_recent_without_decay_record_renders_bare():
+    """A record can be missing transiently; the reply path must not raise."""
+    memory = make_memory_data(StructuredMemory(
+        participants={'@alice': ParticipantInfo(recent=['обсуждала деплой'])}
+    ))
+    assert memory.prompt_format(now=NOW) == (
+        '=== ПАМЯТЬ ===\n'
+        'УЧАСТНИКИ:\n'
+        '@alice\n'
+        '  recent:\n'
+        '  - обсуждала деплой'
+    )
+
+
+def test_prompt_format_relative_age_buckets():
+    entries = ['сегодня', 'вчера', 'позавчера', 'давно']
+    born = ['26-05-01 10:00', '26-04-30 10:00', '26-04-29 10:00', '26-04-23 10:00']
+    memory = make_memory_data(
+        StructuredMemory(participants={'@alice': ParticipantInfo(recent=entries)}),
+        decay={
+            '@alice': {
+                entry: DecayRecord(born=stamp, cycles=0, field='recent')
+                for entry, stamp in zip(entries, born)
+            }
+        },
+    )
+    rendered = memory.prompt_format(now=NOW).splitlines()[-4:]
+    assert rendered == [
+        '  - сегодня: сегодня',
+        '  - вчера: вчера',
+        '  - 2 дней назад: позавчера',
+        '  - больше недели назад: давно',
+    ]
+
+
+def test_prompt_format_age_is_calendar_days_not_elapsed_hours():
+    """23:59 yesterday is «вчера», not «сегодня», even 5 minutes ago."""
+    memory = make_memory_data(
+        StructuredMemory(participants={'@alice': ParticipantInfo(recent=['поздний созвон'])}),
+        decay={'@alice': {'поздний созвон': DecayRecord(
+            born='26-04-30 23:59', cycles=0, field='recent'
+        )}},
+    )
+    now = datetime(2026, 5, 1, 0, 4, tzinfo=TIMEZONE_ALMATY)
+    assert memory.prompt_format(now=now).endswith('  - вчера: поздний созвон')
+
+
 def test_prompt_format_participant_no_traits_no_recent():
-    memory = StructuredMemory(participants={'@ghost': ParticipantInfo()})
+    memory = make_memory_data(StructuredMemory(participants={'@ghost': ParticipantInfo()}))
     assert memory.prompt_format() == (
         '=== ПАМЯТЬ ===\n'
         'УЧАСТНИКИ:\n'
@@ -130,13 +189,13 @@ def test_prompt_format_participant_no_traits_no_recent():
 
 
 def test_prompt_format_state_sections():
-    memory = StructuredMemory(
+    memory = make_memory_data(StructuredMemory(
         state=ChatState(
             active_topics=['деплой', 'тесты'],
             open_questions=['когда релиз?'],
             running_jokes=['сервер снова лежит'],
         )
-    )
+    ))
     assert memory.prompt_format() == (
         '=== ПАМЯТЬ ===\n'
         '\nОБСУЖДАЕТСЯ:\n'
@@ -150,45 +209,12 @@ def test_prompt_format_state_sections():
 
 
 def test_prompt_format_empty_state_sections_omitted():
-    memory = StructuredMemory(state=ChatState(active_topics=['x']))
+    memory = make_memory_data(StructuredMemory(state=ChatState(active_topics=['x'])))
     assert memory.prompt_format() == (
         '=== ПАМЯТЬ ===\n'
         '\nОБСУЖДАЕТСЯ:\n'
         '- x'
     )
-
-
-def test_trim_keeps_last_five():
-    items = [str(i) for i in range(8)]
-    memory = StructuredMemory(
-        participants={
-            '@alice': ParticipantInfo(
-                traits=items,
-                recent=[RecentItem(text=str(i), last_seen_at='26-05-01 10:00') for i in range(8)],
-            )
-        },
-        state=ChatState(
-            active_topics=items,
-            open_questions=items,
-            running_jokes=items,
-        ),
-    )
-    memory.trim()
-    assert memory.participants['@alice'].traits == ['3', '4', '5', '6', '7']
-    assert [r.text for r in memory.participants['@alice'].recent] == ['3', '4', '5', '6', '7']
-    assert memory.state.active_topics == ['3', '4', '5', '6', '7']
-    assert memory.state.open_questions == ['3', '4', '5', '6', '7']
-    assert memory.state.running_jokes == ['3', '4', '5', '6', '7']
-
-
-def test_trim_noop_when_under_limit():
-    memory = StructuredMemory(
-        participants={'@bob': ParticipantInfo(traits=['a', 'b'])},
-        state=ChatState(active_topics=['x']),
-    )
-    memory.trim()
-    assert memory.participants['@bob'].traits == ['a', 'b']
-    assert memory.state.active_topics == ['x']
 
 
 # --- delete_old_memories ---

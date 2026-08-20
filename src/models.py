@@ -22,6 +22,19 @@ class UserRole(str, Enum):
     AI = 'ai'
 
 
+TIMESTAMP_FORMAT = '%y-%m-%d %H:%M'
+
+
+def format_ts(value: datetime) -> str:
+    """Renders a timestamp the way every prompt in this project expects it.
+
+    The single producer of the `ГГ-ММ-ДД ЧЧ:ММ` format the memory prompt documents.
+    `src/memory/decay.py` stamps `DecayRecord.born` through this same helper, so a
+    sidecar age and a message timestamp can never drift apart.
+    """
+    return value.astimezone(TIMEZONE_ALMATY).strftime(TIMESTAMP_FORMAT)
+
+
 class MessageMediaTypes(str, Enum):
     IMAGE = 'image'
     GIF = 'gif'
@@ -98,8 +111,7 @@ class Message(BaseModel):
             body = f'{self.nickname}: {message_part}'
 
         if self.created_at:
-            ts = self.created_at.astimezone(TIMEZONE_ALMATY).strftime('%y-%m-%d %H:%M')
-            return f'[{ts}] {body}'
+            return f'[{format_ts(self.created_at)}] {body}'
         return body
 
     @property

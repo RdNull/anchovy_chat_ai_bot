@@ -1,11 +1,9 @@
 from src.memory.dedup import ConflictRecord, normalize, resolve_attribution_conflicts
-from src.memory.models import ChatState, ParticipantInfo, RecentItem, StructuredMemory
-
-TS = '26-05-01 10:00'
+from src.memory.models import ChatState, ParticipantInfo, StructuredMemory
 
 
-def make_recent(*texts: str) -> list[RecentItem]:
-    return [RecentItem(text=text, last_seen_at=TS) for text in texts]
+def make_recent(*texts: str) -> list[str]:
+    return list(texts)
 
 
 def make_memory(**participants: ParticipantInfo) -> StructuredMemory:
@@ -13,7 +11,7 @@ def make_memory(**participants: ParticipantInfo) -> StructuredMemory:
 
 
 def recent_texts(memory: StructuredMemory, nick: str) -> list[str]:
-    return [item.text for item in memory.participants[nick].recent]
+    return memory.participants[nick].recent
 
 
 # --- normalize ---

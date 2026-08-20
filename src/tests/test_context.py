@@ -1,7 +1,8 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
 from src import settings
-from src.memory.models import ChatState, ParticipantInfo, RecentItem
+from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInfo
 from src.memory.processors import StructuredMemory, extract_memory
 from src.memory.repository import get_last_memory
 from src.messages.repository import save_message
@@ -183,15 +184,13 @@ async def test_update_chat_memory_db_error(mocker):
 
 # --- extract_memory ---
 
-async def test_extract_memory_trims_oversized_lists(mocker):
+async def test_extract_memory_caps_oversized_lists(mocker):
     data_items = [str(i) for i in range(8)]
     bloated = StructuredMemory(
         participants={
             '@alice': ParticipantInfo(
                 traits=data_items,
-                recent=[
-                    RecentItem(text=f'r{i}', last_seen_at='26-05-01 10:00') for i in range(8)
-                ],
+                recent=[f'r{i}' for i in range(8)],
             )
         },
         state=ChatState(
@@ -207,11 +206,11 @@ async def test_extract_memory_trims_oversized_lists(mocker):
 
     saved = await get_last_memory(1)
     assert saved is not None
-    assert saved.content.participants['@alice'].traits == ['3', '4', '5', '6', '7']
-    assert [r.text for r in saved.content.participants['@alice'].recent] == [
-        'r3', 'r4', 'r5', 'r6', 'r7'
-    ]
-    assert saved.content.state.active_topics == ['3', '4', '5', '6', '7']
+    # Under TRAITS_KEEP=10 the whole traits list survives — the inverted cap that
+    # used to evict the oldest, most established trait is what this asserts is gone.
+    assert saved.content.participants['@alice'].traits == data_items
+    assert saved.content.participants['@alice'].recent == ['r3', 'r4', 'r5', 'r6', 'r7']
+    assert saved.content.state.active_topics == ['5', '6', '7']
     assert saved.content.state.open_questions == ['3', '4', '5', '6', '7']
     assert saved.content.state.running_jokes == ['3', '4', '5', '6', '7']
 
@@ -233,7 +232,7 @@ async def test_extract_memory_disabled_saves_empty_memory(mocker):
 
     await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
 
-    mock_llm.with_structured_output.return_value.ainvoke.assert_not_called()
+    assert mock_llm.with_structured_output.return_value.ainvoke.call_count == 0
     saved = await get_last_memory(1)
     assert saved is not None
     assert saved.content == StructuredMemory()
@@ -247,17 +246,22 @@ async def test_extract_memory_enabled_runs_llm(mocker):
 
     await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
 
-    mock_llm.with_structured_output.return_value.ainvoke.assert_called_once()
+    assert mock_llm.with_structured_output.return_value.ainvoke.call_count == 1
     saved = await get_last_memory(1)
     assert saved is not None
     assert saved.content.state.active_topics == ['topic']
 
 
-async def test_extract_memory_resolves_attribution_before_trimming(mocker):
-    current = StructuredMemory(participants={'@bob': ParticipantInfo(traits=['дубль'])})
+async def test_extract_memory_resolves_attribution_before_eviction(mocker):
+    valid = [f't{i}' for i in range(1, 11)]
+    current = MemoryData(
+        chat_id=1,
+        created_at=datetime.now(timezone.utc),
+        content=StructuredMemory(participants={'@bob': ParticipantInfo(traits=['дубль'])}),
+    )
     llm_result = StructuredMemory(
         participants={
-            '@alice': ParticipantInfo(traits=['t1', 't2', 't3', 't4', 't5', 'Дубль!']),
+            '@alice': ParticipantInfo(traits=[*valid, 'Дубль!']),
             '@bob': ParticipantInfo(traits=['дубль']),
         }
     )
@@ -269,8 +273,9 @@ async def test_extract_memory_resolves_attribution_before_trimming(mocker):
 
     saved = await get_last_memory(1)
     assert saved is not None
-    # The guard freed a slot before trim(5), so all five valid traits survive.
-    assert saved.content.participants['@alice'].traits == ['t1', 't2', 't3', 't4', 't5']
+    # 11 traits, guard drops the one that belongs to @bob — so all ten valid traits
+    # fit under the cap. Without the guard running first, t1 would have been evicted.
+    assert saved.content.participants['@alice'].traits == valid
     assert saved.content.participants['@bob'].traits == ['дубль']
 
     conflict_logs = [
@@ -285,3 +290,59 @@ async def test_extract_memory_resolves_attribution_before_trimming(mocker):
     assert 'kept=@bob' in conflict_logs[0]
     assert 'field=traits' in conflict_logs[0]
     assert 'text=Дубль!' in conflict_logs[0]
+
+
+async def test_extract_memory_logs_churn_and_would_evict(mocker):
+    """The phase-1 instrument: the log is the deliverable, so assert its shape."""
+    current = MemoryData(
+        chat_id=1,
+        created_at=datetime.now(timezone.utc),
+        content=StructuredMemory(
+            participants={'@alice': ParticipantInfo(recent=['ездил в Лондон', 'опоздал'])}
+        ),
+        decay={'@alice': {
+            'ездил в лондон': DecayRecord(born='26-04-24 18:00', cycles=3, field='recent'),
+            'опоздал': DecayRecord(born='26-04-30 18:00', cycles=1, field='recent'),
+        }},
+    )
+    llm_result = StructuredMemory(
+        participants={'@alice': ParticipantInfo(recent=['ездил в Лондон', 'купил велосипед'])}
+    )
+    mock_memory_llm(mocker, return_value=llm_result)
+    mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
+    mock_logger = mocker.patch('src.memory.processors.logger')
+    mocker.patch.object(settings, 'RECENT_KEEP', 1)
+
+    await extract_memory(chat_id=1, current_memory=current, new_messages=[make_message()])
+
+    logs = [c[0][0] for c in mock_logger.info.call_args_list]
+    churn = next(line for line in logs if line.startswith('MEMORY_CHURN '))
+    assert churn == 'MEMORY_CHURN chat_id=1 nicks=1 carried=1 added=1 vanished=1 promoted=0'
+
+    lost = [line for line in logs if line.startswith('MEMORY_CHURN_LOST')]
+    assert lost == ['MEMORY_CHURN_LOST chat_id=1 nick=@alice text=опоздал']
+
+    # Decay is off, so the older entry is only reported, never actually dropped.
+    decayed = [line for line in logs if line.startswith('MEMORY_DECAY')]
+    assert decayed == [
+        'MEMORY_DECAY chat_id=1 nick=@alice field=recent action=would_evict '
+        'reason=cap text=ездил в Лондон'
+    ]
+    saved = await get_last_memory(1)
+    assert saved.content.participants['@alice'].recent == ['купил велосипед']
+
+
+async def test_extract_memory_logs_trait_overflow(mocker):
+    llm_result = StructuredMemory(
+        participants={'@alice': ParticipantInfo(traits=[f't{i}' for i in range(12)])}
+    )
+    mock_memory_llm(mocker, return_value=llm_result)
+    mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
+    mock_logger = mocker.patch('src.memory.processors.logger')
+
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
+
+    logs = [c[0][0] for c in mock_logger.info.call_args_list]
+    assert [line for line in logs if line.startswith('MEMORY_TRAIT_OVERFLOW')] == [
+        'MEMORY_TRAIT_OVERFLOW chat_id=1 nick=@alice count=12'
+    ]

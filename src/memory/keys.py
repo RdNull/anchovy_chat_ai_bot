@@ -18,6 +18,9 @@ import unicodedata
 
 NICK_PATTERN = re.compile(r'@[\w\d_]+')
 
+TRAITS_FIELD = 'traits'
+RECENT_FIELD = 'recent'
+
 
 def normalize(text: str) -> str:
     """Reduces an entry to its comparison key.
