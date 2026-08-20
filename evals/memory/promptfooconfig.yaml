@@ -5,6 +5,8 @@ description: "Memory processing eval"
 prompts:
   - id: file://../../src/prompts/memory/v3.j2
     label: "Memory v3"
+  - id: file://../../src/prompts/memory/v4.j2
+    label: "Memory v4"
 
 providers:
   - file://../models/cloud/memory/v3-cheap.yaml
