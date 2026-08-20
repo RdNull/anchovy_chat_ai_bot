@@ -147,8 +147,11 @@ def test_prompt_format_recent_without_decay_record_renders_bare():
 
 
 def test_prompt_format_relative_age_buckets():
-    entries = ['сегодня', 'вчера', 'позавчера', 'давно']
-    born = ['26-05-01 10:00', '26-04-30 10:00', '26-04-29 10:00', '26-04-23 10:00']
+    entries = ['сегодня', 'вчера', 'позавчера', 'пять дней', 'неделя', 'давно']
+    born = [
+        '26-05-01 10:00', '26-04-30 10:00', '26-04-29 10:00',
+        '26-04-26 10:00', '26-04-24 10:00', '26-04-23 10:00',
+    ]
     memory = make_memory_data(
         StructuredMemory(participants={'@alice': ParticipantInfo(recent=entries)}),
         decay={
@@ -158,11 +161,13 @@ def test_prompt_format_relative_age_buckets():
             }
         },
     )
-    rendered = memory.prompt_format(now=NOW).splitlines()[-4:]
+    rendered = memory.prompt_format(now=NOW).splitlines()[-6:]
     assert rendered == [
         '  - сегодня: сегодня',
         '  - вчера: вчера',
-        '  - 2 дней назад: позавчера',
+        '  - 2 дня назад: позавчера',
+        '  - 5 дней назад: пять дней',
+        '  - 7 дней назад: неделя',
         '  - больше недели назад: давно',
     ]
 

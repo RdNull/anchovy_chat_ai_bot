@@ -74,7 +74,9 @@ def _relative_age(born: str, now: datetime) -> str | None:
     if days == 1:
         return 'вчера'
     if days <= WEEK_DAYS:
-        return f'{days} дней назад'
+        # 2-4 take «дня», 5 and up take «дней». The range here never reaches the
+        # 21/22 forms, so the two cases are the whole rule.
+        return f'{days} {"дня" if days < 5 else "дней"} назад'
     return 'больше недели назад'
 
 
