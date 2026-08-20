@@ -1,0 +1,21 @@
+{
+  "participants": {
+    "@imdemur": {
+      "traits": [],
+      "recent": [
+        "опоздал на созвон"
+      ]
+    },
+    "@rdnull": {
+      "traits": [
+        "работает в найме"
+      ],
+      "recent": []
+    }
+  },
+  "state": {
+    "active_topics": [],
+    "open_questions": [],
+    "running_jokes": []
+  }
+}

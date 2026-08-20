@@ -27,7 +27,6 @@ async def update_chat_context(chat_id: int):
 
 async def _update_chat_memory(chat_id: int):
     last_memory_data = await get_last_memory(chat_id)
-    current_memory = last_memory_data.content if last_memory_data else None
 
     from_date = last_memory_data.created_at if last_memory_data else None
     new_messages = await get_messages(
@@ -38,7 +37,7 @@ async def _update_chat_memory(chat_id: int):
         logger.info(f'No new messages for memory update in chat {chat_id}')
         return
 
-    await extract_memory(chat_id, current_memory, new_messages)
+    await extract_memory(chat_id, last_memory_data, new_messages)
     await extract_facts(new_messages)
 
 

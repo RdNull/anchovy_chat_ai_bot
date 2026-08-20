@@ -3,46 +3,78 @@
 description: "Memory processing eval"
 
 prompts:
-  - id: file://../../src/prompts/memory/v1.j2
-    label: "Memory v1"
+  - id: file://../../src/prompts/memory/v4.j2
+    label: "Memory v4"
 
 providers:
-  - file://../models/cloud/memory/v1.yaml
+  - file://../models/cloud/memory/v3-cheap.yaml
 
 defaultTest:
+  options:
+    transform: file://../strip_json_fences.js
+
   assert:
     - type: is-json
+
+    # One fact belongs to exactly one participant. Checkable, so asserted rather than
+    # left to the rubric. Mirrors the normalization of the code-side guard in
+    # src/memory/dedup.py, so a failure here predicts a real production drop.
+    - type: javascript
+      value: file://assert_unique_attribution.js
+
+    # Code owns the clock now — the sidecar in src/memory/decay.py stamps ages the model
+    # never sees. A timestamp in a participant entry means the prompt still leaks the old
+    # contract, which would poison the normalized key the guard and the sidecar index on.
+    - type: javascript
+      value: file://assert_no_timestamps.js
+
     - type: llm-rubric
       provider:
-        id: openrouter:deepseek/deepseek-v3.2
+        id: openrouter:openai/gpt-5-mini
         config:
-          temperature: 0.5
+          temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
         You are evaluating a structured memory update for a group chat.
-        
+
         Evaluation criteria:
         - Accuracy: Does the updated memory accurately reflect the new information in the messages?
+          A fact deliberately left out is not an error — this prompt is built to omit rather than
+          guess. Do not penalise an omission when the subject was ambiguous, when the statement was
+          about several people at once, or when the entry would have been a log of what someone said
+          about someone else. Penalise wrong or invented content, not restraint.
         - No Hallucinations: Does the update contain information not present in either the original memory or the new messages?
         - Atomicity: Are the facts and entries short and atomic?
         - Consistency: Does it avoid duplicating existing information if it hasn't changed?
-        - Format: Does it follow the required schema (facts, decisions, topics, open_loops, participants, etc.)?
+        - Placement: Are facts about a person under `participants.<@nick>` (stable properties in
+          `traits`, recent events in `recent` as plain strings), and chat-level state under
+          `state` (`active_topics`, `open_questions`, `running_jokes`)? Ignore JSON container-type
+          deviations such as an object where a list is expected: production binds this model to a
+          schema that makes them impossible, so they are an artefact of this harness rather than a
+          property of the prompt being evaluated.
         - Carryover: Does the update preserve important information from the original memory that was not mentioned in the new messages?
-        - Cleanup: Does it skips finished entries from `open_loops`?
+        - Cleanup: Does it drop resolved entries from `state.open_questions`? Do not judge
+          `state.active_topics` for staleness: production strips topics from the model's input
+          entirely, so there is nothing stale for it to carry forward.
         - Humor: Does it correctly detects jokes and irony if they exist in messages? If not sure is something is joke or irony - ignore it.
         - Language: Is it in Russian as required (except for names/technical terms)?
-        - Participants: Does it correctly attribute facts to participants using their exact nicknames?
+        - Attribution: Is every participant entry about the person it is stored under, rather than
+          about whoever wrote the message? An entry whose subject cannot be pinned to exactly one
+          nickname should be absent — correctly omitting an ambiguous fact is good behaviour, not a
+          missed fact. Nicknames must be exact and prefixed with @.
 
         Scoring targets:
         - 1.0 = perfect update
         - 0.8 = good update, missed existing jokes or irony
         - 0.7 = minor issues (e.g., slightly wordy, minor formatting)
-        - 0.3 = major issues (e.g., hallucinations, missing key facts)
+        - 0.3 = major issues (e.g., hallucinations, a fact attributed to the wrong participant,
+          losing information that was already in the original memory)
         - 0.0 = completely incorrect or invalid JSON
-        
+
         ---
         Original Memory:
         {{current_memory}}
-        
+
         New Messages:
         {{new_messages}}
 
@@ -66,3 +98,34 @@ tests:
     vars:
       current_memory: "{}"
       new_messages: file://real_flood/input.txt
+
+  # Intake attribution: mention and reply-«ты» must be saved to the right person,
+  # unresolvable pronouns and multi-subject statements must be dropped.
+  - description: "attribution_subject"
+    vars:
+      current_memory: "{}"
+      new_messages: file://attribution_subject/input.txt
+    assert:
+      - type: javascript
+        value: file://attribution_subject/assert.js
+
+  # Merge invariance: a stored fact must not be copied or relocated onto a participant
+  # it merely co-occurs with.
+  - description: "attribution_merge"
+    vars:
+      current_memory: file://attribution_merge/current.json
+      new_messages: file://attribution_merge/input.txt
+    assert:
+      - type: javascript
+        value: file://attribution_merge/assert.js
+
+  # The one recurrence signal decay relies on: a repeating `recent` fact must move into
+  # `traits` and leave `recent`. Nothing else in the system can tell recurrence from
+  # re-emission, since the prompt carries everything forward regardless.
+  - description: "promotion"
+    vars:
+      current_memory: file://promotion/current.json
+      new_messages: file://promotion/input.txt
+    assert:
+      - type: javascript
+        value: file://promotion/assert.js

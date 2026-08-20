@@ -1,11 +1,17 @@
 {
-  "facts": [
-    { "text": "Команда планирует проект Зенит", "confidence": 0.9 }
-  ],
-  "topics": [
-    { "name": "Обсуждение проекта Зенит", "status": "active" }
-  ],
-  "open_loops": [
-    { "text": "Назначить встречу по Зениту", "priority": "high" }
-  ]
+  "participants": {
+    "@charlie": {
+      "traits": [],
+      "recent": [
+        "предложил встретиться по проекту Зенит"
+      ]
+    }
+  },
+  "state": {
+    "active_topics": [],
+    "open_questions": [
+      "не назначено время встречи по Зениту"
+    ],
+    "running_jokes": []
+  }
 }
