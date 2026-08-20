@@ -19,15 +19,23 @@ AMBIGUOUS_INCUMBENT = 'ambiguous_incumbent'
 
 Entry = TypeVar('Entry', str, RecentItem)
 
+# `(kept_owner, reason, removes)` — the verdict for one contested key.
+Resolution = tuple[str | None, str, bool]
 
-class DropRecord(BaseModel):
-    """A single participant entry removed by the attribution guard."""
+
+class ConflictRecord(BaseModel):
+    """A single participant entry flagged by the attribution guard.
+
+    `removed` is `False` when the conflict was only reported and the entry stayed
+    in place.
+    """
 
     text: str
     owner: str
     field: str
     kept_owner: str | None
     reason: str
+    removed: bool
 
 
 def normalize(text: str) -> str:
@@ -71,7 +79,7 @@ def _key_owners(memory: StructuredMemory | None) -> dict[str, set[str]]:
     return owners
 
 
-def _drop_traits_recent_overlap(updated: StructuredMemory) -> list[DropRecord]:
+def _drop_traits_recent_overlap(updated: StructuredMemory) -> list[ConflictRecord]:
     """Drops `recent` items duplicating a trait of the same participant.
 
     The prompt migrates a stably repeating fact from `recent` to `traits`, so an
@@ -89,12 +97,13 @@ def _drop_traits_recent_overlap(updated: StructuredMemory) -> list[DropRecord]:
                 kept.append(item)
                 continue
 
-            drops.append(DropRecord(
+            drops.append(ConflictRecord(
                 text=item.text,
                 owner=nick,
                 field=RECENT_FIELD,
                 kept_owner=nick,
                 reason=TRAITS_RECENT_OVERLAP,
+                removed=True,
             ))
         info.recent = kept
     return drops
@@ -103,15 +112,16 @@ def _drop_traits_recent_overlap(updated: StructuredMemory) -> list[DropRecord]:
 def _resolve_owners(
     updated: StructuredMemory,
     current: StructuredMemory | None,
-) -> dict[str, tuple[str | None, str]]:
+) -> dict[str, Resolution]:
     """Adjudicates every key held by more than one participant.
 
     Returns:
-        A mapping of contested key to `(kept_owner, reason)`, where a
-        `kept_owner` of `None` means every copy of that key must go.
+        A mapping of contested key to `(kept_owner, reason, removes)`, where a
+        `kept_owner` of `None` means no copy is privileged and `removes` says
+        whether the branch deletes the copies or merely reports them.
     """
     incumbent = _key_owners(current)
-    resolutions: dict[str, tuple[str | None, str]] = {}
+    resolutions: dict[str, Resolution] = {}
 
     for key, nicks in _key_owners(updated).items():
         if len(nicks) < 2:
@@ -119,14 +129,17 @@ def _resolve_owners(
 
         survivors = nicks & incumbent.get(key, set())
         if len(survivors) == 1:
-            resolutions[key] = (next(iter(survivors)), INCUMBENT_WINS)
+            resolutions[key] = (next(iter(survivors)), INCUMBENT_WINS, True)
         elif not survivors:
-            resolutions[key] = (None, NO_INCUMBENT)
+            # The fact is new on everyone, and a string match cannot tell an
+            # intake leak from parallel facts — two people who independently did
+            # the same thing. Report the collision and keep every copy.
+            resolutions[key] = (None, NO_INCUMBENT, False)
         else:
             # Every copy is an incumbent — the already-corrupted case. Dropping
             # them all lets a later window re-extract the right owner instead of
             # freezing the conflict in place forever.
-            resolutions[key] = (None, AMBIGUOUS_INCUMBENT)
+            resolutions[key] = (None, AMBIGUOUS_INCUMBENT, True)
 
     return resolutions
 
@@ -136,14 +149,15 @@ def _filter_entries(
     get_text: Callable[[Entry], str],
     nick: str,
     field: str,
-    resolutions: dict[str, tuple[str | None, str]],
-) -> tuple[list[Entry], list[DropRecord]]:
-    """Splits one participant list into survivors and drops.
+    resolutions: dict[str, Resolution],
+) -> tuple[list[Entry], list[ConflictRecord]]:
+    """Records every conflict on one participant list, removing what it must.
 
-    Survivors are rebuilt by filtering so the original order — which `trim()`
-    relies on, taking the tail — is preserved.
+    An entry whose resolution does not remove is recorded and kept. Survivors are
+    rebuilt by filtering so the original order — which `trim()` relies on, taking
+    the tail — is preserved.
     """
-    kept, drops = [], []
+    kept, records = [], []
     for entry in entries:
         text = get_text(entry)
         resolution = resolutions.get(normalize(text))
@@ -151,51 +165,57 @@ def _filter_entries(
             kept.append(entry)
             continue
 
-        kept_owner, reason = resolution
-        drops.append(DropRecord(
+        kept_owner, reason, removes = resolution
+        records.append(ConflictRecord(
             text=text,
             owner=nick,
             field=field,
             kept_owner=kept_owner,
             reason=reason,
+            removed=removes,
         ))
-    return kept, drops
+        if not removes:
+            kept.append(entry)
+    return kept, records
 
 
-def _drop_cross_participant(
+def _resolve_cross_participant(
     updated: StructuredMemory,
     current: StructuredMemory | None,
-) -> list[DropRecord]:
-    """Drops copies of a fact held by the wrong participant."""
+) -> list[ConflictRecord]:
+    """Reports facts held by several participants, dropping the wrong copies."""
     resolutions = _resolve_owners(updated, current)
     if not resolutions:
         return []
 
-    drops = []
+    records = []
     for nick, info in updated.participants.items():
-        traits, trait_drops = _filter_entries(
+        traits, trait_records = _filter_entries(
             info.traits, lambda trait: trait, nick, TRAITS_FIELD, resolutions
         )
-        recent, recent_drops = _filter_entries(
+        recent, recent_records = _filter_entries(
             info.recent, lambda item: item.text, nick, RECENT_FIELD, resolutions
         )
         info.traits = traits
         info.recent = recent
-        drops.extend(trait_drops)
-        drops.extend(recent_drops)
-    return drops
+        records.extend(trait_records)
+        records.extend(recent_records)
+    return records
 
 
 def resolve_attribution_conflicts(
     updated: StructuredMemory,
     current: StructuredMemory | None,
-) -> list[DropRecord]:
-    """Enforces that one fact belongs to exactly one participant.
+) -> list[ConflictRecord]:
+    """Enforces that one stored fact belongs to exactly one participant.
 
     Runs the within-participant `traits` ↔ `recent` pass first, so each nick
     holds a key at most once before cross-participant ownership is adjudicated.
-    When ownership cannot be adjudicated every copy is dropped: a lost fact
-    recurs in a later window, a misattributed one is re-emitted forever.
+    Every copy is dropped only when the fact was already stored on someone: a
+    lost fact recurs in a later window, a misattributed one is re-emitted
+    forever. A fact new on everyone this cycle is reported and kept, since a
+    string match cannot separate an intake leak from two participants who
+    independently did the same thing.
 
     Only `participants` is touched. `state` passes through untouched on purpose,
     since the memory prompt deliberately allows one fact in both places.
@@ -205,8 +225,8 @@ def resolve_attribution_conflicts(
         current: Last saved memory, used as the incumbent map. May be `None`.
 
     Returns:
-        Every entry removed, in removal order.
+        Every conflict found, in detection order.
     """
-    drops = _drop_traits_recent_overlap(updated)
-    drops.extend(_drop_cross_participant(updated, current))
-    return drops
+    records = _drop_traits_recent_overlap(updated)
+    records.extend(_resolve_cross_participant(updated, current))
+    return records

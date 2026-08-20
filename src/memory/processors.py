@@ -39,11 +39,13 @@ async def extract_memory(
         logger.error(f'No memory extracted for chat {chat_id}')
         return
 
-    for drop in resolve_attribution_conflicts(updated_memory, current_memory):
-        kept = drop.kept_owner or '-'
+    for record in resolve_attribution_conflicts(updated_memory, current_memory):
+        action = 'dropped' if record.removed else 'kept'
+        kept = record.kept_owner or '-'
         logger.info(
-            f'MEMORY_ATTRIBUTION_DROP chat_id={chat_id} reason={drop.reason} owner={drop.owner} '
-            f'kept={kept} field={drop.field} text={drop.text}'
+            f'MEMORY_ATTRIBUTION_CONFLICT chat_id={chat_id} action={action} '
+            f'reason={record.reason} owner={record.owner} kept={kept} '
+            f'field={record.field} text={record.text}'
         )
 
     try:
