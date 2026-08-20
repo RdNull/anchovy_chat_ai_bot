@@ -18,9 +18,11 @@
 // and `reconcile` sees a vanish plus a birth rather than a `promote`. That is why the churn
 // log counts `promote_candidate` alongside the exact signal.
 
-const {norm, entries, parse, grade} = require('../memory_lib.js');
+const {norm, stem, entries, parse, grade} = require('../memory_lib.js');
 
-const LATE = /опазд|опозд|просып|проспал|пропуст|не пришёл|не пришел/;
+// Word-start anchored, so a lateness root cannot match inside an unrelated word. The
+// «не пришёл» spelling is gone: `norm` folds ё → е, so it could never have matched.
+const LATE = stem('опазд', 'опозд', 'просып', 'проспал', 'пропуст', 'не пришел');
 const SEEDED_LATE = norm('опоздал на созвон');
 const SEEDED_JOB = norm('работает в найме');
 

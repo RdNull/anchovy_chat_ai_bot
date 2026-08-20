@@ -7,11 +7,17 @@
 //                                            so dropping it costs nothing)
 //   19:11  «они вдвоём подписку на зал»   → DROP (subject is more than one person)
 
-const {norm, entries, parse, grade} = require('../memory_lib.js');
+// Every pattern is anchored at a word start via `stem`. Unanchored, /зал/ matched
+// «сказал» and «рассказал» — so output that correctly dropped the gym fact failed the
+// case for containing an ordinary verb.
 
-const BIKE = /велосипед|велик/;
-const GONE = /пропал|не пиш|третий день/;
-const GYM = /подписк|зал/;
+const {norm, stem, entries, parse, grade} = require('../memory_lib.js');
+
+// «велик» has to stay a whole word: as a prefix it also matches «великолепно» and
+// «великий». «велике» is spelled out because the fixture says «на велике».
+const BIKE = stem('велосипед', 'велике', 'велик(?=$|\\s)');
+const GONE = stem('пропал', 'не пиш', 'третий день');
+const GYM = stem('подписк', 'зал');
 
 module.exports = function (output) {
     const {memory, error} = parse(output);

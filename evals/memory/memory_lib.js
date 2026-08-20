@@ -1,9 +1,16 @@
 // Shared helpers for memory eval assertions.
 //
-// `norm` intentionally mirrors the normalization used by the code-side attribution
-// guard (src/memory/dedup.py): lowercase, drop @nick tokens, ё → е, strip punctuation,
-// collapse whitespace. Keeping the two in sync means an eval failure here predicts an
-// actual drop in production, and a passing eval predicts a quiet guard.
+// `norm` intentionally mirrors `normalize` in src/memory/keys.py — the keyspace the
+// attribution guard and the decay sidecar both index on: lowercase, drop @nick tokens,
+// ё → е, replace everything that is not a letter/digit/space with a space, collapse
+// whitespace. Keeping the two in sync means an eval failure here predicts an actual drop
+// in production, and a passing eval predicts a quiet guard. Any change to `normalize`
+// must be mirrored here, and vice versa.
+//
+// Both halves of the nick pattern matter. JS `\w` is ASCII-only even under /u, while
+// Python's is Unicode, so `@[\w\d_]+` left a Cyrillic nickname standing here and stripped
+// it there — and src/messages/parsing.py falls back to `first_name` when a user has no
+// username, which makes Cyrillic nicks routine rather than exotic.
 //
 // Tolerance note: production binds the model with `with_structured_output(StructuredMemory)`,
 // so pydantic guarantees the shape. Promptfoo sends the bare prompt with no schema, so the
@@ -16,11 +23,22 @@
 function norm(text) {
     return String(text || '')
         .toLowerCase()
-        .replace(/@[\w\d_]+/g, ' ')
+        .replace(/@[\p{L}\p{N}_]+/gu, ' ')
         .replace(/ё/g, 'е')
         .replace(/[^\p{L}\p{N}\s]/gu, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+// Build a pattern matching any of `roots` at the start of a word in normalized text.
+//
+// A bare /зал/ matches «сказал», «рассказал», «показал» and fails output that dropped the
+// gym fact exactly as instructed. JS `\b` cannot fix that — it is defined on ASCII `\w`,
+// so it does not see a Cyrillic word edge at all. `norm` leaves single-space-separated
+// tokens, which makes `(^|\s)` the boundary that actually works here. Roots stay
+// prefixes, since Russian inflects the ending: «зал» must still match «зале», «залом».
+function stem(...roots) {
+    return new RegExp(`(^|\\s)(${roots.join('|')})`, 'u');
 }
 
 // `{}` for an empty list and `{"0": ..., "1": ...}` for a populated one are both common
@@ -163,4 +181,4 @@ function grade(checks) {
     };
 }
 
-module.exports = {norm, asArray, itemText, entries, shapeAnomalies, incumbentMap, asMemory, parse, grade};
+module.exports = {norm, stem, asArray, itemText, entries, shapeAnomalies, incumbentMap, asMemory, parse, grade};
