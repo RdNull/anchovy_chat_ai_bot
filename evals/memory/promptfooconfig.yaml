@@ -17,6 +17,13 @@ defaultTest:
 
   assert:
     - type: is-json
+
+    # One fact belongs to exactly one participant. Checkable, so asserted rather than
+    # left to the rubric. Mirrors the normalization of the code-side guard in
+    # src/memory/dedup.py, so a failure here predicts a real production drop.
+    - type: javascript
+      value: file://assert_unique_attribution.js
+
     - type: llm-rubric
       provider:
         id: openrouter:deepseek/deepseek-v3.2
@@ -24,30 +31,35 @@ defaultTest:
           temperature: 0.5
       value: |
         You are evaluating a structured memory update for a group chat.
-        
+
         Evaluation criteria:
         - Accuracy: Does the updated memory accurately reflect the new information in the messages?
         - No Hallucinations: Does the update contain information not present in either the original memory or the new messages?
         - Atomicity: Are the facts and entries short and atomic?
         - Consistency: Does it avoid duplicating existing information if it hasn't changed?
-        - Format: Does it follow the required schema (facts, decisions, topics, open_loops, participants, etc.)?
+        - Format: Does it follow the required schema — `participants.<@nick>.traits[]` (strings),
+          `participants.<@nick>.recent[]` (objects with `text` and `last_seen_at`), and
+          `state` with `active_topics`, `open_questions`, `running_jokes`?
         - Carryover: Does the update preserve important information from the original memory that was not mentioned in the new messages?
-        - Cleanup: Does it skips finished entries from `open_loops`?
+        - Cleanup: Does it drop resolved entries from `state.open_questions` and topics that are no longer live from `state.active_topics`?
         - Humor: Does it correctly detects jokes and irony if they exist in messages? If not sure is something is joke or irony - ignore it.
         - Language: Is it in Russian as required (except for names/technical terms)?
-        - Participants: Does it correctly attribute facts to participants using their exact nicknames?
+        - Attribution: Is every participant entry about the person it is stored under, rather than
+          about whoever wrote the message? An entry whose subject cannot be pinned to exactly one
+          nickname should be absent — correctly omitting an ambiguous fact is good behaviour, not a
+          missed fact. Nicknames must be exact and prefixed with @.
 
         Scoring targets:
         - 1.0 = perfect update
         - 0.8 = good update, missed existing jokes or irony
         - 0.7 = minor issues (e.g., slightly wordy, minor formatting)
-        - 0.3 = major issues (e.g., hallucinations, missing key facts)
+        - 0.3 = major issues (e.g., hallucinations, missing key facts, a fact on the wrong participant)
         - 0.0 = completely incorrect or invalid JSON
-        
+
         ---
         Original Memory:
         {{current_memory}}
-        
+
         New Messages:
         {{new_messages}}
 
@@ -71,3 +83,23 @@ tests:
     vars:
       current_memory: "{}"
       new_messages: file://real_flood/input.txt
+
+  # Intake attribution: mention and reply-«ты» must be saved to the right person,
+  # unresolvable pronouns and multi-subject statements must be dropped.
+  - description: "attribution_subject"
+    vars:
+      current_memory: "{}"
+      new_messages: file://attribution_subject/input.txt
+    assert:
+      - type: javascript
+        value: file://attribution_subject/assert.js
+
+  # Merge invariance: a stored fact must not be copied or relocated onto a participant
+  # it merely co-occurs with.
+  - description: "attribution_merge"
+    vars:
+      current_memory: file://attribution_merge/current.json
+      new_messages: file://attribution_merge/input.txt
+    assert:
+      - type: javascript
+        value: file://attribution_merge/assert.js

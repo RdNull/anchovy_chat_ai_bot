@@ -1,0 +1,19 @@
+{
+  "participants": {
+    "@imdemur": {
+      "traits": ["ездит на велосипеде"],
+      "recent": [
+        {"text": "звал кататься в субботу", "last_seen_at": "26-08-20 19:04"}
+      ]
+    },
+    "@rdnull": {
+      "traits": ["работает в найме"],
+      "recent": []
+    }
+  },
+  "state": {
+    "active_topics": ["покатушки в субботу"],
+    "open_questions": [],
+    "running_jokes": []
+  }
+}
