@@ -1,4 +1,4 @@
-from src.memory.dedup import DropRecord, normalize, resolve_attribution_conflicts
+from src.memory.dedup import ConflictRecord, normalize, resolve_attribution_conflicts
 from src.memory.models import ChatState, ParticipantInfo, RecentItem, StructuredMemory
 
 TS = '26-05-01 10:00'
@@ -64,29 +64,52 @@ def test_single_incumbent_keeps_incumbent_copy():
 
     assert updated.participants['@alice'].traits == ['ездит на велосипеде']
     assert updated.participants['@bob'].traits == []
-    assert drops == [DropRecord(
+    assert drops == [ConflictRecord(
         text='ездит на велосипеде',
         owner='@bob',
         field='traits',
         kept_owner='@alice',
         reason='incumbent_wins',
+        removed=True,
     )]
 
 
-def test_no_incumbent_drops_every_copy():
+def test_no_incumbent_keeps_every_copy():
     current = make_memory(carol=ParticipantInfo(traits=['играет в CS']))
     updated = make_memory(
         alice=ParticipantInfo(traits=['ездит на велосипеде']),
         bob=ParticipantInfo(traits=['ездит на велосипеде']),
     )
 
-    drops = resolve_attribution_conflicts(updated, current)
+    records = resolve_attribution_conflicts(updated, current)
 
-    assert updated.participants['@alice'].traits == []
-    assert updated.participants['@bob'].traits == []
-    assert [d.reason for d in drops] == ['no_incumbent', 'no_incumbent']
-    assert [d.owner for d in drops] == ['@alice', '@bob']
-    assert [d.kept_owner for d in drops] == [None, None]
+    assert updated.participants['@alice'].traits == ['ездит на велосипеде']
+    assert updated.participants['@bob'].traits == ['ездит на велосипеде']
+    assert [r.reason for r in records] == ['no_incumbent', 'no_incumbent']
+    assert [r.owner for r in records] == ['@alice', '@bob']
+    assert [r.kept_owner for r in records] == [None, None]
+    assert [r.removed for r in records] == [False, False]
+
+
+def test_parallel_facts_from_group_agreement_survive():
+    fact = 'согласился на встречу в 18:00 по проекту Зенит'
+    current = make_memory(
+        bob=ParticipantInfo(traits=['продакт']),
+        charlie=ParticipantInfo(traits=['дизайнер']),
+    )
+    updated = make_memory(
+        bob=ParticipantInfo(traits=['продакт'], recent=make_recent(fact)),
+        charlie=ParticipantInfo(traits=['дизайнер'], recent=make_recent(fact)),
+    )
+
+    records = resolve_attribution_conflicts(updated, current)
+
+    assert recent_texts(updated, '@bob') == [fact]
+    assert recent_texts(updated, '@charlie') == [fact]
+    assert [(r.owner, r.field, r.reason, r.removed) for r in records] == [
+        ('@bob', 'recent', 'no_incumbent', False),
+        ('@charlie', 'recent', 'no_incumbent', False),
+    ]
 
 
 def test_ambiguous_incumbent_drops_every_copy():
@@ -107,17 +130,18 @@ def test_ambiguous_incumbent_drops_every_copy():
     assert [d.kept_owner for d in drops] == [None, None]
 
 
-def test_missing_current_memory_drops_every_copy():
+def test_missing_current_memory_keeps_every_copy():
     updated = make_memory(
         alice=ParticipantInfo(traits=['ездит на велосипеде']),
         bob=ParticipantInfo(traits=['ездит на велосипеде']),
     )
 
-    drops = resolve_attribution_conflicts(updated, None)
+    records = resolve_attribution_conflicts(updated, None)
 
-    assert updated.participants['@alice'].traits == []
-    assert updated.participants['@bob'].traits == []
-    assert [d.reason for d in drops] == ['no_incumbent', 'no_incumbent']
+    assert updated.participants['@alice'].traits == ['ездит на велосипеде']
+    assert updated.participants['@bob'].traits == ['ездит на велосипеде']
+    assert [r.reason for r in records] == ['no_incumbent', 'no_incumbent']
+    assert [r.removed for r in records] == [False, False]
 
 
 def test_normalized_variants_collide_across_participants():
@@ -127,13 +151,14 @@ def test_normalized_variants_collide_across_participants():
         carol=ParticipantInfo(traits=['ездит на велосипедё']),
     )
 
-    drops = resolve_attribution_conflicts(updated, None)
+    records = resolve_attribution_conflicts(updated, None)
 
-    assert updated.participants['@alice'].traits == []
-    assert updated.participants['@bob'].traits == []
-    assert updated.participants['@carol'].traits == []
-    assert len(drops) == 3
-    assert {d.reason for d in drops} == {'no_incumbent'}
+    assert updated.participants['@alice'].traits == ['Ездит на велосипеде.']
+    assert updated.participants['@bob'].traits == ['@alice ездит на велосипеде']
+    assert updated.participants['@carol'].traits == ['ездит на велосипедё']
+    assert len(records) == 3
+    assert {r.reason for r in records} == {'no_incumbent'}
+    assert {r.removed for r in records} == {False}
 
 
 def test_trait_and_recent_share_one_keyspace_across_participants():
@@ -164,12 +189,13 @@ def test_traits_recent_overlap_keeps_trait():
 
     assert updated.participants['@alice'].traits == ['ездит на велосипеде']
     assert recent_texts(updated, '@alice') == []
-    assert drops == [DropRecord(
+    assert drops == [ConflictRecord(
         text='Ездит на велосипеде!',
         owner='@alice',
         field='recent',
         kept_owner='@alice',
         reason='traits_recent_overlap',
+        removed=True,
     )]
 
 
@@ -190,12 +216,16 @@ def test_state_is_not_deduplicated_against_participants():
 
 
 def test_emptied_participant_is_kept():
+    current = make_memory(
+        alice=ParticipantInfo(traits=['ездит на велосипеде']),
+        bob=ParticipantInfo(traits=['ездит на велосипеде']),
+    )
     updated = make_memory(
         alice=ParticipantInfo(traits=['ездит на велосипеде']),
         bob=ParticipantInfo(traits=['ездит на велосипеде']),
     )
 
-    resolve_attribution_conflicts(updated, None)
+    resolve_attribution_conflicts(updated, current)
 
     assert set(updated.participants) == {'@alice', '@bob'}
     assert updated.participants['@bob'].traits == []

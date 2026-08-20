@@ -273,14 +273,15 @@ async def test_extract_memory_resolves_attribution_before_trimming(mocker):
     assert saved.content.participants['@alice'].traits == ['t1', 't2', 't3', 't4', 't5']
     assert saved.content.participants['@bob'].traits == ['дубль']
 
-    drop_logs = [
+    conflict_logs = [
         c[0][0] for c in mock_logger.info.call_args_list
-        if c[0][0].startswith('MEMORY_ATTRIBUTION_DROP')
+        if c[0][0].startswith('MEMORY_ATTRIBUTION_CONFLICT')
     ]
-    assert len(drop_logs) == 1
-    assert 'chat_id=1' in drop_logs[0]
-    assert 'reason=incumbent_wins' in drop_logs[0]
-    assert 'owner=@alice' in drop_logs[0]
-    assert 'kept=@bob' in drop_logs[0]
-    assert 'field=traits' in drop_logs[0]
-    assert 'text=Дубль!' in drop_logs[0]
+    assert len(conflict_logs) == 1
+    assert 'chat_id=1' in conflict_logs[0]
+    assert 'action=dropped' in conflict_logs[0]
+    assert 'reason=incumbent_wins' in conflict_logs[0]
+    assert 'owner=@alice' in conflict_logs[0]
+    assert 'kept=@bob' in conflict_logs[0]
+    assert 'field=traits' in conflict_logs[0]
+    assert 'text=Дубль!' in conflict_logs[0]
