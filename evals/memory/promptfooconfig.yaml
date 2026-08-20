@@ -10,6 +10,9 @@ providers:
   - file://../models/cloud/memory/v3-cheap.yaml
 
 defaultTest:
+  options:
+    transform: file://../strip_json_fences.js
+
   assert:
     - type: is-json
     - type: llm-rubric
