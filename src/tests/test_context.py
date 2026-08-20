@@ -189,7 +189,9 @@ async def test_extract_memory_trims_oversized_lists(mocker):
         participants={
             '@alice': ParticipantInfo(
                 traits=data_items,
-                recent=[RecentItem(text=str(i), last_seen_at='26-05-01 10:00') for i in range(8)],
+                recent=[
+                    RecentItem(text=f'r{i}', last_seen_at='26-05-01 10:00') for i in range(8)
+                ],
             )
         },
         state=ChatState(
@@ -207,7 +209,7 @@ async def test_extract_memory_trims_oversized_lists(mocker):
     assert saved is not None
     assert saved.content.participants['@alice'].traits == ['3', '4', '5', '6', '7']
     assert [r.text for r in saved.content.participants['@alice'].recent] == [
-        '3', '4', '5', '6', '7'
+        'r3', 'r4', 'r5', 'r6', 'r7'
     ]
     assert saved.content.state.active_topics == ['3', '4', '5', '6', '7']
     assert saved.content.state.open_questions == ['3', '4', '5', '6', '7']
@@ -249,3 +251,36 @@ async def test_extract_memory_enabled_runs_llm(mocker):
     saved = await get_last_memory(1)
     assert saved is not None
     assert saved.content.state.active_topics == ['topic']
+
+
+async def test_extract_memory_resolves_attribution_before_trimming(mocker):
+    current = StructuredMemory(participants={'@bob': ParticipantInfo(traits=['дубль'])})
+    llm_result = StructuredMemory(
+        participants={
+            '@alice': ParticipantInfo(traits=['t1', 't2', 't3', 't4', 't5', 'Дубль!']),
+            '@bob': ParticipantInfo(traits=['дубль']),
+        }
+    )
+    mock_memory_llm(mocker, return_value=llm_result)
+    mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
+    mock_logger = mocker.patch('src.memory.processors.logger')
+
+    await extract_memory(chat_id=1, current_memory=current, new_messages=[make_message()])
+
+    saved = await get_last_memory(1)
+    assert saved is not None
+    # The guard freed a slot before trim(5), so all five valid traits survive.
+    assert saved.content.participants['@alice'].traits == ['t1', 't2', 't3', 't4', 't5']
+    assert saved.content.participants['@bob'].traits == ['дубль']
+
+    drop_logs = [
+        c[0][0] for c in mock_logger.info.call_args_list
+        if c[0][0].startswith('MEMORY_ATTRIBUTION_DROP')
+    ]
+    assert len(drop_logs) == 1
+    assert 'chat_id=1' in drop_logs[0]
+    assert 'reason=incumbent_wins' in drop_logs[0]
+    assert 'owner=@alice' in drop_logs[0]
+    assert 'kept=@bob' in drop_logs[0]
+    assert 'field=traits' in drop_logs[0]
+    assert 'text=Дубль!' in drop_logs[0]
