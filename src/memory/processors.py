@@ -26,7 +26,7 @@ async def extract_memory(
     formatted_messages = '\n'.join([m.ai_format for m in new_messages])
     system_prompt = prompt_manager.get_prompt(
         'memory',
-        version='v3',
+        version='v4',
         current_memory=current_memory.model_dump_json() if current_memory else '{}',
         new_messages=formatted_messages
     )
