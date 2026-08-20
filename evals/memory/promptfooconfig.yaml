@@ -3,8 +3,6 @@
 description: "Memory processing eval"
 
 prompts:
-  - id: file://../../src/prompts/memory/v3.j2
-    label: "Memory v3"
   - id: file://../../src/prompts/memory/v4.j2
     label: "Memory v4"
 
@@ -23,6 +21,12 @@ defaultTest:
     # src/memory/dedup.py, so a failure here predicts a real production drop.
     - type: javascript
       value: file://assert_unique_attribution.js
+
+    # Code owns the clock now — the sidecar in src/memory/decay.py stamps ages the model
+    # never sees. A timestamp in a participant entry means the prompt still leaks the old
+    # contract, which would poison the normalized key the guard and the sidecar index on.
+    - type: javascript
+      value: file://assert_no_timestamps.js
 
     - type: llm-rubric
       provider:
@@ -43,13 +47,15 @@ defaultTest:
         - Atomicity: Are the facts and entries short and atomic?
         - Consistency: Does it avoid duplicating existing information if it hasn't changed?
         - Placement: Are facts about a person under `participants.<@nick>` (stable properties in
-          `traits`, dated events in `recent` with a `last_seen_at`), and chat-level state under
+          `traits`, recent events in `recent` as plain strings), and chat-level state under
           `state` (`active_topics`, `open_questions`, `running_jokes`)? Ignore JSON container-type
           deviations such as an object where a list is expected: production binds this model to a
           schema that makes them impossible, so they are an artefact of this harness rather than a
           property of the prompt being evaluated.
         - Carryover: Does the update preserve important information from the original memory that was not mentioned in the new messages?
-        - Cleanup: Does it drop resolved entries from `state.open_questions` and topics that are no longer live from `state.active_topics`?
+        - Cleanup: Does it drop resolved entries from `state.open_questions`? Do not judge
+          `state.active_topics` for staleness: production strips topics from the model's input
+          entirely, so there is nothing stale for it to carry forward.
         - Humor: Does it correctly detects jokes and irony if they exist in messages? If not sure is something is joke or irony - ignore it.
         - Language: Is it in Russian as required (except for names/technical terms)?
         - Attribution: Is every participant entry about the person it is stored under, rather than
@@ -112,3 +118,14 @@ tests:
     assert:
       - type: javascript
         value: file://attribution_merge/assert.js
+
+  # The one recurrence signal decay relies on: a repeating `recent` fact must move into
+  # `traits` and leave `recent`. Nothing else in the system can tell recurrence from
+  # re-emission, since the prompt carries everything forward regardless.
+  - description: "promotion"
+    vars:
+      current_memory: file://promotion/current.json
+      new_messages: file://promotion/input.txt
+    assert:
+      - type: javascript
+        value: file://promotion/assert.js

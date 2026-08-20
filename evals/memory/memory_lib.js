@@ -8,9 +8,10 @@
 // Tolerance note: production binds the model with `with_structured_output(StructuredMemory)`,
 // so pydantic guarantees the shape. Promptfoo sends the bare prompt with no schema, so the
 // model is free to emit `traits: {}` for an empty list, an index-keyed object instead of an
-// array, or a bare string instead of a `{text, last_seen_at}` object. These helpers recover
-// what they can and report the deviation, rather than throwing — a shape wobble that cannot
-// happen in production must not mask the attribution signal the case exists to measure.
+// array, or a `{text, last_seen_at}` object where a bare string is now the correct shape.
+// These helpers recover what they can and report the deviation, rather than throwing — a
+// shape wobble that cannot happen in production must not mask the attribution signal the
+// case exists to measure.
 
 function norm(text) {
     return String(text || '')
@@ -34,9 +35,9 @@ function asArray(value) {
     return [];
 }
 
-// A recent entry should be {text, last_seen_at}, but a bare string shows up often enough
-// that reading it as the text is worth doing — otherwise the entry silently vanishes from
-// every assertion instead of being checked.
+// A recent entry is a bare string now that code owns the clock. An unschema'd model still
+// emits the old `{text, ...}` object sometimes, so read the text out of it rather than
+// letting the entry silently vanish from every assertion.
 function itemText(item) {
     if (typeof item === 'string') {
         return item;
@@ -92,12 +93,8 @@ function shapeAnomalies(memory) {
             }
         }
         for (const r of asArray(info.recent)) {
-            if (typeof r === 'string') {
-                notes.push(`${nick}.recent has a bare string, expected {text, last_seen_at}`);
-                break;
-            }
-            if (r && typeof r === 'object' && !r.last_seen_at) {
-                notes.push(`${nick}.recent entry is missing last_seen_at`);
+            if (r && typeof r === 'object') {
+                notes.push(`${nick}.recent has an object, expected a bare string`);
                 break;
             }
         }
