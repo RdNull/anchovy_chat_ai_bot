@@ -293,7 +293,13 @@ async def test_extract_memory_resolves_attribution_before_eviction(mocker):
 
 
 async def test_extract_memory_logs_churn_and_would_evict(mocker):
-    """The phase-1 instrument: the log is the deliverable, so assert its shape."""
+    """The phase-1 instrument: the log is the deliverable, so assert its shape.
+
+    The window is built so the positional baseline and the born-ordered policy pick
+    opposite entries — the model emits the newest first, which the baseline is exactly
+    wrong about. Both actions therefore appear: the baseline's real deletion, and the
+    policy's `would_evict` on the stale entry it kept.
+    """
     current = MemoryData(
         chat_id=1,
         created_at=datetime.now(timezone.utc),
@@ -306,7 +312,7 @@ async def test_extract_memory_logs_churn_and_would_evict(mocker):
         }},
     )
     llm_result = StructuredMemory(
-        participants={'@alice': ParticipantInfo(recent=['ездил в Лондон', 'купил велосипед'])}
+        participants={'@alice': ParticipantInfo(recent=['купил велосипед', 'ездил в Лондон'])}
     )
     mock_memory_llm(mocker, return_value=llm_result)
     mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
@@ -316,23 +322,26 @@ async def test_extract_memory_logs_churn_and_would_evict(mocker):
     await extract_memory(chat_id=1, current_memory=current, new_messages=[make_message()])
 
     logs = [c[0][0] for c in mock_logger.info.call_args_list]
+
+    # «купил велосипед» is deleted by the baseline this cycle, so it is not `added`.
     churn = next(line for line in logs if line.startswith('MEMORY_CHURN '))
     assert churn == (
-        'MEMORY_CHURN chat_id=1 nicks=1 carried=1 added=1 vanished=1 '
+        'MEMORY_CHURN chat_id=1 nicks=1 carried=1 added=0 vanished=1 lost_recent=1 '
         'promoted=0 promote_candidates=0'
     )
 
     lost = [line for line in logs if line.startswith('MEMORY_CHURN_LOST')]
-    assert lost == ['MEMORY_CHURN_LOST chat_id=1 nick=@alice text=опоздал']
+    assert lost == ['MEMORY_CHURN_LOST chat_id=1 nick=@alice field=recent text=опоздал']
 
-    # Decay is off, so the older entry is only reported, never actually dropped.
     decayed = [line for line in logs if line.startswith('MEMORY_DECAY')]
     assert decayed == [
+        'MEMORY_DECAY chat_id=1 nick=@alice field=recent action=evicted '
+        'reason=baseline text=купил велосипед',
         'MEMORY_DECAY chat_id=1 nick=@alice field=recent action=would_evict '
-        'reason=cap text=ездил в Лондон'
+        'reason=cap text=ездил в Лондон',
     ]
     saved = await get_last_memory(1)
-    assert saved.content.participants['@alice'].recent == ['купил велосипед']
+    assert saved.content.participants['@alice'].recent == ['ездил в Лондон']
 
 
 async def test_extract_memory_logs_trait_overflow(mocker):

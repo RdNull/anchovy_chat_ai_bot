@@ -32,6 +32,24 @@ def test_normalize_returns_empty_for_bare_nick():
     assert normalize('@name') == ''
 
 
+def test_normalize_strips_symbols_not_just_punctuation():
+    """These keys become MongoDB field names, and Mongo restricts a leading `$`.
+
+    Stripping category `P` alone left `$` (category `Sc`) in the key.
+    """
+    assert normalize('зарабатывает $5000') == 'зарабатывает 5000'
+    assert normalize('долг $500 в месяц') == 'долг 500 в месяц'
+
+
+def test_normalize_strips_emoji():
+    assert normalize('любит 🍕 пиццу') == 'любит пиццу'
+
+
+def test_normalize_strips_cyrillic_nicks():
+    """`parsing.py` falls back to `first_name`, so a Cyrillic nick is routine."""
+    assert normalize('@Миша опоздал на созвон') == 'опоздал на созвон'
+
+
 # --- no conflicts ---
 
 def test_no_duplicates_leaves_memory_unchanged():
