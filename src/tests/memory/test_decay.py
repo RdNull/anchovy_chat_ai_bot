@@ -127,6 +127,57 @@ def test_promotion_preserves_born_flips_field_and_reports_promote():
     assert events(churn) == {'ездит на велосипеде': 'promote'}
 
 
+def test_reworded_promotion_is_reported_as_a_candidate():
+    """The real shape of promotion: the model generalises, so the key changes.
+
+    «опоздал на созвон» becomes the trait «часто опаздывает», which is a different
+    normalized key — so exact `promote` cannot fire. Measured against the extraction
+    model, the trait text differed from the source text in every observed promotion,
+    which would leave `promoted` at zero forever and make every promotion read as an
+    unexplained `vanish`.
+    """
+    updated = make_memory(alice=ParticipantInfo(traits=['часто опаздывает'], recent=[]))
+    prior = {'@alice': {'опоздал на созвон': DecayRecord(born=LAST_WEEK, cycles=3, field='recent')}}
+
+    _, churn = reconcile(updated, prior, [], NOW)
+
+    # The candidate shares a key with the birth, so compare the records themselves.
+    assert [(r.key, r.event) for r in churn] == [
+        ('часто опаздывает', 'birth'),
+        ('опоздал на созвон', 'vanish'),
+        ('часто опаздывает', 'promote_candidate'),
+    ]
+
+
+def test_no_candidate_when_the_lost_entry_was_a_trait():
+    """Only a lost `recent` entry can have been promoted."""
+    updated = make_memory(alice=ParticipantInfo(traits=['новое свойство']))
+    prior = {'@alice': {'старое свойство': DecayRecord(born=LAST_WEEK, cycles=3, field='traits')}}
+
+    _, churn = reconcile(updated, prior, [], NOW)
+
+    assert [r.event for r in churn if r.event == 'promote_candidate'] == []
+
+
+def test_no_candidate_when_nothing_new_landed_in_traits():
+    updated = make_memory(alice=ParticipantInfo(recent=['другое событие']))
+    prior = {'@alice': {'опоздал на созвон': DecayRecord(born=LAST_WEEK, cycles=3, field='recent')}}
+
+    _, churn = reconcile(updated, prior, [], NOW)
+
+    assert [r.event for r in churn if r.event == 'promote_candidate'] == []
+
+
+def test_verbatim_promotion_reports_promote_not_candidate():
+    """When the text does survive the move, the exact signal still fires."""
+    updated = make_memory(alice=ParticipantInfo(traits=['ездит на велосипеде']))
+    prior = {'@alice': {'ездит на велосипеде': DecayRecord(born=LAST_WEEK, cycles=3, field='recent')}}
+
+    _, churn = reconcile(updated, prior, [], NOW)
+
+    assert [r.event for r in churn] == ['promote']
+
+
 def test_demotion_traits_to_recent_carries_rather_than_promotes():
     updated = make_memory(alice=ParticipantInfo(recent=['ездит на велосипеде']))
     prior = {'@alice': {'ездит на велосипеде': DecayRecord(born=LAST_WEEK, cycles=4, field='traits')}}

@@ -317,7 +317,10 @@ async def test_extract_memory_logs_churn_and_would_evict(mocker):
 
     logs = [c[0][0] for c in mock_logger.info.call_args_list]
     churn = next(line for line in logs if line.startswith('MEMORY_CHURN '))
-    assert churn == 'MEMORY_CHURN chat_id=1 nicks=1 carried=1 added=1 vanished=1 promoted=0'
+    assert churn == (
+        'MEMORY_CHURN chat_id=1 nicks=1 carried=1 added=1 vanished=1 '
+        'promoted=0 promote_candidates=0'
+    )
 
     lost = [line for line in logs if line.startswith('MEMORY_CHURN_LOST')]
     assert lost == ['MEMORY_CHURN_LOST chat_id=1 nick=@alice text=опоздал']

@@ -10,8 +10,17 @@ What the diff yields deterministically is **first written this cycle**, not
 forward, so an entry present in both snapshots only means still stored. Decay is
 therefore age-based, not recurrence-based — age is computable, recurrence is not.
 
-The one checkable recurrence signal is `recent → traits` promotion, which is a
-structural move and so visible to the diff. `reconcile` reports it as `promote`.
+The one recurrence signal is `recent → traits` promotion. It is a structural move,
+but only a *verbatim* one is detectable as `promote`, and the model does not
+promote verbatim: an event becomes a property, so «опоздал на созвон» is emitted
+as «часто опаздывает», a different key. Measured against the extraction model,
+the trait text differed from the source text in every observed promotion, so exact
+`promote` fires approximately never.
+
+`promote_candidate` covers that. A nick that loses a `recent` key and gains a
+`traits` key in the same cycle is the reworded promotion, and counting it is what
+separates «the model generalised a recurring fact» from «the model silently
+dropped it» — which is the whole question `vanished` exists to answer.
 
 Cycles, not wall clock, are the native unit here. The memory update is triggered
 by a message count, so a wall-clock TTL empties a quiet chat's memory every cycle
@@ -29,6 +38,7 @@ BIRTH = 'birth'
 CARRY = 'carry'
 VANISH = 'vanish'
 PROMOTE = 'promote'
+PROMOTE_CANDIDATE = 'promote_candidate'
 
 CAP_REASON = 'cap'
 CYCLES_REASON = 'cycles'
@@ -119,7 +129,10 @@ def reconcile(
         now: This cycle's timestamp, from `resolve_now`.
 
     Returns:
-        The sidecar for this cycle and every churn event, in nick order.
+        The sidecar for this cycle and every churn event, in nick order. A nick that
+        both loses a `recent` key and gains a `traits` key emits one extra
+        `promote_candidate` record, since a reworded promotion cannot be matched by
+        key and would otherwise read as an unexplained loss.
     """
     guard_dropped = {
         (record.owner, normalize(record.text)) for record in guard_records if record.removed
@@ -150,12 +163,31 @@ def reconcile(
 
         decay[nick] = records
 
+    born_traits = {
+        nick: {
+            key for key, record in records.items()
+            if record.field == TRAITS_FIELD and record.cycles == 0
+        }
+        for nick, records in decay.items()
+    }
+
     for nick, prior in prior_decay.items():
         survivors = decay.get(nick, {})
+        lost_recent = False
         for key in prior:
             if key in survivors or (nick, key) in guard_dropped:
                 continue
             churn.append(ChurnRecord(nick=nick, key=key, text=key, event=VANISH))
+            lost_recent = lost_recent or prior[key].field == RECENT_FIELD
+
+        candidates = born_traits.get(nick) or set()
+        if lost_recent and candidates:
+            churn.append(ChurnRecord(
+                nick=nick,
+                key=sorted(candidates)[0],
+                text=_sample_text(updated, nick, sorted(candidates)[0]),
+                event=PROMOTE_CANDIDATE,
+            ))
 
     return decay, churn
 

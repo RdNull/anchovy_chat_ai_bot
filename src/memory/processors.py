@@ -3,7 +3,16 @@ from langsmith import traceable
 
 from src import ai, settings
 from src.logs import logger
-from src.memory.decay import BIRTH, CARRY, PROMOTE, VANISH, apply_decay, reconcile, resolve_now
+from src.memory.decay import (
+    BIRTH,
+    CARRY,
+    PROMOTE,
+    PROMOTE_CANDIDATE,
+    VANISH,
+    apply_decay,
+    reconcile,
+    resolve_now,
+)
 from src.memory.dedup import resolve_attribution_conflicts
 from src.memory.models import MemoryData, StructuredMemory
 from src.memory.repository import save_memory
@@ -31,14 +40,15 @@ def _prompt_memory(current: MemoryData | None) -> str:
 
 
 def _log_churn(chat_id: int, churn: list) -> None:
-    counts = {BIRTH: 0, CARRY: 0, VANISH: 0, PROMOTE: 0}
+    counts = {BIRTH: 0, CARRY: 0, VANISH: 0, PROMOTE: 0, PROMOTE_CANDIDATE: 0}
     for record in churn:
         counts[record.event] += 1
 
     logger.info(
         f'MEMORY_CHURN chat_id={chat_id} nicks={len({r.nick for r in churn})} '
         f'carried={counts[CARRY]} added={counts[BIRTH]} '
-        f'vanished={counts[VANISH]} promoted={counts[PROMOTE]}'
+        f'vanished={counts[VANISH]} promoted={counts[PROMOTE]} '
+        f'promote_candidates={counts[PROMOTE_CANDIDATE]}'
     )
     for record in churn:
         if record.event == VANISH:
