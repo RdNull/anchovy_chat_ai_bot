@@ -2,9 +2,7 @@ from datetime import datetime, timezone
 
 from src import mongo
 from src.logs import logger
-from .models import DecayRecord, MemoryData, StructuredMemory
-
-Decay = dict[str, dict[str, DecayRecord]]
+from .models import Decay, MemoryData, StructuredMemory
 
 
 async def save_memory(chat_id: int, memory: StructuredMemory, decay: Decay | None = None):

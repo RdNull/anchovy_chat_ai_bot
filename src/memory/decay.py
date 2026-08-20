@@ -20,7 +20,12 @@ the trait text differed from the source text in every observed promotion, so exa
 `promote_candidate` covers that. A nick that loses a `recent` key and gains a
 `traits` key in the same cycle is the reworded promotion, and counting it is what
 separates «the model generalised a recurring fact» from «the model silently
-dropped it» — which is the whole question `vanished` exists to answer.
+dropped it» — which is the whole question `vanished` exists to answer. It is a
+*coincidence count, not a pairing*: with no shared key there is nothing to match a
+new trait against a lost entry, so every trait born on a nick that lost a `recent`
+entry is reported, and the churn log prints `lost_recent` beside it so the two
+numbers can be read against each other. Claiming a specific pair would be inventing
+a link the data does not contain.
 
 Cycles, not wall clock, are the native unit here. The memory update is triggered
 by a message count, so a wall-clock TTL empties a quiet chat's memory every cycle
@@ -30,8 +35,9 @@ the most damage.
 
 from datetime import datetime, timezone
 
+from src import settings
 from src.memory.keys import RECENT_FIELD, TRAITS_FIELD, normalize
-from src.memory.models import DecayRecord, StructuredMemory
+from src.memory.models import Decay, DecayRecord, StructuredMemory
 from src.models import BaseModel, format_ts
 
 BIRTH = 'birth'
@@ -40,14 +46,16 @@ VANISH = 'vanish'
 PROMOTE = 'promote'
 PROMOTE_CANDIDATE = 'promote_candidate'
 
+# The whole contract for `ChurnRecord.event`. Consumers derive their counters from
+# this rather than restating a subset that then falls behind.
+EVENTS = (BIRTH, CARRY, VANISH, PROMOTE, PROMOTE_CANDIDATE)
+
 CAP_REASON = 'cap'
 CYCLES_REASON = 'cycles'
-
-TOPICS_KEEP = 3  # matches «Максимум 3» in the extraction prompt
-QUESTIONS_KEEP = 5
-JOKES_KEEP = 5
-
-Decay = dict[str, dict[str, DecayRecord]]
+# The policy would have kept this entry and the positional baseline dropped it
+# anyway. Only reachable while decay is disabled, and it is the measurement that
+# phase exists for: the size of the gap between what runs and what is proposed.
+BASELINE_REASON = 'baseline'
 
 
 class ChurnRecord(BaseModel):
@@ -56,21 +64,54 @@ class ChurnRecord(BaseModel):
     nick: str
     key: str
     text: str
-    event: str  # 'birth' | 'carry' | 'vanish' | 'promote'
+    field: str  # 'traits' | 'recent' — for a vanish, the list it lived in last cycle
+    event: str  # one of `EVENTS`
 
 
 class EvictionRecord(BaseModel):
-    """One entry the eviction policy selected for removal.
+    """One entry eviction removed, or would have removed.
 
-    `applied` is `False` during the log-only phase, where the policy is computed
-    and reported but the baseline caps are what actually run.
+    `applied` says whether the entry actually left memory this cycle. During the
+    log-only phase the policy is computed but the positional baseline is what runs,
+    so the two disagree in both directions: a policy drop the baseline kept is
+    recorded with `applied=False`, and a baseline drop the policy would have kept is
+    recorded with `reason=baseline` and `applied=True`.
     """
 
     nick: str
     field: str
     text: str
-    reason: str  # 'cap' | 'cycles'
+    reason: str  # 'cap' | 'cycles' | 'baseline'
     applied: bool
+
+
+class DecayCaps(BaseModel):
+    """Every limit eviction applies, in one carrier.
+
+    One object rather than seven parameters, and one place the deployment values are
+    read — `settings` is the only source, per the project rule, and nothing here
+    carries a default that could quietly become a second one.
+    """
+
+    enabled: bool
+    traits_keep: int
+    recent_keep: int
+    max_cycles: int
+    topics_keep: int
+    questions_keep: int
+    jokes_keep: int
+
+    @classmethod
+    def from_settings(cls) -> 'DecayCaps':
+        return cls(
+            enabled=settings.ENABLE_MEMORY_DECAY,
+            traits_keep=settings.TRAITS_KEEP,
+            recent_keep=settings.RECENT_KEEP,
+            max_cycles=settings.RECENT_MAX_CYCLES,
+            topics_keep=settings.TOPICS_KEEP,
+            questions_keep=settings.QUESTIONS_KEEP,
+            jokes_keep=settings.JOKES_KEEP,
+        )
 
 
 def resolve_now(created_ats: list[datetime | None]) -> str:
@@ -100,184 +141,167 @@ def _emitted_fields(memory: StructuredMemory, nick: str) -> dict[str, str]:
 
 def _sample_text(memory: StructuredMemory, nick: str, key: str) -> str:
     """Returns the raw text behind a normalized key, for logging."""
-    info = memory.participants[nick]
-    for entry in [*info.traits, *info.recent]:
+    info = memory.participants.get(nick)
+    for entry in [*info.traits, *info.recent] if info else []:
         if normalize(entry) == key:
             return entry
     return key
 
 
-def reconcile(
-    updated: StructuredMemory,
-    prior_decay: Decay,
-    guard_records: list,
-    now: str,
-) -> tuple[Decay, list[ChurnRecord]]:
-    """Ages the sidecar forward one cycle and reports what moved.
+def reconcile(updated: StructuredMemory, prior_decay: Decay, now: str) -> Decay:
+    """Ages the sidecar forward one cycle.
 
     `prior_decay` is the *sole* authority on what was stored last cycle. The
     sidecar holds a record for every stored entry, so its key set is the prior key
     set; deriving it a second way from the previous snapshot's content would let
     the two drift.
 
+    Reports nothing: churn is `summarize_churn`'s job, and it has to run *after*
+    `apply_decay` or it counts entries that eviction deletes moments later.
+
     Args:
         updated: Memory the model just emitted, after the attribution guard ran.
         prior_decay: Last cycle's sidecar.
-        guard_records: `ConflictRecord`s from the guard. Entries it removed are
-            already gone from `updated` and would otherwise be miscounted as
-            `vanish`, so they are excluded.
         now: This cycle's timestamp, from `resolve_now`.
 
     Returns:
-        The sidecar for this cycle and every churn event, in nick order. A nick that
-        both loses a `recent` key and gains a `traits` key emits one extra
-        `promote_candidate` record, since a reworded promotion cannot be matched by
-        key and would otherwise read as an unexplained loss.
+        The sidecar for this cycle, before eviction prunes it.
     """
-    guard_dropped = {
-        (record.owner, normalize(record.text)) for record in guard_records if record.removed
-    }
-
     decay: Decay = {}
-    churn: list[ChurnRecord] = []
 
     for nick in updated.participants:
         prior = prior_decay.get(nick, {})
         records: dict[str, DecayRecord] = {}
 
         for key, field in _emitted_fields(updated, nick).items():
-            text = _sample_text(updated, nick, key)
             previous = prior.get(key)
             if previous is None:
                 records[key] = DecayRecord(born=now, cycles=0, field=field)
-                churn.append(ChurnRecord(nick=nick, key=key, text=text, event=BIRTH))
-                continue
-
-            records[key] = DecayRecord(
-                born=previous.born, cycles=previous.cycles + 1, field=field
-            )
-            promoted = previous.field == RECENT_FIELD and field == TRAITS_FIELD
-            churn.append(ChurnRecord(
-                nick=nick, key=key, text=text, event=PROMOTE if promoted else CARRY
-            ))
+            else:
+                records[key] = DecayRecord(
+                    born=previous.born, cycles=previous.cycles + 1, field=field
+                )
 
         decay[nick] = records
 
-    born_traits = {
-        nick: {
-            key for key, record in records.items()
-            if record.field == TRAITS_FIELD and record.cycles == 0
-        }
-        for nick, records in decay.items()
-    }
-
-    for nick, prior in prior_decay.items():
-        survivors = decay.get(nick, {})
-        lost_recent = False
-        for key in prior:
-            if key in survivors or (nick, key) in guard_dropped:
-                continue
-            churn.append(ChurnRecord(nick=nick, key=key, text=key, event=VANISH))
-            lost_recent = lost_recent or prior[key].field == RECENT_FIELD
-
-        candidates = born_traits.get(nick) or set()
-        if lost_recent and candidates:
-            churn.append(ChurnRecord(
-                nick=nick,
-                key=sorted(candidates)[0],
-                text=_sample_text(updated, nick, sorted(candidates)[0]),
-                event=PROMOTE_CANDIDATE,
-            ))
-
-    return decay, churn
+    return decay
 
 
-def _policy_survivors(entries: list[str], records: dict[str, DecayRecord], keep: int, max_cycles: int):
+def _cut(size: int, keep: int) -> int:
+    """Index the positional cap splits a list at.
+
+    Spelled out rather than `[-keep:]` because `keep == 0` makes that slice return
+    the whole list — a misconfiguration that would silently disable the cap.
+    """
+    return max(size - keep, 0)
+
+
+def _policy_selection(
+    entries: list[str],
+    records: dict[str, DecayRecord],
+    keep: int,
+    max_cycles: int,
+) -> tuple[set[int], set[int]]:
     """Selects the `recent` entries the real policy would keep.
 
     Newest `keep` by `born` rather than by list position, plus a hard drop of
-    anything that has outlived `max_cycles`. Survivors come back in the order the
-    model emitted them: sorting the stored list would flip it newest-first and make
-    the next cycle's positional baseline keep the wrong end.
+    anything that has outlived `max_cycles`.
+
+    Works in list indices, not entry text: the model can emit the same string twice,
+    and a set of survivors keyed by text would then account for one of them twice
+    and the other never.
 
     Returns:
-        `(survivors, evicted)` where `evicted` is `[(entry, reason)]`.
+        `(kept, expired)`, both sets of indices into `entries`.
     """
-    aged = []
+    expired = {
+        index for index, entry in enumerate(entries)
+        if (record := records.get(normalize(entry))) and record.cycles > max_cycles
+    }
+
+    ranked = []
     for index, entry in enumerate(entries):
+        if index in expired:
+            continue
         record = records.get(normalize(entry))
         # An entry with no record was just born, so it sorts newest; `index` breaks
         # ties in emission order.
-        aged.append((record.born if record else '￿', index, entry))
+        ranked.append((record.born if record else '￿', index))
 
-    expired = {
-        index for _, index, entry in aged
-        if (record := records.get(normalize(entry))) and record.cycles > max_cycles
-    }
-    ranked = [item for item in aged if item[1] not in expired]
-    ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    kept = {index for _, index, _ in ranked[:keep]}
-
-    survivors, evicted = [], []
-    for index, entry in enumerate(entries):
-        if index in kept:
-            survivors.append(entry)
-        else:
-            evicted.append((entry, CYCLES_REASON if index in expired else CAP_REASON))
-    return survivors, evicted
+    ranked.sort(reverse=True)
+    return {index for _, index in ranked[:keep]}, expired
 
 
 def apply_decay(
     updated: StructuredMemory,
     decay: Decay,
-    enabled: bool,
-    traits_keep: int,
-    recent_keep: int,
-    max_cycles: int,
+    caps: DecayCaps,
 ) -> list[EvictionRecord]:
     """Evicts overflow from `updated` and prunes the sidecar to the survivors.
 
     Computes two survivor sets and applies one:
 
-    - **baseline**, always applied: positional caps on every list, the corrected
-      form of the deleted `StructuredMemory.trim()`.
-    - **policy**, applied only when `enabled`: `recent` keeps the newest N by
-      `born` and drops anything past `max_cycles`. `traits` and `state` use the
-      baseline caps unchanged.
+    - **baseline**, applied while decay is off: positional caps on every list, the
+      corrected form of the deleted `StructuredMemory.trim()`.
+    - **policy**, applied when `caps.enabled`: `recent` keeps the newest N by `born`
+      and drops anything past `max_cycles`. `traits` and `state` use the baseline
+      caps unchanged.
 
-    Everything the *policy* would remove is recorded either way, so the log-only
-    phase still reports exactly what the real policy would have done.
+    Every entry either set removes is recorded, tagged with whether it actually left
+    memory. Recording only the policy's picks made the log-only phase report an
+    eviction that did not happen and hide the baseline drop that did.
 
     Trait eviction is deliberately left as the positional baseline. With neither a
     confidence nor a recurrence signal every available rule is bad — oldest-first
     kills the most established trait, newest-first ossifies the list so nothing new
     can enter. Raising the cap to 10 fixes the damage; the rule waits for the
-    overflow numbers this phase collects.
+    overflow numbers this phase collects. It is still *recorded*, so the phase sees
+    which traits the placeholder rule cost.
 
     Args:
         updated: Memory to evict from. Mutated in place.
         decay: This cycle's sidecar, from `reconcile`. Pruned in place.
-        enabled: Whether to apply the policy or only report it.
-        traits_keep: Cap on `traits`.
-        recent_keep: Cap on `recent`.
-        max_cycles: Age past which a `recent` entry is dropped.
+        caps: The limits to apply, and whether the policy is live.
 
     Returns:
-        Every entry the policy selected for removal.
+        Every entry removed, plus every entry the policy would have removed.
     """
     evictions: list[EvictionRecord] = []
 
     for nick, info in updated.participants.items():
         records = decay.get(nick, {})
 
-        survivors, evicted = _policy_survivors(info.recent, records, recent_keep, max_cycles)
+        policy_kept, expired = _policy_selection(
+            info.recent, records, caps.recent_keep, caps.max_cycles
+        )
+        baseline_kept = set(range(_cut(len(info.recent), caps.recent_keep), len(info.recent)))
+        kept = policy_kept if caps.enabled else baseline_kept
+
+        for index, entry in enumerate(info.recent):
+            if index in policy_kept and index in kept:
+                continue
+            if index in policy_kept:
+                reason = BASELINE_REASON
+            else:
+                reason = CYCLES_REASON if index in expired else CAP_REASON
+            evictions.append(EvictionRecord(
+                nick=nick,
+                field=RECENT_FIELD,
+                text=entry,
+                reason=reason,
+                applied=index not in kept,
+            ))
+
+        trait_cut = _cut(len(info.traits), caps.traits_keep)
         evictions.extend(
-            EvictionRecord(nick=nick, field=RECENT_FIELD, text=entry, reason=reason, applied=enabled)
-            for entry, reason in evicted
+            EvictionRecord(
+                nick=nick, field=TRAITS_FIELD, text=trait, reason=CAP_REASON, applied=True
+            )
+            for trait in info.traits[:trait_cut]
         )
 
-        info.traits = info.traits[-traits_keep:]
-        info.recent = survivors if enabled else info.recent[-recent_keep:]
+        info.traits = info.traits[trait_cut:]
+        info.recent = [entry for index, entry in enumerate(info.recent) if index in kept]
 
         # Prune to what survived, so the sidecar cannot accumulate records forever
         # and, worse, resurrect a stale `born`/`cycles` onto an entry the model
@@ -291,11 +315,109 @@ def apply_decay(
             decay.pop(nick, None)
 
     state = updated.state
-    state.active_topics = state.active_topics[-TOPICS_KEEP:]
-    state.open_questions = state.open_questions[-QUESTIONS_KEEP:]
-    state.running_jokes = state.running_jokes[-JOKES_KEEP:]
+    state.active_topics = state.active_topics[_cut(len(state.active_topics), caps.topics_keep):]
+    state.open_questions = state.open_questions[
+        _cut(len(state.open_questions), caps.questions_keep):
+    ]
+    state.running_jokes = state.running_jokes[_cut(len(state.running_jokes), caps.jokes_keep):]
 
     for nick in set(decay) - set(updated.participants):
         decay.pop(nick)
 
     return evictions
+
+
+def summarize_churn(
+    updated: StructuredMemory,
+    prior_decay: Decay,
+    decay: Decay,
+    guard_records: list,
+    evictions: list[EvictionRecord],
+) -> list[ChurnRecord]:
+    """Reports what moved this cycle, measured against what was actually saved.
+
+    Runs *after* `apply_decay`, on the pruned sidecar. Running it before counted an
+    entry eviction deleted two lines later as `carried`, and then pruning erased its
+    record so it never surfaced as a `vanish` on any later cycle either — the loss
+    was invisible in both directions.
+
+    Args:
+        updated: Memory as it will be saved, after guard and eviction.
+        prior_decay: Last cycle's sidecar — the authority on what was stored.
+        decay: This cycle's sidecar, pruned by `apply_decay` to the survivors.
+        guard_records: `ConflictRecord`s from the guard.
+        evictions: Records from `apply_decay`.
+
+    Returns:
+        Every churn event, in nick order: survivors first, then losses. Entries the
+        guard or eviction removed are not `vanish` — they are accounted for in their
+        own log lines, and counting them here would report a known loss as an
+        unexplained one.
+    """
+    accounted = {
+        (record.owner, normalize(record.text)) for record in guard_records if record.removed
+    }
+    accounted.update(
+        (record.nick, normalize(record.text)) for record in evictions if record.applied
+    )
+
+    churn: list[ChurnRecord] = []
+
+    for nick in updated.participants:
+        prior = prior_decay.get(nick, {})
+        for key, record in decay.get(nick, {}).items():
+            text = _sample_text(updated, nick, key)
+            if record.cycles == 0:
+                churn.append(ChurnRecord(
+                    nick=nick, key=key, text=text, field=record.field, event=BIRTH
+                ))
+                continue
+
+            previous = prior.get(key)
+            promoted = (
+                previous is not None
+                and previous.field == RECENT_FIELD
+                and record.field == TRAITS_FIELD
+            )
+            churn.append(ChurnRecord(
+                nick=nick,
+                key=key,
+                text=text,
+                field=record.field,
+                event=PROMOTE if promoted else CARRY,
+            ))
+
+    for nick, prior in prior_decay.items():
+        survivors = decay.get(nick, {})
+        lost_recent = 0
+        for key, record in prior.items():
+            if key in survivors or (nick, key) in accounted:
+                continue
+            churn.append(ChurnRecord(
+                nick=nick, key=key, text=key, field=record.field, event=VANISH
+            ))
+            if record.field == RECENT_FIELD:
+                lost_recent += 1
+
+        if not lost_recent:
+            continue
+
+        # Every trait born this cycle, not one picked out of them: nothing pairs a
+        # reworded trait to the entry it replaced, so reporting a single candidate
+        # made a nick that generalised three events look like it lost two.
+        born_traits = sorted(
+            key for key, record in survivors.items()
+            if record.field == TRAITS_FIELD and record.cycles == 0
+        )
+        churn.extend(
+            ChurnRecord(
+                nick=nick,
+                key=key,
+                text=_sample_text(updated, nick, key),
+                field=TRAITS_FIELD,
+                event=PROMOTE_CANDIDATE,
+            )
+            for key in born_traits
+        )
+
+    return churn

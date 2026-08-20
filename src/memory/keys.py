@@ -25,9 +25,15 @@ RECENT_FIELD = 'recent'
 def normalize(text: str) -> str:
     """Reduces an entry to its comparison key.
 
-    Lowercases, strips `@nick` tokens, folds `ё` to `е`, replaces Unicode
-    punctuation with spaces and collapses whitespace. Nick stripping must run
-    before punctuation stripping, since `@` is punctuation itself.
+    Lowercases, strips `@nick` tokens, folds `ё` to `е`, replaces everything that
+    is not a letter, a digit or whitespace with a space, and collapses whitespace.
+    Nick stripping must run first, since `@` is itself stripped by the same rule.
+
+    Keeping *only* letters and digits is deliberate, not tidiness: these keys become
+    MongoDB field names in the decay sidecar, and Mongo restricts `$`-prefixed names
+    and dots. Stripping category `P` alone left `$` (category `Sc`) intact, so
+    «$500 в месяц долг» produced a field name Mongo can reject. The rule as written
+    makes a restricted character structurally impossible in a key.
 
     Args:
         text: Raw entry text as the model emitted it.
@@ -37,10 +43,11 @@ def normalize(text: str) -> str:
         content of its own (e.g. a bare nick).
     """
     lowered = NICK_PATTERN.sub(' ', text.lower()).replace('ё', 'е')
-    depunctuated = ''.join(
-        ' ' if unicodedata.category(char).startswith('P') else char for char in lowered
+    stripped = ''.join(
+        char if char.isspace() or unicodedata.category(char)[0] in 'LN' else ' '
+        for char in lowered
     )
-    return ' '.join(depunctuated.split())
+    return ' '.join(stripped.split())
 
 
 def entry_keys(traits: list[str], recent: list[str]) -> set[str]:

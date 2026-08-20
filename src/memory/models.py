@@ -27,6 +27,13 @@ class DecayRecord(BaseModel):
     field: str  # 'traits' | 'recent' — the list it lived in last cycle
 
 
+# The sidecar's shape: nick -> normalized entry key -> record. Declared once and
+# imported by `decay.py` and `repository.py`, for the reason `keys.py` gives about
+# `normalize` — three copies of a shape only one of which is checked against the
+# Mongo write is how the shape drifts.
+Decay = dict[str, dict[str, DecayRecord]]
+
+
 class ParticipantInfo(BaseModel):
     traits: list[str] = Field(default_factory=list)
     recent: list[str] = Field(default_factory=list)
@@ -76,7 +83,8 @@ def _relative_age(born: str, now: datetime) -> str | None:
     if days <= WEEK_DAYS:
         # 2-4 take «дня», 5 and up take «дней». The range here never reaches the
         # 21/22 forms, so the two cases are the whole rule.
-        return f'{days} {"дня" if days < 5 else "дней"} назад'
+        suffix = 'дня' if days < 5 else 'дней'
+        return f'{days} {suffix} назад'
     return 'больше недели назад'
 
 
@@ -84,7 +92,7 @@ class MemoryData(BaseModel):
     chat_id: int
     created_at: datetime
     content: StructuredMemory
-    decay: dict[str, dict[str, DecayRecord]] = Field(default_factory=dict)
+    decay: Decay = Field(default_factory=dict)
 
     def prompt_format(self, now: datetime | None = None) -> str:
         """Renders memory for the answering character's system prompt.

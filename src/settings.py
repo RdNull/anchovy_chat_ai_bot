@@ -45,6 +45,9 @@ class _Settings(BaseSettings):
     TRAITS_KEEP: int = 10
     RECENT_KEEP: int = 5
     RECENT_MAX_CYCLES: int = 20
+    TOPICS_KEEP: int = 3  # matches «Максимум 3» in the extraction prompt
+    QUESTIONS_KEEP: int = 5
+    JOKES_KEEP: int = 5
 
     EMBEDDINGS_MODEL_NAME: str = 'text-embedding-3-small'
     EMBEDDINGS_VECTOR_SIZE: int = 1536
@@ -85,6 +88,9 @@ ENABLE_MEMORY_DECAY = _s.ENABLE_MEMORY_DECAY
 TRAITS_KEEP = _s.TRAITS_KEEP
 RECENT_KEEP = _s.RECENT_KEEP
 RECENT_MAX_CYCLES = _s.RECENT_MAX_CYCLES
+TOPICS_KEEP = _s.TOPICS_KEEP
+QUESTIONS_KEEP = _s.QUESTIONS_KEEP
+JOKES_KEEP = _s.JOKES_KEEP
 
 EMBEDDINGS_MODEL_SETTINGS = {
     'model_name': _s.EMBEDDINGS_MODEL_NAME,

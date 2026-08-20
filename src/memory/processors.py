@@ -6,14 +6,18 @@ from src.logs import logger
 from src.memory.decay import (
     BIRTH,
     CARRY,
+    EVENTS,
     PROMOTE,
     PROMOTE_CANDIDATE,
     VANISH,
+    DecayCaps,
     apply_decay,
     reconcile,
     resolve_now,
+    summarize_churn,
 )
 from src.memory.dedup import resolve_attribution_conflicts
+from src.memory.keys import RECENT_FIELD
 from src.memory.models import MemoryData, StructuredMemory
 from src.memory.repository import save_memory
 from src.models import Message
@@ -40,19 +44,32 @@ def _prompt_memory(current: MemoryData | None) -> str:
 
 
 def _log_churn(chat_id: int, churn: list) -> None:
-    counts = {BIRTH: 0, CARRY: 0, VANISH: 0, PROMOTE: 0, PROMOTE_CANDIDATE: 0}
+    """Reports the cycle's churn counters.
+
+    `lost_recent` sits next to `promote_candidates` on purpose: a candidate is a
+    coincidence, not a pairing, so the pair of numbers is the signal — three lost
+    `recent` entries against three new traits reads very differently from three
+    against none.
+    """
+    counts = dict.fromkeys(EVENTS, 0)
     for record in churn:
         counts[record.event] += 1
 
+    lost_recent = sum(
+        1 for record in churn if record.event == VANISH and record.field == RECENT_FIELD
+    )
     logger.info(
         f'MEMORY_CHURN chat_id={chat_id} nicks={len({r.nick for r in churn})} '
         f'carried={counts[CARRY]} added={counts[BIRTH]} '
-        f'vanished={counts[VANISH]} promoted={counts[PROMOTE]} '
-        f'promote_candidates={counts[PROMOTE_CANDIDATE]}'
+        f'vanished={counts[VANISH]} lost_recent={lost_recent} '
+        f'promoted={counts[PROMOTE]} promote_candidates={counts[PROMOTE_CANDIDATE]}'
     )
     for record in churn:
         if record.event == VANISH:
-            logger.info(f'MEMORY_CHURN_LOST chat_id={chat_id} nick={record.nick} text={record.text}')
+            logger.info(
+                f'MEMORY_CHURN_LOST chat_id={chat_id} nick={record.nick} '
+                f'field={record.field} text={record.text}'
+            )
 
 
 def _log_evictions(chat_id: int, evictions: list) -> None:
@@ -64,15 +81,18 @@ def _log_evictions(chat_id: int, evictions: list) -> None:
         )
 
 
-def _log_trait_overflow(chat_id: int, memory: StructuredMemory) -> None:
+def _log_trait_overflow(chat_id: int, memory: StructuredMemory, traits_keep: int) -> None:
     """Reports participants over the trait cap, before eviction reshapes the list.
 
     Whether trait eviction needs a real rule at all is an open question, and this
     is the number that answers it: if overflow is rare, the placeholder rule never
     mattered.
+
+    Takes the cap rather than reading it, so the threshold measured against is the
+    one eviction is about to apply and not a second reading of `settings`.
     """
     for nick, info in memory.participants.items():
-        if len(info.traits) > settings.TRAITS_KEEP:
+        if len(info.traits) > traits_keep:
             logger.info(f'MEMORY_TRAIT_OVERFLOW chat_id={chat_id} nick={nick} count={len(info.traits)}')
 
 
@@ -117,24 +137,23 @@ async def extract_memory(
             f'field={record.field} text={record.text}'
         )
 
-    decay, churn = reconcile(
-        updated_memory,
-        current_memory.decay if current_memory else {},
-        guard_records,
-        resolve_now([m.created_at for m in new_messages]),
-    )
-    _log_churn(chat_id, churn)
-    _log_trait_overflow(chat_id, updated_memory)
+    prior_decay = current_memory.decay if current_memory else {}
+    caps = DecayCaps.from_settings()
 
-    evictions = apply_decay(
-        updated_memory,
-        decay,
-        settings.ENABLE_MEMORY_DECAY,
-        settings.TRAITS_KEEP,
-        settings.RECENT_KEEP,
-        settings.RECENT_MAX_CYCLES,
+    decay = reconcile(
+        updated_memory, prior_decay, resolve_now([m.created_at for m in new_messages])
     )
+    # Must precede eviction: the cap is what reshapes the list, so afterwards there
+    # is no overflow left to count.
+    _log_trait_overflow(chat_id, updated_memory, caps.traits_keep)
+
+    evictions = apply_decay(updated_memory, decay, caps)
     _log_evictions(chat_id, evictions)
+
+    # Churn last, so it describes the memory that is actually saved rather than the
+    # one the model emitted.
+    churn = summarize_churn(updated_memory, prior_decay, decay, guard_records, evictions)
+    _log_churn(chat_id, churn)
 
     try:
         await save_memory(chat_id, updated_memory, decay)
