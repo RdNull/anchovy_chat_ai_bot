@@ -26,20 +26,28 @@ defaultTest:
 
     - type: llm-rubric
       provider:
-        id: openrouter:deepseek/deepseek-v3.2
+        id: openrouter:openai/gpt-5-mini
         config:
-          temperature: 0.5
+          temperature: 0.2
+          response_format: { type: "json_object" }
       value: |
         You are evaluating a structured memory update for a group chat.
 
         Evaluation criteria:
         - Accuracy: Does the updated memory accurately reflect the new information in the messages?
+          A fact deliberately left out is not an error — this prompt is built to omit rather than
+          guess. Do not penalise an omission when the subject was ambiguous, when the statement was
+          about several people at once, or when the entry would have been a log of what someone said
+          about someone else. Penalise wrong or invented content, not restraint.
         - No Hallucinations: Does the update contain information not present in either the original memory or the new messages?
         - Atomicity: Are the facts and entries short and atomic?
         - Consistency: Does it avoid duplicating existing information if it hasn't changed?
-        - Format: Does it follow the required schema — `participants.<@nick>.traits[]` (strings),
-          `participants.<@nick>.recent[]` (objects with `text` and `last_seen_at`), and
-          `state` with `active_topics`, `open_questions`, `running_jokes`?
+        - Placement: Are facts about a person under `participants.<@nick>` (stable properties in
+          `traits`, dated events in `recent` with a `last_seen_at`), and chat-level state under
+          `state` (`active_topics`, `open_questions`, `running_jokes`)? Ignore JSON container-type
+          deviations such as an object where a list is expected: production binds this model to a
+          schema that makes them impossible, so they are an artefact of this harness rather than a
+          property of the prompt being evaluated.
         - Carryover: Does the update preserve important information from the original memory that was not mentioned in the new messages?
         - Cleanup: Does it drop resolved entries from `state.open_questions` and topics that are no longer live from `state.active_topics`?
         - Humor: Does it correctly detects jokes and irony if they exist in messages? If not sure is something is joke or irony - ignore it.
@@ -53,7 +61,8 @@ defaultTest:
         - 1.0 = perfect update
         - 0.8 = good update, missed existing jokes or irony
         - 0.7 = minor issues (e.g., slightly wordy, minor formatting)
-        - 0.3 = major issues (e.g., hallucinations, missing key facts, a fact on the wrong participant)
+        - 0.3 = major issues (e.g., hallucinations, a fact attributed to the wrong participant,
+          losing information that was already in the original memory)
         - 0.0 = completely incorrect or invalid JSON
 
         ---
