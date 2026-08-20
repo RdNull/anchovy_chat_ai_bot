@@ -3,11 +3,11 @@
 description: "Memory processing eval"
 
 prompts:
-  - id: file://../../src/prompts/memory/v1.j2
-    label: "Memory v1"
+  - id: file://../../src/prompts/memory/v3.j2
+    label: "Memory v3"
 
 providers:
-  - file://../models/cloud/memory/v1.yaml
+  - file://../models/cloud/memory/v3-cheap.yaml
 
 defaultTest:
   assert:
