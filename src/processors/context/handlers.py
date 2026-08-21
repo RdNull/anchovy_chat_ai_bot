@@ -29,8 +29,13 @@ async def _update_chat_memory(chat_id: int):
     last_memory_data = await get_last_memory(chat_id)
 
     from_date = last_memory_data.created_at if last_memory_data else None
+    # Oldest first: on a backlog past the cap the newest are the ones left behind,
+    # and the watermark below defers them to the next cycle instead of skipping them.
     new_messages = await get_messages(
-        chat_id, size=settings.MESSAGES_MEMORY_MAX_SIZE, from_date=from_date
+        chat_id,
+        size=settings.MESSAGES_MEMORY_MAX_SIZE,
+        from_date=from_date,
+        sort_order=1,
     )
 
     if len(new_messages) < settings.LAST_MESSAGES_MIN_SIZE:
@@ -50,7 +55,7 @@ async def run_memory_checks(chat_id: int):
     else:
         messages_count = await get_messages_count(chat_id)
 
-    if messages_count >= settings.LAST_MESSAGES_SIZE:
+    if messages_count >= settings.MEMORY_TRIGGER_SIZE:
         logger.info(
             f'Triggering periodic memory update for chat {chat_id} (count since last: {messages_count})'
         )
@@ -66,7 +71,7 @@ async def run_embedding_checks(chat_id: int):
     else:
         messages_count = await get_messages_count(chat_id)
 
-    if messages_count >= settings.LAST_MESSAGES_SIZE:
+    if messages_count >= settings.EMBEDDINGS_TRIGGER_SIZE:
         logger.info(
             f'Triggering periodic embedding update for chat {chat_id} (count since last: {messages_count})'
         )

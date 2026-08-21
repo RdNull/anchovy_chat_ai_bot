@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from src import settings
 from src.memory.keys import RECENT_FIELD, TRAITS_FIELD, normalize
 from src.memory.models import Decay, DecayRecord, StructuredMemory
-from src.models import BaseModel, format_ts
+from src.models import BaseModel
 
 BIRTH = 'birth'
 CARRY = 'carry'
@@ -114,16 +114,21 @@ class DecayCaps(BaseModel):
         )
 
 
-def resolve_now(created_ats: list[datetime | None]) -> str:
+def resolve_watermark(created_ats: list[datetime | None]) -> datetime:
     """Picks the timestamp this cycle is stamped with.
 
     The newest message in the window, matching the «сейчас» the extraction prompt
     used to define — which keeps tests deterministic and keeps sidecar ages on the
     same clock as the message log. Falls back to wall clock only when no message
     in the window carries a timestamp at all.
+
+    One value serves two consumers: `reconcile` ages the sidecar against it, and
+    the snapshot is stored under it, so the next window opens exactly where this
+    one closed. Wall clock cannot do that — it runs past the window during the
+    LLM call, and every message that lands in the gap is skipped forever.
     """
     stamped = [value for value in created_ats if value]
-    return format_ts(max(stamped) if stamped else datetime.now(timezone.utc))
+    return max(stamped) if stamped else datetime.now(timezone.utc)
 
 
 def _emitted_fields(memory: StructuredMemory, nick: str) -> dict[str, str]:
@@ -162,7 +167,7 @@ def reconcile(updated: StructuredMemory, prior_decay: Decay, now: str) -> Decay:
     Args:
         updated: Memory the model just emitted, after the attribution guard ran.
         prior_decay: Last cycle's sidecar.
-        now: This cycle's timestamp, from `resolve_now`.
+        now: This cycle's timestamp, from `resolve_watermark`.
 
     Returns:
         The sidecar for this cycle, before eviction prunes it.

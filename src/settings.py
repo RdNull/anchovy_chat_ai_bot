@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = 'anchovy_chat_ai_bot'
@@ -26,8 +26,21 @@ class _Settings(BaseSettings):
     CHAT_RATE_LIMIT: int = 5
 
     EMBEDDINGS_SEARCH_MAX_SIZE: int = 3
-    MESSAGES_EMBEDDINGS_MAX_SIZE: int = 40
-    MESSAGES_MEMORY_MAX_SIZE: int = 40
+
+    # Fetch caps: the most messages one memory / embedding pass reads in a window.
+    # Kept above their triggers so an ordinary cycle is consumed whole.
+    MESSAGES_EMBEDDINGS_MAX_SIZE: int = 60
+    MESSAGES_MEMORY_MAX_SIZE: int = 60
+
+    # Triggers: how many new messages must pile up before a pass runs. Separate
+    # numbers because they answer separate questions — one is worth an LLM call,
+    # the other is how stale Qdrant may get.
+    MEMORY_TRIGGER_SIZE: int = 40
+    EMBEDDINGS_TRIGGER_SIZE: int = 40
+
+    # The answering character's context window, and nothing else. It used to double
+    # as both triggers above, which made every memory cycle fire at the reply
+    # window's size.
     LAST_MESSAGES_SIZE: int = 40
     LAST_MESSAGES_MIN_SIZE: int = 5
 
@@ -59,6 +72,21 @@ class _Settings(BaseSettings):
             return [str(i) for i in v]
         return v
 
+    @model_validator(mode='after')
+    def _fetch_caps_exceed_triggers(self):
+        """Refuses to boot on a cap below its trigger.
+
+        Raises rather than clamps: a silently-wrong cap is the failure this pair of
+        settings exists to remove. An under-sized cap no longer loses messages, but
+        it does leave a remainder every cycle, which re-fires the trigger at once
+        and burns an LLM call per pass.
+        """
+        if self.MESSAGES_MEMORY_MAX_SIZE < self.MEMORY_TRIGGER_SIZE:
+            raise ValueError('MESSAGES_MEMORY_MAX_SIZE must be >= MEMORY_TRIGGER_SIZE')
+        if self.MESSAGES_EMBEDDINGS_MAX_SIZE < self.EMBEDDINGS_TRIGGER_SIZE:
+            raise ValueError('MESSAGES_EMBEDDINGS_MAX_SIZE must be >= EMBEDDINGS_TRIGGER_SIZE')
+        return self
+
 
 _s = _Settings()
 
@@ -76,6 +104,8 @@ CHAT_RATE_LIMIT = _s.CHAT_RATE_LIMIT
 EMBEDDINGS_SEARCH_MAX_SIZE = _s.EMBEDDINGS_SEARCH_MAX_SIZE
 MESSAGES_EMBEDDINGS_MAX_SIZE = _s.MESSAGES_EMBEDDINGS_MAX_SIZE
 MESSAGES_MEMORY_MAX_SIZE = _s.MESSAGES_MEMORY_MAX_SIZE
+MEMORY_TRIGGER_SIZE = _s.MEMORY_TRIGGER_SIZE
+EMBEDDINGS_TRIGGER_SIZE = _s.EMBEDDINGS_TRIGGER_SIZE
 LAST_MESSAGES_SIZE = _s.LAST_MESSAGES_SIZE
 LAST_MESSAGES_MIN_SIZE = _s.LAST_MESSAGES_MIN_SIZE
 RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT = _s.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT

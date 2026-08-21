@@ -13,14 +13,14 @@ from src.memory.decay import (
     DecayCaps,
     apply_decay,
     reconcile,
-    resolve_now,
+    resolve_watermark,
     summarize_churn,
 )
 from src.memory.dedup import resolve_attribution_conflicts
 from src.memory.keys import RECENT_FIELD
 from src.memory.models import MemoryData, StructuredMemory
 from src.memory.repository import save_memory
-from src.models import Message
+from src.models import Message, format_ts
 from src.prompt_manager import prompt_manager
 
 
@@ -115,7 +115,12 @@ async def extract_memory(
         'memory',
         version='v4',
         current_memory=_prompt_memory(current_memory),
-        new_messages=formatted_messages
+        new_messages=formatted_messages,
+        # What the answering character already holds, so the prompt stops telling the
+        # model to skip a window size no deployment actually uses. The «~» in the
+        # template absorbs the off-by-one from `response.py`'s `[:-1]` trim — passing
+        # the adjusted number would bake a `response.py` detail into a prompt.
+        context_window=settings.LAST_MESSAGES_SIZE,
     )
 
     updated_memory: StructuredMemory = await model_with_structure.ainvoke([
@@ -140,9 +145,11 @@ async def extract_memory(
     prior_decay = current_memory.decay if current_memory else {}
     caps = DecayCaps.from_settings()
 
-    decay = reconcile(
-        updated_memory, prior_decay, resolve_now([m.created_at for m in new_messages])
-    )
+    # One watermark for both consumers: the sidecar ages against it and the snapshot
+    # is stored under it, so the sidecar's clock and the next window's `$gt` bound
+    # can never disagree.
+    watermark = resolve_watermark([m.created_at for m in new_messages])
+    decay = reconcile(updated_memory, prior_decay, format_ts(watermark))
     # Must precede eviction: the cap is what reshapes the list, so afterwards there
     # is no overflow left to count.
     _log_trait_overflow(chat_id, updated_memory, caps.traits_keep)
@@ -156,7 +163,7 @@ async def extract_memory(
     _log_churn(chat_id, churn)
 
     try:
-        await save_memory(chat_id, updated_memory, decay)
+        await save_memory(chat_id, updated_memory, decay, created_at=watermark)
         logger.info(f'Memory updated and saved for chat {chat_id}')
     except Exception as e:
         logger.error(
