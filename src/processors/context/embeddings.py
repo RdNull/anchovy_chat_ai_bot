@@ -25,10 +25,13 @@ async def update_chat_embeddings(chat_id: int):
 
     last_embedding_task = await get_last_embedding_task(chat_id)
     from_date = last_embedding_task.last_message_time if last_embedding_task else None
+    # Oldest first, for the same reason as the memory pass: the checkpoint below is
+    # the newest message actually embedded, so overflow is deferred, never dropped.
     messages = await get_messages(
         chat_id,
         size=settings.MESSAGES_EMBEDDINGS_MAX_SIZE,
         from_date=from_date,
+        sort_order=1,
     )
 
     if not messages:
