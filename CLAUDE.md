@@ -111,6 +111,10 @@ Run tests inside Docker: `docker compose exec bot pytest`
 All tests live in `src/tests/`. Shared fixtures are in `src/tests/conftest.py`. Memory tests are split by module under `src/tests/memory/` (`test_memory.py`, `test_dedup.py`, `test_decay.py`); the cleanup task is covered by `src/tests/test_tasks_memory.py`.
 Use `[write-tests](.claude/skills/write-tests)` skill for tests manipulation.
 
+### Documentation
+
+`CLAUDE.md` and `README.md` are kept in sync with the code by hand — they are references, not changelogs. Use the [update-docs](.claude/skills/update-docs) skill when a subsystem changes.
+
 ## Code Style
 
 - Follow PEP 8 and the Google Python Style Guide.
