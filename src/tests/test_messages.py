@@ -122,6 +122,56 @@ async def test_get_messages_size_limit():
     assert len(history) == 2
 
 
+async def test_get_messages_default_sort_order_keeps_the_newest():
+    """Regression guard for the three callers that rely on the default."""
+    for i in range(4):
+        await save_message(make_message(text=f'msg{i}'))
+
+    history = await get_messages(1, size=2, sort_order=-1)
+
+    assert [m.text for m in history] == ['msg2', 'msg3']
+
+
+async def test_get_messages_ascending_sort_order_keeps_the_oldest():
+    """`sort_order` picks which end `size` takes — here, the front of the backlog."""
+    for i in range(4):
+        await save_message(make_message(text=f'msg{i}'))
+
+    history = await get_messages(1, size=2, sort_order=1)
+
+    assert [m.text for m in history] == ['msg0', 'msg1']
+
+
+async def test_get_messages_is_chronological_under_both_sort_orders():
+    """`sort_order` selects an end, never an order.
+
+    The unconditional `reversed()` used to conflate the two, so asking for the
+    oldest end silently returned them newest-first — which would have inverted the
+    prompt's message order and `response.py`'s `[:-1]` trim.
+    """
+    for i in range(4):
+        await save_message(make_message(text=f'msg{i}'))
+
+    newest_end = await get_messages(1, size=4, sort_order=-1)
+    oldest_end = await get_messages(1, size=4, sort_order=1)
+
+    expected = ['msg0', 'msg1', 'msg2', 'msg3']
+    assert [m.text for m in newest_end] == expected
+    assert [m.text for m in oldest_end] == expected
+
+
+async def test_get_messages_ascending_respects_from_date():
+    """The memory pass combines both: everything after the watermark, oldest first."""
+    await save_message(make_message(text='before'))
+    cutoff = datetime.now(timezone.utc)
+    for i in range(3):
+        await save_message(make_message(text=f'after{i}'))
+
+    history = await get_messages(1, size=2, from_date=cutoff, sort_order=1)
+
+    assert [m.text for m in history] == ['after0', 'after1']
+
+
 # --- get_last_message ---
 
 async def test_get_last_message():

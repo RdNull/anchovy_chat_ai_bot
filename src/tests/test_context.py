@@ -5,7 +5,7 @@ from src import settings
 from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInfo
 from src.memory.processors import StructuredMemory, extract_memory
 from src.memory.repository import get_last_memory
-from src.messages.repository import save_message
+from src.messages.repository import get_messages, save_message
 from src.processors.context.embeddings import get_last_embedding_task, update_chat_embeddings
 from src.processors.context.handlers import run_context_checks, update_chat_context
 from src.tests.test_utils import make_message
@@ -29,7 +29,8 @@ def mock_embeddings_client(mocker):
 # --- run_context_checks threshold logic ---
 
 async def test_run_context_checks_below_threshold_no_update(mocker):
-    mocker.patch.object(settings, 'LAST_MESSAGES_SIZE', 2)
+    mocker.patch.object(settings, 'MEMORY_TRIGGER_SIZE', 2)
+    mocker.patch.object(settings, 'EMBEDDINGS_TRIGGER_SIZE', 2)
     mock_memory = mocker.patch('src.processors.context.handlers.update_chat_context')
     mock_embed = mocker.patch('src.processors.context.handlers.update_chat_embeddings')
 
@@ -41,7 +42,8 @@ async def test_run_context_checks_below_threshold_no_update(mocker):
 
 
 async def test_run_context_checks_triggers_memory_update(mocker):
-    mocker.patch.object(settings, 'LAST_MESSAGES_SIZE', 2)
+    mocker.patch.object(settings, 'MEMORY_TRIGGER_SIZE', 2)
+    mocker.patch.object(settings, 'EMBEDDINGS_TRIGGER_SIZE', 99)
     mock_memory = mocker.patch('src.processors.context.handlers.update_chat_context')
     mocker.patch('src.processors.context.handlers.update_chat_embeddings')
 
@@ -54,7 +56,8 @@ async def test_run_context_checks_triggers_memory_update(mocker):
 
 
 async def test_run_context_checks_triggers_embedding_update(mocker):
-    mocker.patch.object(settings, 'LAST_MESSAGES_SIZE', 2)
+    mocker.patch.object(settings, 'MEMORY_TRIGGER_SIZE', 99)
+    mocker.patch.object(settings, 'EMBEDDINGS_TRIGGER_SIZE', 2)
     mocker.patch('src.processors.context.handlers.update_chat_context')
     mock_embed = mocker.patch('src.processors.context.handlers.update_chat_embeddings')
 
@@ -64,6 +67,37 @@ async def test_run_context_checks_triggers_embedding_update(mocker):
 
     assert mock_embed.call_count == 1
     assert mock_embed.call_args == call(1)
+
+
+async def test_the_two_triggers_are_independent(mocker):
+    """One number used to drive both. Moving one must not move the other."""
+    mocker.patch.object(settings, 'MEMORY_TRIGGER_SIZE', 2)
+    mocker.patch.object(settings, 'EMBEDDINGS_TRIGGER_SIZE', 99)
+    mock_memory = mocker.patch('src.processors.context.handlers.update_chat_context')
+    mock_embed = mocker.patch('src.processors.context.handlers.update_chat_embeddings')
+
+    await save_message(make_message(text='msg1'))
+    await save_message(make_message(text='msg2'))
+    await run_context_checks(1)
+
+    assert mock_memory.call_count == 1
+    assert mock_embed.call_count == 0
+
+
+async def test_last_messages_size_no_longer_drives_either_trigger(mocker):
+    """The bug this fixes: a reply-window setting silently set the memory cadence."""
+    mocker.patch.object(settings, 'LAST_MESSAGES_SIZE', 2)
+    mocker.patch.object(settings, 'MEMORY_TRIGGER_SIZE', 99)
+    mocker.patch.object(settings, 'EMBEDDINGS_TRIGGER_SIZE', 99)
+    mock_memory = mocker.patch('src.processors.context.handlers.update_chat_context')
+    mock_embed = mocker.patch('src.processors.context.handlers.update_chat_embeddings')
+
+    await save_message(make_message(text='msg1'))
+    await save_message(make_message(text='msg2'))
+    await run_context_checks(1)
+
+    assert mock_memory.call_count == 0
+    assert mock_embed.call_count == 0
 
 
 # --- update_chat_memory ---
@@ -107,6 +141,118 @@ async def test_update_chat_memory_no_op_below_min_size(mocker):
     assert await get_last_memory(1) is None
 
 
+# --- window intake: ordering, watermark, and the two loss paths ---
+
+def some_memory() -> StructuredMemory:
+    """A non-empty snapshot — `StructuredMemory.__bool__` makes an empty one falsy."""
+    return StructuredMemory(state=ChatState(open_questions=['кто платит']))
+
+
+async def test_update_chat_memory_fetches_oldest_first(mocker):
+    """Newest-first truncation dropped the front of the backlog permanently."""
+    mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
+    mock_memory_llm(mocker, return_value=some_memory())
+    mocker.patch('src.processors.context.handlers.extract_facts')
+    mock_get = mocker.patch(
+        'src.processors.context.handlers.get_messages', return_value=[make_message()]
+    )
+
+    await update_chat_context(1)
+
+    assert mock_get.call_count == 1
+    assert mock_get.call_args == call(
+        1, size=settings.MESSAGES_MEMORY_MAX_SIZE, from_date=None, sort_order=1
+    )
+
+
+async def test_snapshot_is_stamped_with_the_newest_processed_message(mocker):
+    """Not wall clock: the stamp is the next window's `$gt` bound."""
+    mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
+    mock_memory_llm(mocker, return_value=some_memory())
+    mocker.patch('src.processors.context.handlers.extract_facts')
+
+    await save_message(make_message(text='msg1'))
+    await save_message(make_message(text='msg2'))
+    await update_chat_context(1)
+
+    processed = await get_messages(1)
+    saved = await get_last_memory(1)
+    assert saved is not None
+    assert saved.created_at == processed[-1].created_at
+
+
+async def test_message_arriving_during_the_llm_call_lands_in_the_next_window(mocker):
+    """The confirmed 12:32 bug.
+
+    Wall clock was stamped *after* the LLM call, so anything that arrived while the
+    model was thinking sat after the fetch and before the stamp — excluded from this
+    window and from every window after it.
+    """
+    mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
+    mocker.patch('src.processors.context.handlers.extract_facts')
+
+    async def save_a_message_mid_call(*args, **kwargs):
+        await save_message(make_message(text='arrived during the call'))
+        return some_memory()
+
+    llm = MagicMock()
+    llm.with_structured_output.return_value.ainvoke = AsyncMock(
+        side_effect=save_a_message_mid_call
+    )
+    mocker.patch('src.memory.processors.ai.get_memory_model', return_value=llm)
+
+    await save_message(make_message(text='in the window'))
+    await update_chat_context(1)
+
+    saved = await get_last_memory(1)
+    assert saved is not None
+
+    leftover = await get_messages(1, from_date=saved.created_at)
+    assert [m.text for m in leftover] == ['arrived during the call']
+
+
+async def test_backlog_past_the_cap_is_deferred_not_dropped(mocker):
+    """Truncation becomes backpressure: the overflow is the *next* window, not lost."""
+    mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
+    mocker.patch.object(settings, 'MESSAGES_MEMORY_MAX_SIZE', 3)
+    mock_memory_llm(mocker, return_value=some_memory())
+    mocker.patch('src.processors.context.handlers.extract_facts')
+    mock_extract = mocker.patch(
+        'src.processors.context.handlers.extract_memory', side_effect=extract_memory
+    )
+
+    for i in range(5):
+        await save_message(make_message(text=f'msg{i}'))
+
+    await update_chat_context(1)
+    await update_chat_context(1)
+
+    first_window = [m.text for m in mock_extract.call_args_list[0][0][2]]
+    second_window = [m.text for m in mock_extract.call_args_list[1][0][2]]
+
+    assert first_window == ['msg0', 'msg1', 'msg2']
+    assert second_window == ['msg3', 'msg4']
+    assert first_window + second_window == [f'msg{i}' for i in range(5)]
+
+
+async def test_consecutive_snapshots_strictly_increase(mocker):
+    """A flat or falling watermark silently re-reads or skips a window."""
+    mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
+    mock_memory_llm(mocker, return_value=some_memory())
+    mocker.patch('src.processors.context.handlers.extract_facts')
+
+    stamps = []
+    for cycle in range(3):
+        await save_message(make_message(text=f'cycle{cycle}'))
+        await update_chat_context(1)
+        saved = await get_last_memory(1)
+        assert saved is not None
+        stamps.append(saved.created_at)
+
+    assert stamps == sorted(stamps)
+    assert len(set(stamps)) == len(stamps)
+
+
 # --- update_chat_embeddings ---
 
 async def test_update_chat_embeddings_calls_save_embeddings(mocker):
@@ -139,6 +285,45 @@ async def test_update_chat_embeddings_no_op_when_no_messages(mocker):
 
     assert mock_save.call_count == 0
     assert await get_last_embedding_task(1) is None
+
+
+async def test_update_chat_embeddings_backlog_is_deferred_not_dropped(mocker):
+    """The same loss path as the memory pass.
+
+    The checkpoint is already the newest message embedded, so fetching newest-first
+    meant a backlog past the cap left its oldest messages behind the checkpoint —
+    never embedded, and unreachable by `search_messages` forever after.
+    """
+    mocker.patch.object(settings, 'MESSAGES_EMBEDDINGS_MAX_SIZE', 3)
+    mock_save = mock_embeddings_client(mocker)
+
+    for i in range(5):
+        await save_message(make_message(text=f'msg{i}'))
+
+    await update_chat_embeddings(1)
+    await update_chat_embeddings(1)
+
+    first_batch = [m.text for m in mock_save.call_args_list[0][0][0]]
+    second_batch = [m.text for m in mock_save.call_args_list[1][0][0]]
+
+    assert first_batch == ['msg0', 'msg1', 'msg2']
+    assert second_batch == ['msg3', 'msg4']
+    assert first_batch + second_batch == [f'msg{i}' for i in range(5)]
+
+
+async def test_update_chat_embeddings_checkpoints_the_newest_embedded_message(mocker):
+    mocker.patch.object(settings, 'MESSAGES_EMBEDDINGS_MAX_SIZE', 3)
+    mock_embeddings_client(mocker)
+
+    for i in range(5):
+        await save_message(make_message(text=f'msg{i}'))
+
+    await update_chat_embeddings(1)
+
+    embedded = await get_messages(1, size=3, sort_order=1)
+    task = await get_last_embedding_task(1)
+    assert task is not None
+    assert task.last_message_time == embedded[-1].created_at
 
 
 async def test_update_chat_context_lock_held(mocker):
@@ -236,6 +421,67 @@ async def test_extract_memory_disabled_saves_empty_memory(mocker):
     saved = await get_last_memory(1)
     assert saved is not None
     assert saved.content == StructuredMemory()
+
+
+async def test_extract_memory_disabled_stamps_wall_clock(mocker):
+    """No window is processed, so there is no watermark to stamp."""
+    mocker.patch.object(settings, 'ENABLE_MEMORY_PROCESSING', False)
+    mock_memory_llm(mocker)
+    stale = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    before = datetime.now(timezone.utc)
+
+    message = make_message()
+    message.created_at = stale
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[message])
+
+    saved = await get_last_memory(1)
+    assert saved is not None
+    assert saved.created_at != stale
+    assert before <= saved.created_at <= datetime.now(timezone.utc)
+
+
+async def test_extract_memory_falls_back_to_wall_clock_without_timestamps(mocker):
+    """`Message.created_at` is optional; an unstamped window must not crash."""
+    mocker.patch.object(settings, 'ENABLE_MEMORY_PROCESSING', True)
+    mock_memory_llm(mocker, return_value=StructuredMemory(state=ChatState(active_topics=['t'])))
+    mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
+    before = datetime.now(timezone.utc)
+
+    unstamped = make_message()
+    unstamped.created_at = None
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[unstamped])
+
+    saved = await get_last_memory(1)
+    assert saved is not None
+    assert before <= saved.created_at <= datetime.now(timezone.utc)
+
+
+async def test_extract_memory_renders_the_context_window_into_the_prompt(mocker):
+    """`v4.j2` used to hardcode «~20», wrong in every deployment."""
+    mocker.patch.object(settings, 'LAST_MESSAGES_SIZE', 14)
+    mock_memory_llm(mocker, return_value=StructuredMemory(state=ChatState(active_topics=['t'])))
+    mock_prompt = mocker.patch(
+        'src.memory.processors.prompt_manager.get_prompt', return_value='p'
+    )
+
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
+
+    assert mock_prompt.call_args.kwargs['context_window'] == 14
+
+
+async def test_extract_memory_prompt_renders_the_real_template(mocker):
+    """No stub: every other `extract_memory` test mocks `get_prompt`, so none of
+    them would notice `v4.j2` losing the variable and rendering an empty gap."""
+    mocker.patch.object(settings, 'LAST_MESSAGES_SIZE', 14)
+    mock_llm = mock_memory_llm(
+        mocker, return_value=StructuredMemory(state=ChatState(active_topics=['t']))
+    )
+
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
+
+    rendered = mock_llm.with_structured_output.return_value.ainvoke.call_args[0][0][0].content
+    assert 'Последние ~14 сообщений' in rendered
+    assert '~20' not in rendered
 
 
 async def test_extract_memory_enabled_runs_llm(mocker):
