@@ -158,7 +158,7 @@ async def test_update_chat_embeddings(mocker):
     await update_chat_embeddings(123)
 
     assert mock_get_messages.call_count == 1
-    assert mock_get_messages.call_args == call(123, size=ANY, from_date=None)
+    assert mock_get_messages.call_args == call(123, size=ANY, from_date=None, sort_order=1)
     assert mock_client.save.call_count == 1
     assert mock_client.save.call_args == call(messages)
     assert mock_db.embedding_tasks.insert_one.call_count == 1

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from src import settings
-from src.memory.decay import DecayCaps, apply_decay, reconcile, resolve_now, summarize_churn
+from src.memory.decay import DecayCaps, apply_decay, reconcile, resolve_watermark, summarize_churn
 from src.memory.dedup import ConflictRecord
 from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInfo, StructuredMemory
 from src.memory.processors import _prompt_memory
@@ -315,22 +315,40 @@ def test_reconcile_ignores_nicks_absent_from_updated():
     assert events(churn)['уехал'] == 'vanish'
 
 
-# --- resolve_now ---
+# --- resolve_watermark ---
 
-def test_resolve_now_uses_the_newest_message_timestamp():
+def test_resolve_watermark_uses_the_newest_message_timestamp():
     older = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc)
     newer = datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc)
 
-    assert resolve_now([newer, None, older]) == format_ts(newer)
+    assert resolve_watermark([newer, None, older]) == newer
 
 
-def test_resolve_now_falls_back_to_wall_clock_without_timestamps():
+def test_resolve_watermark_ignores_the_order_it_is_given():
+    """The window is fetched oldest-first now; the watermark must not care."""
+    older = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc)
+    newer = datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc)
+
+    assert resolve_watermark([older, newer]) == resolve_watermark([newer, older])
+
+
+def test_resolve_watermark_falls_back_to_wall_clock_without_timestamps():
     """`Message.created_at` is optional, so `max()` over an empty window would raise."""
     before = datetime.now(timezone.utc) - timedelta(minutes=1)
 
-    result = resolve_now([None, None])
+    result = resolve_watermark([None, None])
 
-    assert format_ts(before) <= result <= format_ts(datetime.now(timezone.utc))
+    assert before <= result <= datetime.now(timezone.utc)
+
+
+def test_resolve_watermark_returns_the_datetime_the_snapshot_is_stamped_with():
+    """One value feeds two consumers: `format_ts` for the sidecar, raw for the stamp."""
+    newest = datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc)
+
+    result = resolve_watermark([newest])
+
+    assert isinstance(result, datetime)
+    assert format_ts(result) == format_ts(newest)
 
 
 # --- apply_decay: baseline caps ---

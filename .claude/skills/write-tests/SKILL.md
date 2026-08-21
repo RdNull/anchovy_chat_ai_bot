@@ -9,7 +9,7 @@ disable-model-invocation: false
 ---
 
 ## Current test state
-- Files: !`ls src/tests/`
+- Files: !`find src/tests -name 'test_*.py' | sort`
 - Coverage: !`docker compose exec bot pytest --co -q 2>/dev/null | tail -5`
 
 ---
@@ -34,12 +34,23 @@ docker compose exec bot pytest -k test_name      # single test
 
 | Fixture | Type | What it provides |
 |---------|------|-----------------|
-| `clean_collections` | `autouse async` | Drops all MongoDB collections after each test |
-| `make_update(...)` | factory | `MagicMock` Telegram `Update`; params: `text`, `user_id`, `chat_id`, `username`, `reply_to_message`, `photo`, `sticker`, `animation` |
-| `make_context` | plain | `MagicMock` PTB context with `chat_data={}` and `bot.send_chat_action = AsyncMock()` |
-| `mock_llm` | mocker | Patches `src.characters.character.ai.get_model`; returns `AIMessage(content='мок ответ')` |
+| `clean_collections` | `autouse async` | Drops every MongoDB collection after each test (`messages`, `memory`, `facts`, `embedding_tasks`, `media_descriptions`, `chat_settings`) |
+| `mock_langsmith` | `autouse` | Patches `langsmith.get_current_run_tree` with a run tree whose `tags` is a real list |
+| `make_update(...)` | factory | `MagicMock` Telegram `Update`; params: `message_id`, `text`, `updated_text`, `user_id`, `chat_id`, `username`, `reply_to_message`, `photo`, `sticker`, `animation` |
+| `make_context` | plain | `MagicMock` PTB context with `bot.send_chat_action = AsyncMock()` |
+| `mock_llm` | mocker | Patches `src.characters.character.ai.get_model`; returns an `AIMessage` carrying an `answer_text` tool call with `text='мок ответ'` |
 
 `make_update` defaults: `user_id=111`, `chat_id=222` — these match `ALLOWED_USER_IDS`/`ALLOWED_CHAT_IDS` in `pytest_env`, so `@restricted` passes transparently.
+Pass `updated_text=...` to get an `edited_message`; otherwise `update.edited_message` is `None`.
+
+`mock_llm` returns a tool call, not plain content — the character loop terminates on the
+`return_direct` tool, so a bare `AIMessage(content='reply')` would loop instead of answering.
+
+### Shared helper
+
+`src/tests/test_utils.py:make_message(chat_id=1, telegram_id=None, role=UserRole.USER, text='hello', nickname='user1')`
+builds a `Message` for DB-layer, context, and memory tests. Import it rather than
+constructing `Message` inline.
 
 ---
 
@@ -57,16 +68,20 @@ mocker.patch('src.characters.character.ai.get_model', return_value=llm)
 ```
 
 ### Memory LLM
+The memory cycle lives in `src/memory/processors.py` (`extract_memory`), so patch
+`ai.get_memory_model` **there** — not on `src.ai`, and not under
+`src.processors.context` (that package only holds `handlers.py` and `embeddings.py`):
 ```python
+from src.memory.models import StructuredMemory
+
 mock_llm = MagicMock()
 mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
     return_value=StructuredMemory()
 )
-mocker.patch(
-    'src.processors.context.memory.ai.get_memory_model',
-    return_value=mock_llm,
-)
+mocker.patch('src.memory.processors.ai.get_memory_model', return_value=mock_llm)
 ```
+`src/tests/test_context.py` wraps exactly this in a local `mock_memory_llm(mocker, return_value=None)`
+helper — reuse the pattern when adding memory-cycle tests.
 
 ### AsyncMock is rarely needed
 `mocker.patch` auto-maps async functions — do NOT wrap with `AsyncMock` unless the default doesn't work (e.g. the mock must return a complex object or behave in a non-standard way):
@@ -81,8 +96,12 @@ mocker.patch('some.module.fn', AsyncMock(side_effect=lambda x: x))
 ```
 
 ### Qdrant / embeddings
+The client methods are `save` and `search` (on `MessageEmbeddingsClient`), and
+`save_fact` / `search_facts` (on `FactsEmbeddingClient`). Patch at the module that
+imported the client instance:
 ```python
-mocker.patch('src.processors.context.embeddings.messages_embeddings_client.save_embeddings')
+mocker.patch('src.processors.context.embeddings.messages_embeddings_client.save')
+mocker.patch('src.characters.tools.context.messages_embeddings_client.search', return_value=[])
 ```
 
 ### Tool calls in character.respond()
@@ -124,15 +143,20 @@ Import `call` from `unittest.mock` when using `call_args` comparisons.
 ## Character references
 
 Never hardcode character names from the `CHARACTERS` registry — they can be
-renamed at any time:
+renamed at any time. The active character is persisted per chat in MongoDB
+(`chat_settings`), not in PTB `chat_data`, so set it through the helpers:
 
 ```python
 # BAD
-ctx.chat_data['character_code'] = 'anchovy'
+await set_chat_character(chat_id, 'anchovy')
 
 # GOOD
+from src.characters.repository import CHARACTERS
+from src.messages.utils import get_chat_character, set_chat_character
+
 code = next(iter(CHARACTERS))
-ctx.chat_data['character_code'] = code
+await set_chat_character(chat_id, code)
+character = await get_chat_character(chat_id)
 ```
 
 ---
@@ -167,6 +191,9 @@ update = make_update(reply_to_message=reply_msg)
 | `@restricted` blocks unexpected users | `make_update` defaults to `user_id=111`, `chat_id=222` which are in the allowlist. Use a different ID to test the rejection path. |
 | Test for rejection path needs `effective_message` mock | `make_update` sets `update.effective_message.reply_text = AsyncMock()` — use this, not `update.message.reply_text`, to assert rejection messages. |
 | `settings` variables are set at import time | Use `mocker.patch.object(settings, 'FIELD', value)` to override for a test. |
+| Memory ages are stamped from the window watermark, not wall clock | Give test messages explicit `created_at` values and assert against them; don't reach for time-freezing. |
+| Three different window settings | `LAST_MESSAGES_SIZE` (character context), `*_TRIGGER_SIZE` (when a pass fires), `MESSAGES_*_MAX_SIZE` (fetch cap). Don't mix them up. |
+| The fetch-cap validator only fires on construction | `mocker.patch.object(settings, ...)` bypasses it. To test the rule, build `_Settings(MESSAGES_MEMORY_MAX_SIZE=10, MEMORY_TRIGGER_SIZE=40)` inside `pytest.raises(ValidationError)`. |
 
 ---
 
@@ -174,12 +201,21 @@ update = make_update(reply_to_message=reply_msg)
 
 | Category | File | DB? | LLM mock? |
 |----------|------|-----|-----------|
-| History / MongoDB layer | `test_history.py` | yes | no |
-| Facts | `test_facts.py` | yes | no |
-| Models & utils (pure) | `test_utils.py` | no | no |
-| Context processors | `test_context.py` | yes | yes |
+| Mongo connection | `test_db.py` | yes | no |
+| Messages repository / model | `test_messages.py` | yes | no |
+| Facts | `test_facts.py` | yes | yes |
+| Models & utils (pure) | `test_utils.py` | partly | no |
+| Context & memory triggers, window intake | `test_context.py` | yes | yes |
+| Memory subsystem | `memory/test_memory.py`, `memory/test_dedup.py`, `memory/test_decay.py` | yes | yes |
+| Scheduled tasks | `test_tasks_memory.py`, `test_tasks_facts.py` | yes | no |
+| Settings & validators | `test_settings.py` | no | no |
+| Embeddings clients / chunking | `test_embeddings.py` | no | no |
+| LLM tools | `test_tools.py` | no | no |
 | Character respond loop | `test_character.py` | no | yes |
+| Replier | `test_reply.py` | yes | no |
 | Telegram handlers | `test_handlers.py` | yes | yes |
+| Media pipeline | `media/test_messages_media.py`, `media/test_processors_media.py` | yes | yes |
+| Bot wiring / scheduler | `test_bot_init.py` | no | no |
 
 ---
 

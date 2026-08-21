@@ -28,7 +28,7 @@ LANGSMITH_TRACING = "false"
 LANGSMITH_API_KEY = "<api_key>"
 ALLOWED_USER_IDS = "[111]"
 ALLOWED_CHAT_IDS = "[222]"
-
+MESSAGES_MEMORY_MAX_SIZE = 60
 
 [tool.coverage.run]
 omit = [

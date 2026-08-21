@@ -10,6 +10,13 @@ providers:
   - file://../models/cloud/memory/v3-cheap.yaml
 
 defaultTest:
+  # `v4.j2` reads this; production passes `settings.LAST_MESSAGES_SIZE`. A deliberate
+  # fixture rather than a read of the deployed value — it will drift, and for an eval
+  # a stable prompt is worth more than a current one. Without it Nunjucks renders the
+  # var empty and every case below silently evaluates a different prompt.
+  vars:
+    context_window: 40
+
   options:
     transform: file://../strip_json_fences.js
 

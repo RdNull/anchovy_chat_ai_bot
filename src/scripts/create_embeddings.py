@@ -26,10 +26,6 @@ async def create_embeddings(chat_id: int, _from: datetime):
         if not messages:
             break
 
-        # messages are returned reversed by get_history (newest first)
-        # We need them in chronological order
-        messages.sort(key=lambda m: m.created_at)
-
         # Prepend overlap messages from previous batch
         batch_messages = overlap_messages + messages
 

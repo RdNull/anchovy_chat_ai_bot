@@ -80,16 +80,35 @@ async def update_message(update_message_data: UpdateMessage):
 async def get_messages(
     chat_id: int, size: int = 50, from_date: datetime | None = None, sort_order: int = -1,
 ) -> list[Message]:
-    logger.debug(f"Fetching history for chat {chat_id} ({size=} {from_date=})")
+    """Reads a chat's messages, always oldest first.
+
+    Args:
+        chat_id: Chat to read.
+        size: Most messages to return.
+        from_date: Keep only messages strictly newer than this.
+        sort_order: Which end of the matching range `size` takes — `-1` keeps the
+            newest, `1` keeps the oldest. It does not affect the order of the
+            returned list, which is chronological either way. Callers rely on
+            that: `src/messages/response.py` trims the current message with
+            `[:-1]`, and `src/processors/context/embeddings.py` reads its next
+            watermark off `messages[-1]`.
+
+    Returns:
+        The selected messages, oldest first.
+    """
+    logger.debug(f"Fetching history for chat {chat_id} ({size=} {from_date=} {sort_order=})")
     search_query = {'chat_id': chat_id}
     if from_date:
         search_query['created_at'] = {'$gt': from_date.timestamp()}
 
     cursor = mongo.messages.find(search_query).sort('created_at', sort_order).limit(size)
-    messages = await cursor.to_list(length=size)
+    records = await cursor.to_list(length=size)
+    if sort_order == -1:
+        records.reverse()
+
     return [
-        await _parse_message_record(message)
-        for message in reversed(messages)
+        await _parse_message_record(record)
+        for record in records
     ]
 
 
