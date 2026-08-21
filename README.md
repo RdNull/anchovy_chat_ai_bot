@@ -29,6 +29,7 @@ Each chat accumulates a `StructuredMemory` snapshot in MongoDB — per-participa
 - **Code-owned clock** — the extraction model emits bare strings and never sees or stamps a timestamp. A decay sidecar stored beside the snapshot tracks, per entry, when it was first written and how many cycles it has survived, keyed by a normalized form shared with the guard. The character prompt then renders ages the model cannot get wrong (`вчера`, `3 дня назад`, `больше недели назад`).
 - **Cycle-based decay** — ageing is counted in update cycles rather than wall clock, because updates are triggered by message volume: a wall-clock TTL would wipe a quiet chat's memory and never bind in a busy one. Eviction keeps the newest N `recent` entries by birth and drops anything past a cycle limit, with positional caps on traits and chat state.
 - **Churn accounting** — each cycle reports what was born, carried, promoted from `recent` to a generalized trait, evicted, or silently lost, so memory quality is measurable rather than anecdotal. The decay policy currently ships in log-only mode: it computes what it *would* evict and records the gap against the live baseline before being switched on.
+- **Lossless intake** — each window is read oldest-first and the snapshot is stamped with the newest message it actually processed, rather than the clock at write time. Both halves are needed: reading newest-first drops the front of a backlog behind an advancing bookmark, and a wall-clock stamp swallows whatever arrives while the model is still thinking. Together they turn a window that overflows into ordinary backpressure — the surplus is simply the next cycle's work — instead of messages the bot never sees. The same pairing guards the embedding pass.
 
 A daily job prunes old snapshots, always preserving the most recent one per chat.
 
@@ -75,7 +76,7 @@ A GitHub Actions workflow builds and pushes a multi-stage Docker image to GHCR o
 | Observability        | LangSmith                                       | LLM call tracing and span visualization         |
 | Containerization     | Docker (multi-stage build)                      | Bot, MongoDB, and Qdrant services               |
 | Deployment           | Kubernetes, GitHub Actions                      | CI build/push to GHCR, `kubectl`-based deploy   |
-| Testing              | pytest, pytest-asyncio, pytest-mock, freezegun  | Async test suite with time mocking              |
+| Testing              | pytest, pytest-asyncio, pytest-mock, pytest-cov | Async test suite against a real MongoDB         |
 
 ---
 
@@ -98,13 +99,17 @@ Message Handlers  (handlers.py)
      +---> [async] Media pipeline
      |          Download -> hash dedup -> vision LLM -> store description
      |
-     +---> [async] Context checks (per-chat lock)
-     |          Memory update (if message count since last update >= threshold, and enabled)
+     +---> [async] Context checks
+     |          Memory update (if message count since last snapshot >= its own trigger, and enabled)
+     |            |         (serialized by one process-wide lock; embeddings run outside it)
+     |            |         Read window oldest-first, capped
      |            |         LLM structured output -> attribution guard -> age sidecar
      |            |         -> eviction -> churn log -> save snapshot
+     |            |         stamped with the newest message processed, so the surplus
+     |            |         and anything that arrived mid-call become the next window
      |            +---> Fact extraction from new messages (LLM structured output)
      |            |         upsert into MongoDB (confidence-based merge via Qdrant similarity)
-     |          Embeddings update (if message count since last update >= threshold)
+     |          Embeddings update (independent trigger, same oldest-first intake)
      |
      +---> Character.respond()  (character resolved per chat from MongoDB chat_settings)
                |
@@ -127,6 +132,7 @@ Message Handlers  (handlers.py)
 [daily scheduler]
      +---> Memory snapshot cleanup
                Snapshots older than the retention window are deleted
+               (a snapshot is dated by the newest message it processed)
                The most recent snapshot per chat is always kept
 
 [CI/CD]
@@ -134,13 +140,13 @@ Message Handlers  (handlers.py)
                -> kubectl apply against manifests/ (bot, MongoDB, Qdrant)
 ```
 
-**Configuration model:** Characters (YAML), prompts (Jinja2 templates), and model configs (versioned JSON) are all loaded from the filesystem at startup. This makes it straightforward to add new characters, tune prompts, or swap models without touching application code. Per-chat character selection and settings live in MongoDB instead, so they persist across deploys.
+**Configuration model:** Characters (YAML), prompts (Jinja2 templates), and model configs (versioned JSON) are all loaded from the filesystem at startup. This makes it straightforward to add new characters, tune prompts, or swap models without touching application code. Per-chat character selection and settings live in MongoDB instead, so they persist across deploys. Settings that constrain each other are checked at boot and refuse to start rather than being quietly clamped — a window cap silently smaller than the trigger that fills it is the kind of misconfiguration that costs data rather than announcing itself.
 
 ---
 
 ## Testing
 
-Tests live in `src/tests/` and run inside Docker against a real MongoDB instance. The suite covers unit tests for models and utilities as well as integration tests for the memory and embedding subsystems. Time-sensitive logic is tested with `freezegun`.
+Tests live in `src/tests/` and run inside Docker against a real MongoDB instance. The suite covers unit tests for models and utilities as well as integration tests for the memory and embedding subsystems. Time-sensitive logic is driven by real message timestamps rather than a frozen clock — patching the clock breaks the async MongoDB driver, so the code takes its "now" from the message log instead, which makes it injectable and the tests deterministic without one.
 
 ```bash
 docker compose exec bot pytest
