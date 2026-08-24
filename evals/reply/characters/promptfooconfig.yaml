@@ -7,7 +7,7 @@ prompts:
     label: "Character v7"
 
 providers:
-  - id: file://../../models/cloud/chat/v7-cheap.yaml
+  - id: file://../../models/cloud/chat/v8-gemini.yaml
 
 defaultTest:
   vars:

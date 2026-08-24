@@ -1,0 +1,51 @@
+id: ../character_loop_provider.js
+label: "gemini-3.7-flash"
+config:
+  model: google/gemini-3.7-flash
+  temperature: 0.8
+  max_tokens: 800
+  tool_choice: required
+  maxIterations: 5
+  reasoning:
+    effort: medium
+  tools:
+    - type: function
+      function:
+        name: get_user_facts
+        description: '[context]: Получить КЛЮЧЕВЫЕ факты о пользователе'
+        parameters:
+          type: object
+          properties:
+            nickname: { type: string }
+            limit: { type: integer }
+          required: [ nickname ]
+    - type: function
+      function:
+        name: search_messages
+        description: '[context]: Поиск сообщений чата по запросу'
+        parameters:
+          type: object
+          properties:
+            search_query: { type: string }
+            limit: { type: integer }
+          required: [ search_query ]
+    - type: function
+      function:
+        name: answer_text
+        description: '[answer]: Ответить текстом (включая эмодзи)'
+        parameters:
+          type: object
+          properties:
+            text: { type: string }
+          required: [ text ]
+    - type: function
+      function:
+        name: set_reaction
+        description: '[answer]: Поставить реакцию на сообщение одним эмодзи из разрешенного списка'
+        parameters:
+          type: object
+          properties:
+            emoji: { type: string }
+          required: [ emoji ]
+
+  functionToolCallbacks: tool_callbacks.js
