@@ -37,13 +37,13 @@ A daily job prunes old snapshots, always preserving the most recent one per chat
 Facts about individual users are extracted automatically in the same pass as each memory update: a dedicated LLM pass reads new messages and emits a list of stable facts per `@username`, each scored with a confidence value (0.5–1.0). Facts are upserted into MongoDB — if a semantically similar fact already exists (Qdrant cosine search), its confidence is reinforced or updated; otherwise a new record is created. A weekly background job decays the confidence of facts not updated in the past week; facts that reach zero confidence are deleted. The `get_user_facts` tool lets the character LLM retrieve the top facts about a user at inference time.
 
 **Async Media Pipeline**
-- Images: downloaded, hashed for deduplication, described by a vision LLM (Gemini 2.5 Flash) with OCR
+- Images: downloaded, hashed for deduplication, described by a vision LLM (Gemini 2.5 Flash Lite) with OCR
 - Animated stickers (Telegram TGS/Lottie format): key frames extracted via OpenCV and the Lottie renderer, resized, and described in a single batched vision LLM call
 - Descriptions are stored in MongoDB and injected into the conversation context
 - If a character is triggered while a referenced image/sticker is still processing, response generation polls (with a bounded timeout) until the media description is ready before building the prompt
 
 **LLM Prompt Evaluation**
-Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suites covering memory extraction, fact extraction, recap generation, image description, and character reply quality, with good/bad sample fixtures for each task. Where a property is mechanically checkable it is asserted in JavaScript rather than left to an LLM rubric: the memory suite re-implements the production key normalization so an attribution or timestamp-leak failure in evals predicts a real drop in production.
+Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suites covering memory extraction, fact extraction, recap generation, image description, and character reply quality, with good/bad sample fixtures for each task. Where a property is mechanically checkable it is asserted in JavaScript rather than left to an LLM rubric: the memory suite re-implements the production key normalization so an attribution or timestamp-leak failure in evals predicts a real drop in production. The reply suite goes further and replays the whole agentic loop — a custom provider re-implements the production tool loop and hands the model the same four tool definitions, so what is graded is the loop's final answer under real tool pressure rather than a single completion. Swapping the chat model is then a two-file change: the model config the bot loads, and the provider file the suite runs.
 
 **Dual Local/Cloud Mode**
 A single `IS_LOCAL` flag switches the entire model stack between OpenRouter (cloud) and Ollama (local). Model configs are versioned JSON files per task, supporting environment variable interpolation.
@@ -63,7 +63,7 @@ A GitHub Actions workflow builds and pushes a multi-stage Docker image to GHCR o
 | Language & Runtime   | Python 3.14, asyncio                            | Async-first throughout                          |
 | Telegram Integration | python-telegram-bot (HTTP/2)                    | Bot API, polling, message reactions             |
 | LLM Orchestration    | LangChain                                       | Tool binding, structured output, model routing  |
-| Cloud LLM Provider   | OpenRouter API                                  | Access to Claude Haiku 4.5, GPT-5-mini, Gemini  |
+| Cloud LLM Provider   | OpenRouter API                                  | Gemini and Claude models, pinned per task       |
 | Local LLM            | Ollama                                          | Self-hosted fallback for all tasks              |
 | Embeddings           | OpenAI text-embedding-3-small (via OpenRouter)  | 1536-dim vectors for RAG, cached via async-cache|
 | Vector Database      | Qdrant (AsyncQdrantClient)                      | Message and fact retrieval                      |
