@@ -27,6 +27,10 @@ def get_animation_descriptor_model(version: str = 'v1') -> BaseChatModel:
     return _get_model('animation_describe', version)
 
 
+def get_web_search_model(version: str = 'v1') -> BaseChatModel:
+    return _get_model('web_search', version)
+
+
 def _get_model(task: str, version: str = 'v1') -> BaseChatModel:
     cache_key = f"{task}_{version}"
     if cache_key in _llm_cache:
