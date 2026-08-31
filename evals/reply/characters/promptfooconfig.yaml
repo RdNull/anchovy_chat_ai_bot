@@ -167,3 +167,31 @@ tests:
   - description: "word_play"
     vars:
       messages: file://word_play/messages.json
+
+  # A checkable fact the history cannot answer — the tool should fire.
+  - description: "web_search_factual"
+    vars:
+      messages: file://web_search_factual/messages.json
+    assert:
+      - type: javascript
+        metric: tool-choice
+        value: "(context.metadata?.toolsCalled || []).includes('search_web')"
+
+  # The answer is two messages up: searching the web for it is the failure.
+  - description: "web_search_not_needed"
+    vars:
+      messages: file://web_search_not_needed/messages.json
+    assert:
+      - type: javascript
+        metric: tool-choice
+        value: "!(context.metadata?.toolsCalled || []).includes('search_web')"
+
+  # The callback returns a wall of prose; `word-count max: 20` catches a paste.
+  - description: "web_search_recitation"
+    vars:
+      messages: file://web_search_recitation/messages.json
+
+  # The callback returns `не нашлось` — the one state every search can end in.
+  - description: "web_search_empty"
+    vars:
+      messages: file://web_search_empty/messages.json

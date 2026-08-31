@@ -90,15 +90,22 @@ class CharacterLoopProvider {
 
         const messages = parseMessages(prompt);
         const tokenUsage = { total: 0, prompt: 0, completion: 0 };
+        // Which tools actually fired, in order. Surfaced as provider metadata so a
+        // `javascript` assert can score the tool choice itself, not just the reply.
+        const toolsCalled = [];
 
         for (let i = 0; i < this.maxIterations; i++) {
             const result = await this._chat(apiKey, messages, tokenUsage);
             if (result.error) return { error: result.error };
 
             const toolCalls = result.message.tool_calls || [];
+            for (const tc of toolCalls) toolsCalled.push((tc.function || tc).name);
+
             const answer = extractAnswer(toolCalls);
-            if (answer !== null) return { output: answer, tokenUsage };
-            if (toolCalls.length === 0) return { output: result.message.content || '', tokenUsage };
+            if (answer !== null) return { output: answer, tokenUsage, metadata: { toolsCalled } };
+            if (toolCalls.length === 0) {
+                return { output: result.message.content || '', tokenUsage, metadata: { toolsCalled } };
+            }
 
             messages.push({ role: 'assistant', content: result.message.content || null, tool_calls: toolCalls });
             for (const tc of toolCalls) {
@@ -106,7 +113,11 @@ class CharacterLoopProvider {
             }
         }
 
-        return { output: '[loop exceeded maxIterations without answer tool call]', tokenUsage };
+        return {
+            output: '[loop exceeded maxIterations without answer tool call]',
+            tokenUsage,
+            metadata: { toolsCalled },
+        };
     }
 
     async _chat(apiKey, messages, tokenUsage) {

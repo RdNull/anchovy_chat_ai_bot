@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Kolya: биткоин опять улетел"
+    },
+    {
+        "role": "assistant",
+        "content": "и шо"
+    },
+    {
+        "role": "user",
+        "content": "Kolya: а по чем он сейчас, глянь"
+    }
+]
