@@ -11,7 +11,7 @@ The bot participates in live group conversations, builds persistent per-chat mem
 ## Key Features
 
 **Agentic LLM Loop**
-Characters run a depth-limited recursive tool-calling loop: the model can invoke tools, receive results, and continue reasoning before producing a final response. Tools are split into *context tools* (`search_messages`, `get_user_facts`) that feed information back into the loop, and *direct tools* (`answer_text`, `set_reaction`) that terminate it immediately. A `Replier` handles the actual dispatch — persisting text replies and writing bot reactions onto Telegram messages. A depth-5 safeguard re-binds only direct tools to force a response if the model keeps calling context tools. Tool binding and structured output are handled via LangChain.
+Characters run a depth-limited recursive tool-calling loop: the model can invoke tools, receive results, and continue reasoning before producing a final response. Tools are split into *context tools* (`search_messages`, `get_user_facts`, `search_web`) that feed information back into the loop, and *direct tools* (`answer_text`, `set_reaction`) that terminate it immediately. A `Replier` handles the actual dispatch — persisting text replies and writing bot reactions onto Telegram messages. A depth-5 safeguard re-binds only direct tools to force a response if the model keeps calling context tools. Tool binding and structured output are handled via LangChain.
 
 **Multi-Character Persona System**
 Characters are defined as YAML configs (name, description, detailed system prompt, style guidelines, behavioral constraints). The character repository loads them at startup; each character instance is independently rate-limited per chat. Each chat can run a different character, selected via `/list` (inline keyboard), `/random`, or left on the default; the choice is persisted per chat in MongoDB.
@@ -21,6 +21,9 @@ The bot both reads and writes Telegram message reactions. Incoming `message_reac
 
 **Retrieval-Augmented Generation (RAG)**
 Messages are chunked with a sliding window, embedded via OpenAI `text-embedding-3-small`, and stored in Qdrant with UUID chunk IDs. An in-memory async cache avoids re-embedding identical text. The `search_messages` tool lets the LLM semantically retrieve relevant past conversation chunks at inference time, filtered by chat ID.
+
+**Web Search Without a Reciting Bot**
+The bot answers in one-line jabs, so the hard part of giving it web access was not fetching a result but keeping the result from becoming the reply. A search runs as a separate cheap model call against OpenRouter's web plugin, and every constraint is placed where compliance is not optional: the wrapper is prompted as an extractor rather than a summariser and capped at 150 tokens, so a paragraph is physically out of reach; URLs are stripped by code afterwards rather than forbidden in the prompt; and the tool description tells the model the fragments are raw material for a line, not a line. Failure is deliberately flat — rate limit, timeout, upstream error, empty result and unparseable output all return the same "не нашлось", leaving the character one post-search state to stay in character about instead of five. Cause is recoverable from the log, which is also the instrument for the questions deferred to production: how often the bot chooses to look something up, whether the per-chat budget binds, and whether the search engine handles Russian queries well enough to keep.
 
 **Structured Persistent Memory**
 Each chat accumulates a `StructuredMemory` snapshot in MongoDB — per-participant `traits` (stable properties) and `recent` (things that just happened), plus chat-level active topics, open questions, and running jokes. Memory is rebuilt whenever message volume since the last update crosses a threshold (gated by an `ENABLE_MEMORY_PROCESSING` flag so the pipeline can be disabled without a redeploy), using an LLM in structured output mode (Claude Haiku 4.5 via OpenRouter) for reliable JSON extraction. Everything downstream of the model call is deterministic code:
@@ -121,6 +124,8 @@ Message Handlers  (handlers.py)
                    LLM call
                      |-- tool_call: search_messages  --> Qdrant vector search
                      |-- tool_call: get_user_facts   --> MongoDB fact lookup
+                     |-- tool_call: search_web       --> extractor LLM + OpenRouter web plugin
+                     |                                   (rate-limited per chat, own timeout)
                      |-- tool_call: answer_text       --> Replier sends text, saves to MongoDB
                      |-- tool_call: set_reaction      --> Replier sets emoji reaction
 
