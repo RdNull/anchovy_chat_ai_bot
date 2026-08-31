@@ -6,7 +6,7 @@ from langchain.tools import tool
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src import ai, settings
-from src.characters.rate_limit import ChatRateLimiter
+from src.characters.rate_limit import SlidingWindowRateLimiter
 from src.embeddings.messages import messages_embeddings_client
 from src.facts.repository import get_facts
 from src.logs import logger
@@ -94,7 +94,7 @@ _CLEANERS = (
     re.compile(r'^[-*\u2022\u2013\u2014\s]+(?!\d)'),                        # bullet, but not a minus sign
     re.compile(r'[\s\-\u2013\u2014,;:([{\u00ab]+$'),                         # debris the passes above left
 )
-_web_search_limiter = ChatRateLimiter(settings.WEB_SEARCH_RATE_LIMIT)
+_web_search_limiter = SlidingWindowRateLimiter(settings.WEB_SEARCH_RATE_LIMIT, name='web_search')
 
 
 @tool(description=SEARCH_WEB_DESCRIPTION)

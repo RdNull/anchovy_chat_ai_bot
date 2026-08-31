@@ -13,7 +13,7 @@ from src.memory.models import MemoryData
 from src.models import Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
 from . import tools
-from .rate_limit import ChatRateLimiter
+from .rate_limit import SlidingWindowRateLimiter
 from .reply import Replier
 from ..settings import CHAT_RATE_LIMIT
 from ..tools import ToolContext, ToolRegistry
@@ -46,7 +46,7 @@ class Character:
         self.display_name = display_name
         self.description = description
         self.style_prompt = style_prompt
-        self.rate_limiter = ChatRateLimiter(CHAT_RATE_LIMIT)
+        self.rate_limiter = SlidingWindowRateLimiter(CHAT_RATE_LIMIT)
 
     @property
     def system_message(self):
