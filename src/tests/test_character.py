@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from src import settings
 from src.characters.character import Character
-from src.characters.rate_limit import ChatRateLimiter
+from src.characters.rate_limit import SlidingWindowRateLimiter
 from src.memory.models import ChatState, MemoryData, StructuredMemory
 from src.models import Message, UserRole
 from src.tools import ToolRegistry
@@ -173,7 +173,7 @@ async def test_respond_exception_calls_replier_fallback(mocker):
 
 
 async def test_respond_rate_limited_returns_silently(mocker):
-    mocker.patch('src.characters.rate_limit.ChatRateLimiter.is_exceeded', return_value=True)
+    mocker.patch('src.characters.rate_limit.SlidingWindowRateLimiter.is_exceeded', return_value=True)
     replier = make_replier()
 
     await make_character().respond(replier, make_user_message(), last_messages=[])
@@ -182,7 +182,7 @@ async def test_respond_rate_limited_returns_silently(mocker):
 
 
 async def test_respond_not_rate_limited_proceeds(mocker):
-    mocker.patch('src.characters.rate_limit.ChatRateLimiter.is_exceeded', return_value=False)
+    mocker.patch('src.characters.rate_limit.SlidingWindowRateLimiter.is_exceeded', return_value=False)
     mock_chat_llm(mocker, [answer_tool_call(text='ответ')])
     mock_execute = mocker.patch.object(
         ToolRegistry, 'execute',
@@ -229,7 +229,7 @@ async def test_respond_multiple_direct_tools_tags_langsmith(mocker, mock_langsmi
 # --- rate limiting ---
 
 def test_rate_limiter_allows_calls_under_limit():
-    rl = ChatRateLimiter(rate_limit=3)
+    rl = SlidingWindowRateLimiter(rate_limit=3)
     assert not rl.is_exceeded(chat_id=1)
     assert not rl.is_exceeded(chat_id=1)
     assert not rl.is_exceeded(chat_id=1)
@@ -237,7 +237,7 @@ def test_rate_limiter_allows_calls_under_limit():
 
 def test_rate_limiter_blocks_when_limit_reached(mocker):
     mocker.patch.object(settings, 'CHAT_RATE_LIMIT', 2)
-    rl = ChatRateLimiter()
+    rl = SlidingWindowRateLimiter()
     rl.is_exceeded(1)
     rl.is_exceeded(1)
     assert rl.is_exceeded(1)
@@ -245,7 +245,7 @@ def test_rate_limiter_blocks_when_limit_reached(mocker):
 
 def test_rate_limiter_independent_per_chat(mocker):
     mocker.patch.object(settings, 'CHAT_RATE_LIMIT', 1)
-    rl = ChatRateLimiter()
+    rl = SlidingWindowRateLimiter()
     rl.is_exceeded(1)
     assert rl.is_exceeded(1)
     assert not rl.is_exceeded(2)
@@ -253,7 +253,7 @@ def test_rate_limiter_independent_per_chat(mocker):
 
 def test_rate_limiter_allows_after_window_expires(mocker):
     mocker.patch.object(settings, 'CHAT_RATE_LIMIT', 1)
-    rl = ChatRateLimiter()
+    rl = SlidingWindowRateLimiter()
     rl._call_times[1].append(time.monotonic() - 61)
     assert not rl.is_exceeded(1)
 
