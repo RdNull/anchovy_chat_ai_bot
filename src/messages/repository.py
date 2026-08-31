@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 from bson import ObjectId
+from telegram import Sticker
 
 from src import mongo
 from src.logs import logger
@@ -163,10 +164,22 @@ async def get_messages_count(chat_id: int) -> int:
     return await mongo.messages.count_documents({'chat_id': chat_id})
 
 
-async def get_message_media_data(media_id: str, media_unique_id: str):
+async def get_message_media_data(
+    media_id: str, media_unique_id: str, sticker: Sticker | None = None,
+) -> MessageMedia:
+    """Builds a `MessageMedia`, hydrating what the description row already knows.
+
+    `sticker` is only present on the live Telegram parse. Reading a message back out
+    of Mongo goes through `_parse_media`, which has no PTB object to pass, so the
+    stored flags have to fill in — otherwise every persisted sticker reads back as a
+    photo. The live parse stays authoritative where both have an answer.
+    """
     media = MessageMedia(
         media_id=media_id,
         unique_id=media_unique_id,
+        is_sticker=sticker is not None,
+        sticker_emoji=sticker.emoji if sticker else None,
+        sticker_set=sticker.set_name if sticker else None,
     )
 
     if media_description := await get_media_description_by_media_id(media_unique_id):
@@ -174,6 +187,10 @@ async def get_message_media_data(media_id: str, media_unique_id: str):
         media.ocr_text = media_description.ocr_text
         media.status = media_description.status
         media.type = media_description.type
+        if not media.is_sticker:
+            media.is_sticker = media_description.is_sticker
+            media.sticker_emoji = media_description.sticker_emoji
+            media.sticker_set = media_description.sticker_set
 
     return media
 

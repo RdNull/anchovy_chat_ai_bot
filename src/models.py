@@ -77,6 +77,12 @@ class MessageMedia(BaseModel):
     unique_id: str | None = None  # for identification
     description: str | None = None
     ocr_text: str | None = None
+    # `type` cannot answer this: a static sticker and a photo are both `.webp`/`.jpg`
+    # and both map to IMAGE in `messages/media/download.py`. Orthogonal by design —
+    # an animated `.tgs` sticker is `type=GIF, is_sticker=True`.
+    is_sticker: bool = False
+    sticker_emoji: str | None = None
+    sticker_set: str | None = None  # captured, unused in v1: makes a later set expansion config
 
     @property
     def ai_format(self):
@@ -190,11 +196,14 @@ class AnimationDetectionData(MediaDetectionData):
 
 class MediaDescription(BaseModel):
     id: MongoId | None = Field(default=None, alias='_id')
-    media_id: str | None = None
+    media_id: str | None = None  # holds a `file_unique_id`, NOT a sendable `file_id`
     description: str
     ocr_text: str | None = None
     type: MessageMediaTypes
     status: MessageMediaStatus = MessageMediaStatus.PROCESSING
+    is_sticker: bool = False
+    sticker_emoji: str | None = None
+    sticker_set: str | None = None
 
 
 class MediaDescriptionData(BaseModel):

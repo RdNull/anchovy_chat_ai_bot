@@ -50,6 +50,9 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
             media_id=message.media.unique_id,
             type=media_detection_data.type,
             content_hash=content_hash,
+            is_sticker=message.media.is_sticker,
+            sticker_emoji=message.media.sticker_emoji,
+            sticker_set=message.media.sticker_set,
         )
 
     if not media_detection_data:

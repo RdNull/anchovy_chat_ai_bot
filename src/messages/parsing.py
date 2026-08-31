@@ -1,4 +1,4 @@
-from telegram import Message as TgMessage, PhotoSize
+from telegram import Message as TgMessage, PhotoSize, Sticker
 from telegram._files._basemedium import _BaseMedium
 
 from src.models import Message, MessageReply, UserRole
@@ -16,7 +16,7 @@ async def parse_user_message(update) -> Message | None:
         reply_media = None
         if reply_medium := _get_message_medium(reply_msg):
             reply_media = await get_message_media_data(
-                reply_medium.file_id, reply_medium.file_unique_id
+                reply_medium.file_id, reply_medium.file_unique_id, _as_sticker(reply_medium),
             )
 
         reply_text = reply_msg.text or reply_msg.caption
@@ -30,7 +30,9 @@ async def parse_user_message(update) -> Message | None:
     user_nickname = update.message.from_user.username or update.message.from_user.first_name
     media = None
     if medium := _get_message_medium(update.message):
-        media = await get_message_media_data(medium.file_id, medium.file_unique_id)
+        media = await get_message_media_data(
+            medium.file_id, medium.file_unique_id, _as_sticker(medium),
+        )
 
     message_text = update.message.text or update.message.caption
     return Message(
@@ -42,6 +44,16 @@ async def parse_user_message(update) -> Message | None:
         nickname=user_nickname,
         media=media
     )
+
+
+def _as_sticker(medium: _BaseMedium) -> Sticker | None:
+    """Narrows a medium to a `Sticker`, or None if it is a photo or an animation.
+
+    Done at the call site rather than in `_get_message_medium` on purpose: that
+    function already returns the raw PTB object, and changing its return type to
+    carry the distinction would buy nothing.
+    """
+    return medium if isinstance(medium, Sticker) else None
 
 
 def _get_message_medium(tg_message: TgMessage) -> _BaseMedium | None:

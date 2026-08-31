@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
+from telegram import Sticker
+
 from src import mongo, settings
 from src.characters.repository import CHARACTERS
 from src.chat_settings import repository as chat_settings_repository
@@ -94,6 +96,25 @@ async def test_restricted_blocks_unauthorized_user(make_update, make_context):
 
 # --- parse_user_message ---
 
+def make_sticker(file_id='sticker_fid', unique_id='sticker_uid', emoji='😀', set_name='pack'):
+    """A real `telegram.Sticker`, not a MagicMock.
+
+    `_as_sticker` narrows with `isinstance`, so a bare MagicMock would be read as a
+    photo and the assertions below would pass for the wrong reason.
+    """
+    return Sticker(
+        file_id=file_id,
+        file_unique_id=unique_id,
+        width=512,
+        height=512,
+        is_animated=False,
+        is_video=False,
+        type=Sticker.REGULAR,
+        emoji=emoji,
+        set_name=set_name,
+    )
+
+
 async def test_parse_user_message_text(make_update, make_context):
     update = make_update(text='hi there', username='alice', chat_id=222)
 
@@ -146,6 +167,49 @@ async def test_parse_user_message_with_photo(make_update):
     assert msg.media is not None
     assert msg.media.media_id == 'file123'
     assert msg.media.unique_id == 'unique123'
+
+
+async def test_parse_user_message_with_sticker_sets_sticker_fields(make_update):
+    update = make_update(sticker=make_sticker(emoji='🔥', set_name='hotpack'))
+
+    msg = await handlers.parse_user_message(update)
+
+    assert msg.media is not None
+    assert msg.media.media_id == 'sticker_fid'
+    assert msg.media.unique_id == 'sticker_uid'
+    assert msg.media.is_sticker is True
+    assert msg.media.sticker_emoji == '🔥'
+    assert msg.media.sticker_set == 'hotpack'
+
+
+async def test_parse_user_message_with_photo_is_not_a_sticker(make_update):
+    # The assertion the whole sticker index rests on: a photo and a static sticker are
+    # both MessageMediaTypes.IMAGE, so without this the bot can reply with a screenshot.
+    photo = MagicMock()
+    photo.file_id = 'photo_fid'
+    photo.file_unique_id = 'photo_uid'
+    photo.width = 400
+    photo.height = 400
+    update = make_update(photo=[photo])
+
+    msg = await handlers.parse_user_message(update)
+
+    assert msg.media.is_sticker is False
+    assert msg.media.sticker_emoji is None
+    assert msg.media.sticker_set is None
+
+
+async def test_parse_user_message_with_animation_is_not_a_sticker(make_update):
+    animation = MagicMock()
+    animation.file_id = 'anim_fid'
+    animation.file_unique_id = 'anim_uid'
+    animation.duration = 5
+    update = make_update(sticker=None, photo=None, animation=animation)
+
+    msg = await handlers.parse_user_message(update)
+
+    assert msg.media.is_sticker is False
+    assert msg.media.sticker_emoji is None
 
 
 # --- handle_conversation ---
@@ -377,9 +441,7 @@ async def test_handle_conversation_random_reply_fires_after_cooldown(
 # --- parse_user_message reply with medium ---
 
 async def test_parse_user_message_reply_with_sticker(make_update):
-    sticker = MagicMock()
-    sticker.file_id = 'sticker_fid'
-    sticker.file_unique_id = 'sticker_uid'
+    sticker = make_sticker()
 
     reply_msg = MagicMock()
     reply_msg.text = 'sticker reply'
@@ -397,6 +459,9 @@ async def test_parse_user_message_reply_with_sticker(make_update):
     assert msg.reply is not None
     assert msg.reply.media is not None
     assert msg.reply.media.media_id == 'sticker_fid'
+    assert msg.reply.media.is_sticker is True
+    assert msg.reply.media.sticker_emoji == '😀'
+    assert msg.reply.media.sticker_set == 'pack'
 
 
 # --- test handle_message_edit ---

@@ -3,10 +3,13 @@ import io
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from telegram import Sticker
 
 from src.messages.media import (
     create_media_description, get_media_description_by_media_id, handle_media_message,
 )
+from src.messages.repository import get_message_media_data
+from src.mongo import media_descriptions
 from src.messages.media.download import _parse_animation_file, _parse_image_file, get_message_media
 from src.messages.media.pipeline import _generate_media_description, wait_for_media_ready
 from src.models import (
@@ -158,6 +161,125 @@ async def test_handle_media_message_generate_returns_none(mocker, sample_message
 
     desc = await get_media_description_by_media_id('unique_id_123')
     assert desc is not None
+
+
+# --- sticker metadata persistence ---
+
+async def test_create_media_description_persists_sticker_fields():
+    created = await create_media_description(
+        media_id='sticker_uid',
+        type=MessageMediaTypes.IMAGE,
+        is_sticker=True,
+        sticker_emoji='🔥',
+        sticker_set='hotpack',
+    )
+
+    assert created.is_sticker is True
+    assert created.sticker_emoji == '🔥'
+    assert created.sticker_set == 'hotpack'
+
+    read_back = await get_media_description_by_media_id('sticker_uid')
+    assert read_back.is_sticker is True
+    assert read_back.sticker_emoji == '🔥'
+    assert read_back.sticker_set == 'hotpack'
+
+
+async def test_parse_media_description_on_legacy_row_without_sticker_fields():
+    # Every row written before this unit has none of the three keys.
+    await media_descriptions.insert_one({
+        'hash': None,
+        'description': 'a cat',
+        'ocr_text': None,
+        'media_id': 'legacy_uid',
+        'type': MessageMediaTypes.IMAGE.value,
+        'status': MessageMediaStatus.READY.value,
+    })
+
+    parsed = await get_media_description_by_media_id('legacy_uid')
+
+    assert parsed.is_sticker is False
+    assert parsed.sticker_emoji is None
+    assert parsed.sticker_set is None
+
+
+async def test_get_message_media_data_hydrates_sticker_flag_from_stored_row():
+    # `_parse_media` reads history back with no PTB object, so without hydration every
+    # persisted sticker would come back looking like a photo.
+    await create_media_description(
+        media_id='sticker_uid',
+        type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY,
+        description='a dancing cat',
+        is_sticker=True,
+        sticker_emoji='💃',
+        sticker_set='cats',
+    )
+
+    media = await get_message_media_data('sendable_fid', 'sticker_uid', None)
+
+    assert media.is_sticker is True
+    assert media.sticker_emoji == '💃'
+    assert media.sticker_set == 'cats'
+
+
+async def test_get_message_media_data_live_parse_wins_over_stored_row():
+    await create_media_description(
+        media_id='sticker_uid',
+        type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY,
+        description='a dancing cat',
+        is_sticker=True,
+        sticker_emoji='stale',
+        sticker_set='stale_pack',
+    )
+    sticker = Sticker(
+        file_id='sendable_fid',
+        file_unique_id='sticker_uid',
+        width=512,
+        height=512,
+        is_animated=False,
+        is_video=False,
+        type=Sticker.REGULAR,
+        emoji='fresh',
+        set_name='fresh_pack',
+    )
+
+    media = await get_message_media_data('sendable_fid', 'sticker_uid', sticker)
+
+    assert media.sticker_emoji == 'fresh'
+    assert media.sticker_set == 'fresh_pack'
+
+
+async def test_handle_media_message_passes_sticker_fields_through(mocker, mock_context):
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+        content='base64content',
+        format='webp',
+    ))
+    mocker.patch(
+        'src.messages.media.pipeline._generate_media_description',
+        return_value=MediaDescriptionData(description='a dancing cat', ocr_text=None),
+    )
+    message = Message(
+        chat_id=123,
+        nickname='testuser',
+        role=UserRole.USER,
+        media=MessageMedia(
+            media_id='sendable_fid',
+            unique_id='sticker_uid',
+            type=MessageMediaTypes.IMAGE,
+            status=MessageMediaStatus.PENDING,
+            is_sticker=True,
+            sticker_emoji='💃',
+            sticker_set='cats',
+        ),
+    )
+
+    await handle_media_message(message, mock_context)
+
+    stored = await get_media_description_by_media_id('sticker_uid')
+    assert stored.is_sticker is True
+    assert stored.sticker_emoji == '💃'
+    assert stored.sticker_set == 'cats'
 
 
 # --- _generate_media_description ---

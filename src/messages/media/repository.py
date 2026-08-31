@@ -11,6 +11,9 @@ async def create_media_description(
     ocr_text: str | None = None,
     type: MessageMediaTypes = MessageMediaTypes.IMAGE,
     status: MessageMediaStatus = MessageMediaStatus.PENDING,
+    is_sticker: bool = False,
+    sticker_emoji: str | None = None,
+    sticker_set: str | None = None,
 ):
     result = await media_descriptions.insert_one({
         'hash': content_hash or None,
@@ -19,6 +22,9 @@ async def create_media_description(
         'media_id': media_id,
         'type': type.value,
         'status': status.value,
+        'is_sticker': is_sticker,
+        'sticker_emoji': sticker_emoji,
+        'sticker_set': sticker_set,
     })
     return await get_media_description(result.inserted_id)
 
@@ -69,6 +75,8 @@ async def update_media_description_status(description_id: str, status: MessageMe
 
 
 def _parse_media_description(data: dict) -> MediaDescription:
+    # The sticker fields use `.get`, unlike their siblings: every row written before
+    # this unit has none of them, and they must parse as False/None rather than raise.
     return MediaDescription(
         _id=str(data['_id']),
         description=data['description'] or '',
@@ -76,4 +84,7 @@ def _parse_media_description(data: dict) -> MediaDescription:
         type=data['type'],
         status=data['status'],
         media_id=data['media_id'],
+        is_sticker=data.get('is_sticker', False),
+        sticker_emoji=data.get('sticker_emoji'),
+        sticker_set=data.get('sticker_set'),
     )
