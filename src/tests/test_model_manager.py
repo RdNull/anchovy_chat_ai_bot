@@ -146,3 +146,24 @@ def test_web_search_model_declares_plugins():
     assert llm.plugins == model_settings['plugins']
     assert 'plugins' not in llm.model_kwargs
     assert llm._default_params['plugins'] == llm.plugins
+
+
+def test_web_search_transport_fits_the_tool_budget():
+    """The SDK retries connection errors for ~300s by default, and silently.
+
+    `langchain-openrouter` defaults to `max_retries=2`, which builds a backoff
+    `RetryConfig` with a 300s window and `retry_connection_errors=True`, and to no
+    HTTP timeout at all. Inside `search_web`'s budget that spends the whole tool
+    call on invisible retries — they produce no httpx log line, because a
+    connection error never yields a response to log.
+
+    The HTTP timeout must also fire before `asyncio.wait_for` cancels from the
+    outside, so a stall surfaces as an error with a cause rather than a bare
+    cancellation.
+    """
+    manager = ModelManager()
+    with patch.object(settings, 'IS_LOCAL', False):
+        cloud = manager.get_model_settings('web_search', 'v1')
+
+    assert cloud['max_retries'] == 0
+    assert cloud['timeout'] < settings.WEB_SEARCH_TIMEOUT * 1000

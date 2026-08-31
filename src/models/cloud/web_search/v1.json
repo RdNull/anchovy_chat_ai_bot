@@ -4,6 +4,8 @@
     "api_key": "env:OPENROUTER_API_KEY",
     "max_tokens": 150,
     "temperature": 0.0,
+    "timeout": 25000,
+    "max_retries": 0,
     "reasoning": {
         "effort": "none"
     },
@@ -11,6 +13,7 @@
         {
             "id": "web",
             "engine": "parallel",
+            "mode": "fast",
             "max_results": 3,
             "search_prompt": "Ниже - актуальные результаты веб-поиска, полученные только что.\nИспользуй только их, не полагайся на свои знания - они могут устареть.\nСсылки, названия источников и markdown-разметка не нужны."
         }
