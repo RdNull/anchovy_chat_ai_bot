@@ -6,16 +6,38 @@ import pytest
 from telegram import Sticker
 
 from src.messages.media import (
-    create_media_description, get_media_description_by_media_id, handle_media_message,
+    create_media_description, get_media_description_by_media_id, get_recent_sticker_ids,
+    get_sendable_file_id, handle_media_message, reset_sticker_corpus_cache,
+    sticker_corpus_size,
 )
 from src.messages.repository import get_message_media_data
-from src.mongo import media_descriptions
+from src.mongo import media_descriptions, messages
 from src.messages.media.download import _parse_animation_file, _parse_image_file, get_message_media
 from src.messages.media.pipeline import _generate_media_description, wait_for_media_ready
 from src.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescriptionData, MediaDetectionData,
     Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UserRole,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_corpus_cache():
+    # The count is cached at module level, so its value leaks between tests.
+    reset_sticker_corpus_cache()
+    yield
+    reset_sticker_corpus_cache()
+
+
+async def insert_carrier(unique_id, file_id, created_at, chat_id=123, role=UserRole.USER):
+    await messages.insert_one({
+        'chat_id': chat_id,
+        'role': role.value,
+        'text': None,
+        'nickname': 'someone',
+        'media_id': file_id,
+        'media_unique_id': unique_id,
+        'created_at': created_at,
+    })
 
 
 @pytest.fixture
@@ -280,6 +302,96 @@ async def test_handle_media_message_passes_sticker_fields_through(mocker, mock_c
     assert stored.is_sticker is True
     assert stored.sticker_emoji == '💃'
     assert stored.sticker_set == 'cats'
+
+
+# --- get_sendable_file_id / corpus helpers ---
+
+async def test_get_sendable_file_id_returns_the_file_id_not_the_unique_id():
+    # The point of the whole step: `media_descriptions.media_id` holds a
+    # `file_unique_id`, which Telegram refuses in a send. Only `messages.media_id`
+    # is sendable.
+    await insert_carrier('sticker_uid', 'SENDABLE_FILE_ID', created_at=100.0)
+
+    file_id = await get_sendable_file_id('sticker_uid')
+
+    assert file_id == 'SENDABLE_FILE_ID'
+    assert file_id != 'sticker_uid'
+
+
+async def test_get_sendable_file_id_newest_carrier_wins():
+    await insert_carrier('sticker_uid', 'old_file_id', created_at=100.0)
+    await insert_carrier('sticker_uid', 'reissued_file_id', created_at=200.0)
+
+    assert await get_sendable_file_id('sticker_uid') == 'reissued_file_id'
+
+
+async def test_get_sendable_file_id_unknown_id_returns_none():
+    assert await get_sendable_file_id('never_seen') is None
+
+
+async def test_get_recent_sticker_ids_only_bot_messages_with_media():
+    await insert_carrier('bot_recent', 'fid1', created_at=300.0, role=UserRole.AI)
+    await insert_carrier('user_sent', 'fid2', created_at=200.0, role=UserRole.USER)
+    await messages.insert_one({
+        'chat_id': 123, 'role': UserRole.AI.value, 'text': 'just text',
+        'nickname': 'bot', 'media_id': None, 'media_unique_id': None,
+        'created_at': 250.0,
+    })
+
+    recent = await get_recent_sticker_ids(123, limit=10)
+
+    assert recent == {'bot_recent'}
+
+
+async def test_get_recent_sticker_ids_takes_the_newest_limit():
+    for i in range(5):
+        await insert_carrier(f'uid{i}', f'fid{i}', created_at=float(i), role=UserRole.AI)
+
+    recent = await get_recent_sticker_ids(123, limit=2)
+
+    assert recent == {'uid4', 'uid3'}
+
+
+async def test_get_recent_sticker_ids_is_per_chat():
+    await insert_carrier('here', 'fid1', created_at=100.0, chat_id=123, role=UserRole.AI)
+    await insert_carrier('elsewhere', 'fid2', created_at=200.0, chat_id=999, role=UserRole.AI)
+
+    assert await get_recent_sticker_ids(123, limit=10) == {'here'}
+
+
+async def test_sticker_corpus_size_counts_only_ready_stickers():
+    await create_media_description(
+        media_id='ready_sticker', type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY, is_sticker=True,
+    )
+    await create_media_description(
+        media_id='pending_sticker', type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.PENDING, is_sticker=True,
+    )
+    await create_media_description(
+        media_id='ready_photo', type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY, is_sticker=False,
+    )
+
+    assert await sticker_corpus_size() == 1
+
+
+async def test_sticker_corpus_size_is_cached():
+    await create_media_description(
+        media_id='ready_sticker', type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY, is_sticker=True,
+    )
+    assert await sticker_corpus_size() == 1
+
+    await create_media_description(
+        media_id='another_sticker', type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY, is_sticker=True,
+    )
+
+    # Still the cached value; only a reset (or the TTL) picks the new one up.
+    assert await sticker_corpus_size() == 1
+    reset_sticker_corpus_cache()
+    assert await sticker_corpus_size() == 2
 
 
 # --- _generate_media_description ---
