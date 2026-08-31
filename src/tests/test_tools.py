@@ -1,11 +1,13 @@
+import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
-from src.characters.tools import get_user_facts, search_messages
+from src.characters.tools import get_user_facts, search_messages, search_web
 from src.characters.tools.answer import answer_text, set_reaction
+from src.characters.tools.context import _web_search_limiter
 from src.characters.tools.context import search_messages as search_messages_direct
 from src.models import Message, RelatedMessagesData, UserFact, UserRole
 from src.tools import ToolContext, ToolRegistry
@@ -13,6 +15,27 @@ from src.tools import ToolContext, ToolRegistry
 
 def make_context(chat_id=123):
     return ToolContext(chat_id=chat_id, replier=MagicMock())
+
+
+@pytest.fixture(autouse=True)
+def reset_web_search_limiter():
+    # The limiter is a module-level singleton, so its window leaks between tests.
+    _web_search_limiter._call_times.clear()
+    yield
+    _web_search_limiter._call_times.clear()
+
+
+def mock_web_search_model(mocker, content='обрывок', chat_id=123):
+    search_web.metadata = {'context': make_context(chat_id)}
+    model = MagicMock()
+    if isinstance(content, Exception):
+        model.ainvoke = AsyncMock(side_effect=content)
+    else:
+        model.ainvoke = AsyncMock(return_value=AIMessage(content=content))
+    mocker.patch(
+        'src.characters.tools.context.ai.get_web_search_model', return_value=model
+    )
+    return model
 
 
 async def test_search_messages_tool(mocker):
@@ -199,3 +222,163 @@ async def test_set_reaction_tool_calls_replier():
     assert mock_replier.reply_reaction.call_count == 1
     assert mock_replier.reply_reaction.call_args[0][0] == '🤡'
     assert mock_replier.reply_reaction.call_args[1]['is_big'] is True
+
+
+async def test_search_web_returns_fragments(mocker):
+    model = mock_web_search_model(mocker, 'цена ~120к тенге\nвышел 14 марта\nвыиграл Аякс 3:1')
+
+    result = await search_web.ainvoke({'query': 'сколько стоит', 'limit': 3})
+
+    assert result == ['цена ~120к тенге', 'вышел 14 марта', 'выиграл Аякс 3:1']
+    assert model.ainvoke.call_count == 1
+
+
+async def test_search_web_limit_out_of_range_defaults_to_two(mocker):
+    model = mock_web_search_model(mocker, 'один\nдва\nтри')
+
+    for bad_limit in (0, 4, -1):
+        result = await search_web.ainvoke({'query': 'что-то', 'limit': bad_limit})
+        assert result == ['один', 'два']
+
+    assert model.ainvoke.call_count == 3
+
+
+async def test_search_web_limit_in_range_passes_through(mocker):
+    mock_web_search_model(mocker, 'один\nдва\nтри')
+
+    assert await search_web.ainvoke({'query': 'x', 'limit': 1}) == ['один']
+    assert await search_web.ainvoke({'query': 'x', 'limit': 2}) == ['один', 'два']
+    assert await search_web.ainvoke({'query': 'x', 'limit': 3}) == ['один', 'два', 'три']
+
+
+async def test_search_web_truncates_to_limit(mocker):
+    mock_web_search_model(mocker, 'первый\nвторой\nтретий')
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 1})
+
+    assert result == ['первый']
+
+
+async def test_search_web_strips_urls(mocker):
+    mock_web_search_model(
+        mocker,
+        'цена 120к тенге https://kaspi.kz/shop/item\nвышел 14 марта, example.com',
+    )
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 2})
+
+    assert result == ['цена 120к тенге', 'вышел 14 марта,']
+
+
+async def test_search_web_strips_bullets(mocker):
+    mock_web_search_model(mocker, '- цена 120к\n* вышел 14 марта\n• выиграл 3:1')
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 3})
+
+    assert result == ['цена 120к', 'вышел 14 марта', 'выиграл 3:1']
+
+
+async def test_search_web_model_not_found_is_not_doubled(mocker):
+    mock_web_search_model(mocker, 'не нашлось')
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 2})
+
+    assert result == ['не нашлось']
+
+
+async def test_search_web_empty_response(mocker):
+    mock_web_search_model(mocker, '   \n\n  ')
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 2})
+
+    assert result == ['не нашлось']
+
+
+async def test_search_web_normalises_list_content(mocker):
+    mock_web_search_model(
+        mocker,
+        [{'type': 'text', 'text': 'цена 120к'}, {'type': 'text', 'text': 'вышел 14 марта'}],
+    )
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 2})
+
+    assert result == ['цена 120к', 'вышел 14 марта']
+
+
+async def test_search_web_timeout_returns_not_found(mocker):
+    model = mock_web_search_model(mocker, asyncio.TimeoutError())
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 2})
+
+    assert result == ['не нашлось']
+    assert model.ainvoke.call_count == 1
+
+
+async def test_search_web_error_returns_not_found(mocker):
+    model = mock_web_search_model(mocker, RuntimeError('openrouter exploded'))
+    mock_logger = mocker.patch('src.characters.tools.context.logger')
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 2})
+
+    assert result == ['не нашлось']
+    assert model.ainvoke.call_count == 1
+    assert mock_logger.error.call_count == 1
+    assert 'openrouter exploded' in mock_logger.error.call_args[0][0]
+
+
+async def test_search_web_rate_limited_skips_the_model(mocker):
+    model = mock_web_search_model(mocker, 'обрывок')
+    limit = _web_search_limiter.rate_limit
+
+    for _ in range(limit):
+        assert await search_web.ainvoke({'query': 'x', 'limit': 1}) == ['обрывок']
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 1})
+
+    assert result == ['не нашлось']
+    assert model.ainvoke.call_count == limit
+
+
+async def test_search_web_rate_limit_is_per_chat(mocker):
+    model = mock_web_search_model(mocker, 'обрывок', chat_id=1)
+    limit = _web_search_limiter.rate_limit
+
+    for _ in range(limit + 1):
+        await search_web.ainvoke({'query': 'x', 'limit': 1})
+
+    search_web.metadata = {'context': make_context(chat_id=2)}
+    result = await search_web.ainvoke({'query': 'x', 'limit': 1})
+
+    assert result == ['обрывок']
+    assert model.ainvoke.call_count == limit + 1
+
+
+async def test_search_web_failed_search_consumes_its_slot(mocker):
+    # is_exceeded debits on check, so a search that fails still spent the budget.
+    model = mock_web_search_model(mocker, 'обрывок')
+    model.ainvoke.side_effect = [RuntimeError('boom'), AIMessage(content='обрывок')]
+    limit = _web_search_limiter.rate_limit
+
+    assert await search_web.ainvoke({'query': 'x', 'limit': 1}) == ['не нашлось']
+    assert await search_web.ainvoke({'query': 'x', 'limit': 1}) == ['обрывок']
+
+    model.ainvoke.side_effect = None
+    model.ainvoke.return_value = AIMessage(content='обрывок')
+    for _ in range(limit - 2):
+        await search_web.ainvoke({'query': 'x', 'limit': 1})
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 1})
+
+    assert result == ['не нашлось']
+    assert model.ainvoke.call_count == limit
+
+
+async def test_search_web_logs_the_house_format(mocker):
+    mock_web_search_model(mocker, 'цена 120к\nвышел 14 марта')
+    mock_logger = mocker.patch('src.characters.tools.context.logger')
+
+    await search_web.ainvoke({'query': 'почем айфон', 'limit': 2})
+
+    logged = mock_logger.info.call_args[0][0]
+    assert 'TOOL_WEB_SEARCH chat_id=123 query=почем айфон results=2 outcome=ok' in logged
+    assert 'elapsed_ms=' in logged

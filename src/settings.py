@@ -25,6 +25,11 @@ class _Settings(BaseSettings):
     AI_TIMEOUT: int = 90
     CHAT_RATE_LIMIT: int = 5
 
+    # Web search is a separate budget from the character's own rate limit: it protects
+    # spend, not voice, so it is per chat rather than per chat per character.
+    WEB_SEARCH_RATE_LIMIT: int = 3   # per 60s window (_WINDOW in rate_limit.py)
+    WEB_SEARCH_TIMEOUT: int = 12     # must stay well under AI_TIMEOUT, which wraps the whole loop
+
     EMBEDDINGS_SEARCH_MAX_SIZE: int = 3
 
     # Fetch caps: the most messages one memory / embedding pass reads in a window.
@@ -101,6 +106,8 @@ RANDOM_REPLY_CHANCE = _s.RANDOM_REPLY_CHANCE
 RANDOM_REPLY_COOLDOWN_MINUTES = _s.RANDOM_REPLY_COOLDOWN_MINUTES
 AI_TIMEOUT = _s.AI_TIMEOUT
 CHAT_RATE_LIMIT = _s.CHAT_RATE_LIMIT
+WEB_SEARCH_RATE_LIMIT = _s.WEB_SEARCH_RATE_LIMIT
+WEB_SEARCH_TIMEOUT = _s.WEB_SEARCH_TIMEOUT
 EMBEDDINGS_SEARCH_MAX_SIZE = _s.EMBEDDINGS_SEARCH_MAX_SIZE
 MESSAGES_EMBEDDINGS_MAX_SIZE = _s.MESSAGES_EMBEDDINGS_MAX_SIZE
 MESSAGES_MEMORY_MAX_SIZE = _s.MESSAGES_MEMORY_MAX_SIZE
