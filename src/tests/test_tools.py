@@ -267,7 +267,7 @@ async def test_search_web_strips_urls(mocker):
 
     result = await search_web.ainvoke({'query': 'x', 'limit': 2})
 
-    assert result == ['цена 120к тенге', 'вышел 14 марта,']
+    assert result == ['цена 120к тенге', 'вышел 14 марта']
 
 
 async def test_search_web_strips_bullets(mocker):
@@ -382,3 +382,41 @@ async def test_search_web_logs_the_house_format(mocker):
     logged = mock_logger.info.call_args[0][0]
     assert 'TOOL_WEB_SEARCH chat_id=123 query=почем айфон results=2 outcome=ok' in logged
     assert 'elapsed_ms=' in logged
+
+
+async def test_search_web_strips_markdown_link_citations(mocker):
+    # Verbatim from a real extractor response: the model cited sources as markdown
+    # links despite the prompt forbidding it, and the bare-domain pattern ate the
+    # `](href)` while stranding the opening `[`. The third line has no closing
+    # paren, so nothing balances it.
+    mock_web_search_model(
+        mocker,
+        '- 1 BTC = 77.512,47 $ [revolut.com](https://www.revolut.com/ru-LV/crypto/price/btc/usd/?amount-to=1)\n'
+        '- Спрос/Предложение: 78.362 / 78.371 $ [investing.com](https://ru.investing.com/crypto/bitcoin/btc-usd)\n'
+        '- За последний час: -0,32%, за сутки: -0,58% [revolut.com](https://www.revolut.com/ru-LV/crypto/price/btc/usd/?',
+    )
+
+    result = await search_web.ainvoke({'query': 'курс биткоина', 'limit': 3})
+
+    assert result == [
+        '1 BTC = 77.512,47 $',
+        'Спрос/Предложение: 78.362 / 78.371 $',
+        'За последний час: -0,32%, за сутки: -0,58%',
+    ]
+
+
+async def test_search_web_strips_citation_refs(mocker):
+    mock_web_search_model(mocker, 'цена ~120к тенге [1]\nвышел 14 марта [источник]')
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 2})
+
+    assert result == ['цена ~120к тенге', 'вышел 14 марта']
+
+
+async def test_search_web_keeps_leading_minus_sign(mocker):
+    # The bullet stripper must not read a negative sign as a list marker.
+    mock_web_search_model(mocker, '-0,58% за сутки\n- -1,2% за неделю')
+
+    result = await search_web.ainvoke({'query': 'x', 'limit': 2})
+
+    assert result == ['-0,58% за сутки', '-1,2% за неделю']

@@ -82,8 +82,19 @@ Returns:
 '''
 
 _WEB_SEARCH_NOT_FOUND = ['не нашлось']
-_URL_RE = re.compile(r'https?://\S+|\b[\w-]+\.(?:ru|com|org|net|io|kz|dev|me|tv)\b\S*', re.I)
-_BULLET_RE = re.compile(r'^[-*\u2022\u2013\u2014\s]+')
+# Markdown links go first and whole: the label is the source name («[revolut.com]»),
+# which is no more wanted than the href.
+_MD_LINK_RE = re.compile(r'\[[^\]]*\]\([^)]*\)')
+# The bare-domain tail stops at bracket scaffolding. `\S*` used to swallow the
+# `](https://...)` of a link whose label it had just matched, stranding the `[`.
+_URL_RE = re.compile(
+    r'https?://\S+|\b[\w-]+\.(?:ru|com|org|net|io|kz|dev|me|tv)\b[^\s\[\]()]*', re.I
+)
+# Whatever the two above left behind: citation refs, emptied pairs, lone brackets.
+_BRACKET_RE = re.compile(r'\[[^\]]*\]|\(\s*\)|[\[\]]')
+# `(?!\d)` keeps a leading minus that is a sign rather than a bullet: «-0,32% за час».
+_BULLET_RE = re.compile(r'^[-*\u2022\u2013\u2014\s]+(?!\d)')
+_TRAILING_JUNK_RE = re.compile(r'[\s\-\u2013\u2014,;:([{\u00ab]+$')
 _web_search_limiter = ChatRateLimiter(settings.WEB_SEARCH_RATE_LIMIT)
 
 
@@ -129,13 +140,21 @@ def _parse_fragments(response: AIMessage, limit: int) -> list[str]:
     """Turns the extractor's raw text into at most `limit` clean fragments.
 
     The only place in the repo that reads model text instead of a parsed object,
-    so nothing existing covers this. URLs are stripped here rather than forbidden
-    in the prompt: prompt compliance is optional, code is not.
+    so nothing existing covers this. Sources are stripped here rather than
+    forbidden in the prompt: prompt compliance is optional, code is not — and the
+    model does ignore it, citing «[revolut.com](https://…)» after being told not to.
+
+    Order matters. Whole markdown links go first, or the bare-domain pattern
+    matches the label, eats the `](href)` after it, and leaves the opening `[`
+    behind as the only trace of a citation.
     """
     fragments = []
     for line in _content_text(response).splitlines():
+        line = _MD_LINK_RE.sub('', line)
         line = _URL_RE.sub('', line)
-        line = _BULLET_RE.sub('', line).strip()
+        line = _BRACKET_RE.sub('', line)
+        line = _BULLET_RE.sub('', line)
+        line = _TRAILING_JUNK_RE.sub('', ' '.join(line.split()))
         if not line:
             continue
         if line.strip('.!:?"\'«»').casefold() == 'не нашлось':
