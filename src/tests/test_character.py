@@ -226,6 +226,80 @@ async def test_respond_multiple_direct_tools_tags_langsmith(mocker, mock_langsmi
     assert 'multiple_response_called' in mock_langsmith.tags
 
 
+# --- sticker tool binding ---
+
+def captured_registry(mocker):
+    """Captures the ToolRegistry the loop is built with, without running the loop."""
+    captured = {}
+    real_init = ToolRegistry.__init__
+
+    def spy(self, context_tools, direct_tools, context):
+        real_init(self, context_tools, direct_tools, context)
+        captured['registry'] = self
+
+    mocker.patch.object(ToolRegistry, '__init__', spy)
+    return captured
+
+
+async def respond_and_capture(mocker, corpus_size, enabled):
+    mock_chat_llm(mocker, [answer_tool_call()])
+    mocker.patch.object(ToolRegistry, 'execute', new=execute_returning(None))
+    mocker.patch.object(settings, 'ENABLE_STICKER_REPLIES', enabled)
+    mocker.patch.object(settings, 'STICKER_MIN_CORPUS', 5)
+    mock_size = mocker.patch(
+        'src.characters.character.sticker_corpus_size', return_value=corpus_size,
+    )
+    captured = captured_registry(mocker)
+
+    await make_character().respond(make_replier(), make_user_message(), last_messages=[])
+
+    return captured['registry'], mock_size
+
+
+def tool_names(registry):
+    return {t.name for t in registry.tools}
+
+
+async def test_sticker_tools_not_bound_below_the_corpus_threshold(mocker):
+    registry, _ = await respond_and_capture(mocker, corpus_size=4, enabled=True)
+
+    names = tool_names(registry)
+    assert 'find_stickers' not in names
+    assert 'send_sticker' not in names
+
+
+async def test_sticker_tools_bound_at_the_corpus_threshold(mocker):
+    registry, _ = await respond_and_capture(mocker, corpus_size=5, enabled=True)
+
+    # Both or neither: send_sticker alone gives the model an id it can only hallucinate.
+    assert 'find_stickers' in {t.name for t in registry.context_tools}
+    assert 'send_sticker' in {t.name for t in registry.direct_tools}
+
+
+async def test_sticker_tools_not_bound_when_the_flag_is_off(mocker):
+    registry, mock_size = await respond_and_capture(mocker, corpus_size=500, enabled=False)
+
+    names = tool_names(registry)
+    assert 'find_stickers' not in names
+    assert 'send_sticker' not in names
+    # The flag is checked first, so a disabled installation never pays for the count.
+    assert mock_size.call_count == 0
+
+
+async def test_corpus_size_is_queried_once_per_respond(mocker):
+    _, mock_size = await respond_and_capture(mocker, corpus_size=5, enabled=True)
+
+    assert mock_size.call_count == 1
+
+
+async def test_base_tools_are_always_bound(mocker):
+    registry, _ = await respond_and_capture(mocker, corpus_size=0, enabled=False)
+
+    assert tool_names(registry) == {
+        'search_messages', 'get_user_facts', 'search_web', 'answer_text', 'set_reaction',
+    }
+
+
 # --- direct-tool failure recovery ---
 
 def execute_returning(*results):

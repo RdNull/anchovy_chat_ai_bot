@@ -10,8 +10,25 @@ from telegram.ext import (
 )
 
 from src import const, settings, tasks
+from src.logs import logger
 from src.messages import handlers
+from src.messages.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
+
+
+async def log_sticker_corpus():
+    """One line at boot: is there anything for `find_stickers` to find yet?
+
+    At STICKER_MIN_CORPUS=5 the gate should open almost immediately. If it does not,
+    this is the evidence that the group recycles a very small sticker set — the one
+    thing that would make the narrow-vocabulary decision worth revisiting.
+    """
+    size = await sticker_corpus_size()
+    logger.info(
+        f'STICKER_CORPUS size={size} min={settings.STICKER_MIN_CORPUS} '
+        f'enabled={settings.ENABLE_STICKER_REPLIES} '
+        f'gate_open={settings.ENABLE_STICKER_REPLIES and size >= settings.STICKER_MIN_CORPUS}'
+    )
 
 
 async def setup_scheduler():
@@ -32,6 +49,7 @@ def main() -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)  # so that both tg app and scheduler run on a single loop
 
+    loop.create_task(log_sticker_corpus())
     loop.create_task(setup_scheduler())
     app = ApplicationBuilder().token(
         settings.TELEGRAM_TOKEN
