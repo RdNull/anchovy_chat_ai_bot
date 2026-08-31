@@ -10,7 +10,7 @@ from src.characters.tools.answer import answer_text, set_reaction
 from src.characters.tools.context import _web_search_limiter
 from src.characters.tools.context import search_messages as search_messages_direct
 from src.models import Message, RelatedMessagesData, UserFact, UserRole
-from src.tools import ToolContext, ToolRegistry
+from src.tools import ToolContext, ToolFailure, ToolRegistry
 
 
 def make_context(chat_id=123):
@@ -125,11 +125,12 @@ async def test_tool_registry_execute_success(mocker):
         'id': 'call_123'
     }
 
-    result = await registry.execute(tool_call)
+    tool_message, tool_result = await registry.execute(tool_call)
 
-    assert isinstance(result, ToolMessage)
-    assert result.content == 'tool result'
-    assert result.tool_call_id == 'call_123'
+    assert isinstance(tool_message, ToolMessage)
+    assert tool_message.content == 'tool result'
+    assert tool_message.tool_call_id == 'call_123'
+    assert tool_result == 'tool result'
     assert mock_tool.metadata == {'context': context}
     assert mock_tool.ainvoke.call_count == 1
     assert mock_tool.ainvoke.call_args == call({'arg1': 'val1'})
@@ -206,9 +207,13 @@ async def test_answer_text_tool_skips_empty_text():
     context = ToolContext(chat_id=1, replier=mock_replier)
     answer_text.metadata = {'context': context}
 
-    await answer_text.ainvoke({'text': ''})
+    result = await answer_text.ainvoke({'text': ''})
 
     assert mock_replier.reply_message.call_count == 0
+    # A ToolFailure, not None: the loop has to give the model another turn instead of
+    # ending the turn in silence.
+    assert isinstance(result, ToolFailure)
+    assert result.message == 'пустой ответ'
 
 
 async def test_set_reaction_tool_calls_replier():

@@ -1,7 +1,12 @@
 // Custom promptfoo provider that mirrors the bot's production tool loop
 // (src/characters/character.py::_run_llm_loop): keep calling an OpenAI-compat
 // chat completions endpoint, run context-tool callbacks, feed results back,
-// until `answer_text` / `set_reaction` is called or maxIterations is hit.
+// until a direct tool is called or maxIterations is hit.
+//
+// Knowingly out of sync with production: the loop there can recover from a direct
+// tool that fails (ToolFailure -> the model gets another turn, bounded by
+// _MAX_LOOP_DEPTH). This suite grades prompt and tool choice, not loop mechanics,
+// so a direct tool here always succeeds. Do not "fix" the divergence.
 
 const path = require('path');
 
