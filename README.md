@@ -11,7 +11,9 @@ The bot participates in live group conversations, builds persistent per-chat mem
 ## Key Features
 
 **Agentic LLM Loop**
-Characters run a depth-limited recursive tool-calling loop: the model can invoke tools, receive results, and continue reasoning before producing a final response. Tools are split into *context tools* (`search_messages`, `get_user_facts`, `search_web`) that feed information back into the loop, and *direct tools* (`answer_text`, `set_reaction`) that terminate it immediately. A `Replier` handles the actual dispatch — persisting text replies and writing bot reactions onto Telegram messages. A depth-5 safeguard re-binds only direct tools to force a response if the model keeps calling context tools. Tool binding and structured output are handled via LangChain.
+Characters run a depth-limited recursive tool-calling loop: the model can invoke tools, receive results, and continue reasoning before producing a final response. Tools are split into *context tools* (message search, user facts, web search, sticker search) that feed information back into the loop, and *direct tools* (text reply, emoji reaction, sticker reply) that terminate it immediately. A `Replier` handles the actual dispatch — persisting replies and writing bot reactions onto Telegram messages. A depth-5 safeguard re-binds only direct tools to force a response if the model keeps calling context tools. Tool binding and structured output are handled via LangChain.
+
+The loop also distinguishes a tool that *is* final from a tool that *succeeded*. "Terminate on a direct tool" was a property of the tool rather than of the call, so a send that failed — an expired file identifier, an empty answer — ended the turn with the bot saying nothing at all, which reads as the bot ignoring you. A failed direct tool now reports back into the conversation and the model gets another turn to answer some other way. That fix needs a companion: the old depth limit terminated only because a direct tool always returned, so an absolute cap was added at the same time, or a send that fails every attempt would trade a silent turn for an endless one.
 
 **Multi-Character Persona System**
 Characters are defined as YAML configs (name, description, detailed system prompt, style guidelines, behavioral constraints). The character repository loads them at startup; each character instance is independently rate-limited per chat. Each chat can run a different character, selected via `/list` (inline keyboard), `/random`, or left on the default; the choice is persisted per chat in MongoDB.
@@ -45,8 +47,17 @@ Facts about individual users are extracted automatically in the same pass as eac
 - Descriptions are stored in MongoDB and injected into the conversation context
 - If a character is triggered while a referenced image/sticker is still processing, response generation polls (with a bounded timeout) until the media description is ready before building the prompt
 
+**Sticker Replies From the Group's Own Vocabulary**
+Everything a sticker reply needs was already being collected and then thrown away: every sticker anyone sends is downloaded, deduplicated and vision-described, and nothing ever read it back. Making that corpus searchable turned out to rest on a single distinction the code could not draw — a static sticker and a screenshot are both `.webp`-or-`.jpg` images and were classified identically, so an index built the obvious way would have let the bot answer with someone's screenshot. Sticker identity is therefore captured at intake as a flag of its own, orthogonal to media type, and carried through to the description record.
+
+- **Retrieval proposes, the character disposes.** Nearest-neighbour search returns the most literally relevant sticker, which is frequently the least funny one, so the search returns a handful of candidates with their descriptions and the character picks. The similarity threshold is deliberately looser than the one used for facts: the job is a plausible shortlist, not one confident hit. Stickers the bot sent in the recent past are filtered out, so it does not lean on the same one twice.
+- **Two fields named the same thing, one of them sendable.** Telegram issues both a stable identifier and a reusable one, and the two collections here call both `media_id`. The index stores identity only and the sendable id is resolved from the message log at send time, so an identifier the platform re-issues costs nothing — copying it into the index would have made a single re-issue evict the sticker permanently.
+- **The vocabulary is narrow on purpose** — only stickers the group already sends, never a pack expansion. In-group callback beats having a sticker for everything.
+- **It ships cold and off.** There is no backfill: the index fills from live traffic, and indexing runs even while the feature flag is off so there is something there when it is switched on. The tools stay unbound until the corpus crosses a floor, which keeps an empty search from spending one of the three context-tool calls a reply gets. A single line at startup reports the corpus size and whether the gate opened — and if it stays shut, that is the evidence the group recycles a smaller sticker set than assumed, which is the one finding that would reopen the narrow-vocabulary decision.
+- **Failure is eviction, not a dead turn.** A sticker Telegram refuses is dropped from the index and reported back into the loop, so the character answers some other way. Only that specific refusal evicts; a network error is allowed to surface, because quietly discarding a perfectly good sticker on a blip is the worse failure.
+
 **LLM Prompt Evaluation**
-Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suites covering memory extraction, fact extraction, recap generation, image description, and character reply quality, with good/bad sample fixtures for each task. Where a property is mechanically checkable it is asserted in JavaScript rather than left to an LLM rubric: the memory suite re-implements the production key normalization so an attribution or timestamp-leak failure in evals predicts a real drop in production. The reply suite goes further and replays the whole agentic loop — a custom provider re-implements the production tool loop and hands the model the same four tool definitions, so what is graded is the loop's final answer under real tool pressure rather than a single completion. Swapping the chat model is then a two-file change: the model config the bot loads, and the provider file the suite runs.
+Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suites covering memory extraction, fact extraction, recap generation, image description, and character reply quality, with good/bad sample fixtures for each task. Where a property is mechanically checkable it is asserted in JavaScript rather than left to an LLM rubric: the memory suite re-implements the production key normalization so an attribution or timestamp-leak failure in evals predicts a real drop in production. The reply suite goes further and replays the whole agentic loop — a custom provider re-implements the production tool loop and hands the model the same tool definitions, verbatim down to their descriptions, so what is graded is the loop's final answer under real tool pressure rather than a single completion. Swapping the chat model is then a two-file change: the model config the bot loads, and the provider file the suite runs. Where the re-implementation deliberately diverges from production — it does not model the loop's failure recovery, and its sticker search returns nothing, matching the cold start the feature ships in — that is recorded in the code, so the next reader does not mistake it for drift.
 
 **Dual Local/Cloud Mode**
 A single `IS_LOCAL` flag switches the entire model stack between OpenRouter (cloud) and Ollama (local). Model configs are versioned JSON files per task, supporting environment variable interpolation.
@@ -69,7 +80,7 @@ A GitHub Actions workflow builds and pushes a multi-stage Docker image to GHCR o
 | Cloud LLM Provider   | OpenRouter API                                  | Gemini and Claude models, pinned per task       |
 | Local LLM            | Ollama                                          | Self-hosted fallback for all tasks              |
 | Embeddings           | OpenAI text-embedding-3-small (via OpenRouter)  | 1536-dim vectors for RAG, cached via async-cache|
-| Vector Database      | Qdrant (AsyncQdrantClient)                      | Message and fact retrieval                      |
+| Vector Database      | Qdrant (AsyncQdrantClient)                      | Message, fact and sticker retrieval             |
 | Document Database    | MongoDB (AsyncIOMotorClient)                    | Chat history, memory, facts, chat settings      |
 | Data Validation      | Pydantic v2 / pydantic-settings                 | Models, structured LLM output, settings         |
 | Prompt Templating    | Jinja2                                          | Versioned, task-specific prompt files           |
@@ -101,6 +112,8 @@ Message Handlers  (handlers.py)
      |
      +---> [async] Media pipeline
      |          Download -> hash dedup -> vision LLM -> store description
+     |          (a sticker is flagged as one at intake and, once described,
+     |           indexed into Qdrant regardless of the reply flag)
      |
      +---> [async] Context checks
      |          Memory update (if message count since last snapshot >= its own trigger, and enabled)
@@ -120,14 +133,19 @@ Message Handlers  (handlers.py)
                |
                Build prompt (system + memory + related messages + history)
                |
-               Agentic loop (max depth 5):
+               Agentic loop (context-tool depth 5, hard cap 8):
                    LLM call
                      |-- tool_call: search_messages  --> Qdrant vector search
                      |-- tool_call: get_user_facts   --> MongoDB fact lookup
                      |-- tool_call: search_web       --> extractor LLM + OpenRouter web plugin
                      |                                   (rate-limited per chat, own timeout)
+                     |-- tool_call: find_stickers    --> Qdrant vector search over sticker
+                     |                                   descriptions, minus recent sends
+                     |                                   (bound only past a corpus floor)
                      |-- tool_call: answer_text       --> Replier sends text, saves to MongoDB
                      |-- tool_call: set_reaction      --> Replier sets emoji reaction
+                     |-- tool_call: send_sticker      --> resolve sendable id -> Replier sends
+                     |                                   (on refusal: evict, loop continues)
 
 [weekly scheduler]
      +---> Fact confidence decay
