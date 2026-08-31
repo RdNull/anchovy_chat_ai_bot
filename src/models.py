@@ -101,7 +101,7 @@ class Message(BaseModel):
 
     @property
     def embedding_text(self) -> str:
-        message_part = self.text
+        message_part = self.text or ''
         if self.media:
             message_part = f'{message_part} [{self.media.ai_format}]'
 
