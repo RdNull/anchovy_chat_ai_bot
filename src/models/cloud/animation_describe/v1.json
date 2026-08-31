@@ -1,7 +1,9 @@
 {
-  "model_provider": "openrouter",
-  "model": "google/gemini-2.5-flash-lite",
-  "api_key": "env:OPENROUTER_API_KEY",
-  "max_tokens": 4096,
-  "temperature": 0.4
+    "model_provider": "openrouter",
+    "model": "google/gemini-2.5-flash-lite",
+    "api_key": "env:OPENROUTER_API_KEY",
+    "max_tokens": 4096,
+    "temperature": 0.4,
+    "timeout": 120000,
+    "max_retries": 0
 }

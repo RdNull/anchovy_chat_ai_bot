@@ -1,5 +1,6 @@
 import json
 import os
+import pathlib
 from unittest.mock import patch
 
 import pytest
@@ -167,3 +168,28 @@ def test_web_search_transport_fits_the_tool_budget():
 
     assert cloud['max_retries'] == 0
     assert cloud['timeout'] < settings.WEB_SEARCH_TIMEOUT * 1000
+
+
+def test_every_openrouter_config_bounds_its_transport():
+    """No OpenRouter config may inherit the SDK's retry and timeout defaults.
+
+    `max_retries=2` builds a backoff `RetryConfig` with a 300s window and
+    `retry_connection_errors=True`, and `request_timeout` defaults to `None` — no
+    HTTP timeout at all. Together, a connection-level stall spends minutes inside
+    the SDK, emitting no httpx log line, however tight the caller's own budget is.
+    Every config pins both so a hang fails at a known bound with a cause.
+
+    Local (ollama) configs are excluded: different SDK, different parameters.
+    """
+    configs = sorted(pathlib.Path('src/models/cloud').glob('*/*.json'))
+    assert configs, 'no cloud model configs found'
+
+    unbounded = []
+    for path in configs:
+        config = json.loads(path.read_text())
+        if config.get('model_provider') != 'openrouter':
+            continue
+        if config.get('max_retries') != 0 or not config.get('timeout'):
+            unbounded.append(str(path))
+
+    assert unbounded == []
