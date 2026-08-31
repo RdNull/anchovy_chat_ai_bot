@@ -4,11 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
+from telegram.error import BadRequest
 
-from src.characters.tools import get_user_facts, search_messages, search_web
-from src.characters.tools.answer import answer_text, set_reaction
+from src import settings
+
+from src.characters.tools import find_stickers, get_user_facts, search_messages, search_web
+from src.characters.tools.answer import answer_text, send_sticker, set_reaction
 from src.characters.tools.context import _web_search_limiter
 from src.characters.tools.context import search_messages as search_messages_direct
+from src.embeddings.stickers import StickerSearchResult
 from src.models import Message, RelatedMessagesData, UserFact, UserRole
 from src.tools import ToolContext, ToolFailure, ToolRegistry
 
@@ -439,3 +443,143 @@ async def test_search_web_not_found_voids_trailing_commentary(mocker):
     result = await search_web.ainvoke({'query': 'курс биткоина', 'limit': 3})
 
     assert result == ['не нашлось']
+
+
+# --- find_stickers ---
+
+def make_hit(unique_id, score=0.5):
+    return StickerSearchResult(
+        unique_id=unique_id,
+        emoji='🔥',
+        description=f'описание {unique_id}',
+        ocr_text='ЛОЛ',
+        score=score,
+    )
+
+
+def stub_sticker_search(mocker, hits):
+    find_stickers.metadata = {'context': make_context()}
+    return mocker.patch(
+        'src.characters.tools.context.stickers_embedding_client.search_stickers',
+        return_value=hits,
+    )
+
+
+async def test_find_stickers_returns_the_four_key_shape(mocker):
+    stub_sticker_search(mocker, [make_hit('uid1', score=0.42)])
+    mocker.patch('src.characters.tools.context.get_recent_sticker_ids', return_value=set())
+
+    result = await find_stickers.ainvoke({'search_query': 'кот'})
+
+    assert result == [{
+        'sticker_id': 'uid1',
+        'emoji': '🔥',
+        'description': 'описание uid1',
+        'text': 'ЛОЛ',
+    }]
+
+
+async def test_find_stickers_excludes_recent_and_still_fills_the_limit(mocker, ):
+    mocker.patch.object(settings, 'STICKER_SEARCH_LIMIT', 3)
+    hits = [make_hit(f'uid{i}') for i in range(6)]
+    mock_search = stub_sticker_search(mocker, hits)
+    mocker.patch(
+        'src.characters.tools.context.get_recent_sticker_ids',
+        return_value={'uid0', 'uid1'},
+    )
+
+    result = await find_stickers.ainvoke({'search_query': 'кот'})
+
+    assert [r['sticker_id'] for r in result] == ['uid2', 'uid3', 'uid4']
+    # Over-fetched by the size of the exclusion set, then trimmed.
+    assert mock_search.call_args[1]['limit'] == 5
+
+
+async def test_find_stickers_empty_collection_returns_empty_list(mocker):
+    stub_sticker_search(mocker, [])
+    mocker.patch('src.characters.tools.context.get_recent_sticker_ids', return_value=set())
+
+    assert await find_stickers.ainvoke({'search_query': 'кот'}) == []
+
+
+async def test_find_stickers_everything_excluded_returns_empty_list(mocker):
+    stub_sticker_search(mocker, [make_hit('uid1')])
+    mocker.patch(
+        'src.characters.tools.context.get_recent_sticker_ids', return_value={'uid1'},
+    )
+
+    assert await find_stickers.ainvoke({'search_query': 'кот'}) == []
+
+
+# --- send_sticker ---
+
+def make_sticker_replier():
+    replier = MagicMock()
+    replier.reply_sticker = AsyncMock()
+    send_sticker.metadata = {'context': ToolContext(chat_id=123, replier=replier)}
+    return replier
+
+
+async def test_send_sticker_sends_the_resolved_file_id(mocker):
+    replier = make_sticker_replier()
+    mocker.patch(
+        'src.characters.tools.answer.get_sendable_file_id', return_value='SENDABLE_FILE_ID',
+    )
+    mock_drop = mocker.patch(
+        'src.characters.tools.answer.stickers_embedding_client.drop_sticker'
+    )
+
+    result = await send_sticker.ainvoke({'sticker_id': 'sticker_uid'})
+
+    assert result is None
+    # The resolved file_id, not the sticker_id it was handed.
+    assert replier.reply_sticker.call_args == call('SENDABLE_FILE_ID', 'sticker_uid')
+    assert mock_drop.call_count == 0
+
+
+async def test_send_sticker_unknown_id_evicts_and_never_sends(mocker):
+    replier = make_sticker_replier()
+    mocker.patch('src.characters.tools.answer.get_sendable_file_id', return_value=None)
+    mock_drop = mocker.patch(
+        'src.characters.tools.answer.stickers_embedding_client.drop_sticker'
+    )
+
+    result = await send_sticker.ainvoke({'sticker_id': 'sticker_uid'})
+
+    assert isinstance(result, ToolFailure)
+    assert result.message == 'стикер недоступен'
+    assert replier.reply_sticker.call_count == 0
+    assert mock_drop.call_args == call('sticker_uid')
+
+
+async def test_send_sticker_bad_request_evicts_and_reports_failure(mocker):
+    replier = make_sticker_replier()
+    replier.reply_sticker = AsyncMock(side_effect=BadRequest('wrong file identifier'))
+    mocker.patch(
+        'src.characters.tools.answer.get_sendable_file_id', return_value='SENDABLE_FILE_ID',
+    )
+    mock_drop = mocker.patch(
+        'src.characters.tools.answer.stickers_embedding_client.drop_sticker'
+    )
+
+    result = await send_sticker.ainvoke({'sticker_id': 'sticker_uid'})
+
+    assert isinstance(result, ToolFailure)
+    assert mock_drop.call_args == call('sticker_uid')
+
+
+async def test_send_sticker_non_bad_request_propagates_without_evicting(mocker):
+    # A network blip must not quietly evict a sticker that is still fine.
+    replier = make_sticker_replier()
+    replier.reply_sticker = AsyncMock(side_effect=RuntimeError('network blip'))
+    mocker.patch(
+        'src.characters.tools.answer.get_sendable_file_id', return_value='SENDABLE_FILE_ID',
+    )
+    mock_drop = mocker.patch(
+        'src.characters.tools.answer.stickers_embedding_client.drop_sticker'
+    )
+
+    with pytest.raises(RuntimeError, match='network blip'):
+        await send_sticker.ainvoke({'sticker_id': 'sticker_uid'})
+
+    assert mock_drop.call_count == 0
