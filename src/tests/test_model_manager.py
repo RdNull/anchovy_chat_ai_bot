@@ -3,6 +3,7 @@ import os
 from unittest.mock import patch
 
 import pytest
+from langchain.chat_models import init_chat_model
 
 from src import settings
 from src.model_manager import ModelManager
@@ -101,3 +102,40 @@ def test_get_model_settings_not_found(tmp_path):
 
     assert 'No model settings found' in str(excinfo.value)
     assert 'non_existent_task' in str(excinfo.value)
+
+
+def test_web_search_settings_keep_plugins():
+    """The web plugin is the whole tool: a dropped key degrades to training data.
+
+    Reads the real config rather than a `tmp_path` fixture — the point is that the
+    shipped file still carries the plugin, not that the loader can read JSON.
+    """
+    manager = ModelManager()
+
+    with patch.object(settings, 'IS_LOCAL', False):
+        cloud = manager.get_model_settings('web_search', 'v1')
+    with patch.object(settings, 'IS_LOCAL', True):
+        local = manager.get_model_settings('web_search', 'v1')
+
+    assert cloud['plugins'] == [{'id': 'web', 'engine': 'parallel', 'max_results': 3}]
+    assert cloud['max_tokens'] == 150
+    assert local == cloud
+
+
+def test_web_search_model_declares_plugins():
+    """`plugins` must stay a declared field on the chat model, not `model_kwargs`.
+
+    `requirements.txt` pins no `langchain-openrouter` version. If the field stops
+    being declared, `build_extra` shunts it into `model_kwargs` and the call still
+    succeeds — answering from training data instead of the web. This turns that
+    silent regression into a red build. No network: construction only.
+    """
+    manager = ModelManager()
+    with patch.object(settings, 'IS_LOCAL', False):
+        model_settings = manager.get_model_settings('web_search', 'v1')
+
+    llm = init_chat_model(**model_settings)
+
+    assert llm.plugins == [{'id': 'web', 'engine': 'parallel', 'max_results': 3}]
+    assert 'plugins' not in llm.model_kwargs
+    assert llm._default_params['plugins'] == llm.plugins

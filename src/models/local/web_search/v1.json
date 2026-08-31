@@ -1,0 +1,17 @@
+{
+    "model_provider": "openrouter",
+    "model": "anthropic/claude-haiku-4.5",
+    "api_key": "env:OPENROUTER_API_KEY",
+    "max_tokens": 150,
+    "temperature": 0.0,
+    "reasoning": {
+        "effort": "none"
+    },
+    "plugins": [
+        {
+            "id": "web",
+            "engine": "parallel",
+            "max_results": 3
+        }
+    ]
+}
