@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Biba: хочу айфон 17 про взять"
+    },
+    {
+        "role": "assistant",
+        "content": "ты и айфон"
+    },
+    {
+        "role": "user",
+        "content": "Biba: а скок он щас в казахстане стоит вообще?"
+    }
+]

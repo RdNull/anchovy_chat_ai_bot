@@ -4,6 +4,8 @@
     "api_key": "env:OPENROUTER_API_KEY",
     "max_completion_tokens": 200,
     "temperature": 0.8,
+    "timeout": 60000,
+    "max_retries": 0,
     "reasoning": {
         "effort": "none"
     }

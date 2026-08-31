@@ -53,3 +53,6 @@ def test_wrappers(mocker):
 
     ai.get_animation_descriptor_model('v4')
     assert mock_get.call_args == call('animation_describe', 'v4')
+
+    ai.get_web_search_model('v1')
+    assert mock_get.call_args == call('web_search', 'v1')

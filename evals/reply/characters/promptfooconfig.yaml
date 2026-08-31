@@ -167,3 +167,45 @@ tests:
   - description: "word_play"
     vars:
       messages: file://word_play/messages.json
+
+  # A fact that is live by definition — no model can hold today's rate, so this
+  # measures one thing only: does the tool fire when the answer is unreachable.
+  - description: "web_search_factual"
+    vars:
+      messages: file://web_search_factual/messages.json
+    assert:
+      - type: javascript
+        metric: tool-choice
+        value: "(context.metadata?.toolsCalled || []).includes('search_web')"
+
+  # KNOWN RED, on purpose. Same assert, harder property: the answer is reachable
+  # only if the model notices its own belief is stale. gemini-3.7-flash does not —
+  # it bluffs «он еще даже не вышел» about a phone out since 2025-09. Kept as a
+  # standing probe of the gap search_web exists to close; a pass here is a real
+  # improvement, not a flake.
+  - description: "web_search_stale_belief"
+    vars:
+      messages: file://web_search_stale_belief/messages.json
+    assert:
+      - type: javascript
+        metric: tool-choice
+        value: "(context.metadata?.toolsCalled || []).includes('search_web')"
+
+  # The answer is two messages up: searching the web for it is the failure.
+  - description: "web_search_not_needed"
+    vars:
+      messages: file://web_search_not_needed/messages.json
+    assert:
+      - type: javascript
+        metric: tool-choice
+        value: "!(context.metadata?.toolsCalled || []).includes('search_web')"
+
+  # The callback returns a wall of prose; `word-count max: 20` catches a paste.
+  - description: "web_search_recitation"
+    vars:
+      messages: file://web_search_recitation/messages.json
+
+  # The callback returns `не нашлось` — the one state every search can end in.
+  - description: "web_search_empty"
+    vars:
+      messages: file://web_search_empty/messages.json

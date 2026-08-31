@@ -1,8 +1,10 @@
 import json
 import os
+import pathlib
 from unittest.mock import patch
 
 import pytest
+from langchain.chat_models import init_chat_model
 
 from src import settings
 from src.model_manager import ModelManager
@@ -101,3 +103,93 @@ def test_get_model_settings_not_found(tmp_path):
 
     assert 'No model settings found' in str(excinfo.value)
     assert 'non_existent_task' in str(excinfo.value)
+
+
+def test_web_search_settings_keep_plugins():
+    """The web plugin is the whole tool: a dropped key degrades to training data.
+
+    Reads the real config rather than a `tmp_path` fixture — the point is that the
+    shipped file still carries the plugin, not that the loader can read JSON.
+    """
+    manager = ModelManager()
+
+    with patch.object(settings, 'IS_LOCAL', False):
+        cloud = manager.get_model_settings('web_search', 'v1')
+    with patch.object(settings, 'IS_LOCAL', True):
+        local = manager.get_model_settings('web_search', 'v1')
+
+    plugin = cloud['plugins'][0]
+    assert plugin['id'] == 'web'
+    assert plugin['engine'] == 'parallel'
+    assert plugin['max_results'] == 3
+    # Overrides the plugin's own injected «cite them using markdown links», which
+    # otherwise outranks the extraction prompt and spends the 150-token budget on
+    # citations the parser then deletes.
+    assert 'search_prompt' in plugin
+    assert cloud['max_tokens'] == 150
+    assert local == cloud
+
+
+def test_web_search_model_declares_plugins():
+    """`plugins` must stay a declared field on the chat model, not `model_kwargs`.
+
+    `requirements.txt` pins no `langchain-openrouter` version. If the field stops
+    being declared, `build_extra` shunts it into `model_kwargs` and the call still
+    succeeds — answering from training data instead of the web. This turns that
+    silent regression into a red build. No network: construction only.
+    """
+    manager = ModelManager()
+    with patch.object(settings, 'IS_LOCAL', False):
+        model_settings = manager.get_model_settings('web_search', 'v1')
+
+    llm = init_chat_model(**model_settings)
+
+    assert llm.plugins == model_settings['plugins']
+    assert 'plugins' not in llm.model_kwargs
+    assert llm._default_params['plugins'] == llm.plugins
+
+
+def test_web_search_transport_fits_the_tool_budget():
+    """The SDK retries connection errors for ~300s by default, and silently.
+
+    `langchain-openrouter` defaults to `max_retries=2`, which builds a backoff
+    `RetryConfig` with a 300s window and `retry_connection_errors=True`, and to no
+    HTTP timeout at all. Inside `search_web`'s budget that spends the whole tool
+    call on invisible retries — they produce no httpx log line, because a
+    connection error never yields a response to log.
+
+    The HTTP timeout must also fire before `asyncio.wait_for` cancels from the
+    outside, so a stall surfaces as an error with a cause rather than a bare
+    cancellation.
+    """
+    manager = ModelManager()
+    with patch.object(settings, 'IS_LOCAL', False):
+        cloud = manager.get_model_settings('web_search', 'v1')
+
+    assert cloud['max_retries'] == 0
+    assert cloud['timeout'] < settings.WEB_SEARCH_TIMEOUT * 1000
+
+
+def test_every_openrouter_config_bounds_its_transport():
+    """No OpenRouter config may inherit the SDK's retry and timeout defaults.
+
+    `max_retries=2` builds a backoff `RetryConfig` with a 300s window and
+    `retry_connection_errors=True`, and `request_timeout` defaults to `None` — no
+    HTTP timeout at all. Together, a connection-level stall spends minutes inside
+    the SDK, emitting no httpx log line, however tight the caller's own budget is.
+    Every config pins both so a hang fails at a known bound with a cause.
+
+    Local (ollama) configs are excluded: different SDK, different parameters.
+    """
+    configs = sorted(pathlib.Path('src/models/cloud').glob('*/*.json'))
+    assert configs, 'no cloud model configs found'
+
+    unbounded = []
+    for path in configs:
+        config = json.loads(path.read_text())
+        if config.get('model_provider') != 'openrouter':
+            continue
+        if config.get('max_retries') != 0 or not config.get('timeout'):
+            unbounded.append(str(path))
+
+    assert unbounded == []

@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Misha: жду half-life 3 десятый год"
+    },
+    {
+        "role": "assistant",
+        "content": "пон"
+    },
+    {
+        "role": "user",
+        "content": "Misha: там дату выхода уже объявили или нет?"
+    }
+]

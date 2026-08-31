@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Biba: хотел баксы поменять, забил"
+    },
+    {
+        "role": "assistant",
+        "content": "жадина"
+    },
+    {
+        "role": "user",
+        "content": "Biba: а какой сегодня курс доллара к тенге?"
+    }
+]
