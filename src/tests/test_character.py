@@ -435,6 +435,14 @@ def test_system_message_contains_style_prompt():
     assert 'Говори только по-русски и коротко.' in msg.content
 
 
+def test_system_message_carries_the_sticker_guidance():
+    # v8 is a copy of v7 plus this block; the version pin and the file must agree.
+    content = make_character().system_message.content
+
+    assert 'СТИКЕРЫ:' in content
+    assert 'find_stickers' in content
+
+
 def test_system_message_without_memory_has_no_memory_section():
     character = make_character()
     character.memory = None
