@@ -38,6 +38,7 @@ def make_update():
         update.message.text = text
         update.message.caption = None
         update.message.reply_text = AsyncMock(return_value=MagicMock(message_id=999))
+        update.message.reply_sticker = AsyncMock(return_value=MagicMock(message_id=998))
         update.message.set_reaction = AsyncMock(return_value=True)
         update.message.from_user.username = username
         update.message.from_user.first_name = username
