@@ -420,3 +420,17 @@ async def test_search_web_keeps_leading_minus_sign(mocker):
     result = await search_web.ainvoke({'query': 'x', 'limit': 2})
 
     assert result == ['-0,58% за сутки', '-1,2% за неделю']
+
+
+async def test_search_web_not_found_voids_trailing_commentary(mocker):
+    # Observed live: the model emits the marker and then explains itself. The
+    # explanation is commentary about the search, not a fragment.
+    mock_web_search_model(
+        mocker,
+        'не нашлось\n\n(В результатах поиска указана волатильность 2,86%, '
+        'но конкретный курс BTC/USD на сегодня не приведён)',
+    )
+
+    result = await search_web.ainvoke({'query': 'курс биткоина', 'limit': 3})
+
+    assert result == ['не нашлось']

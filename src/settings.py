@@ -28,7 +28,10 @@ class _Settings(BaseSettings):
     # Web search is a separate budget from the character's own rate limit: it protects
     # spend, not voice, so it is per chat rather than per chat per character.
     WEB_SEARCH_RATE_LIMIT: int = 3   # per 60s window (_WINDOW in rate_limit.py)
-    WEB_SEARCH_TIMEOUT: int = 12     # must stay well under AI_TIMEOUT, which wraps the whole loop
+    # Measured, not guessed: search latency is bimodal — ~5s or ~24s on identical
+    # config — so the original 12s threw away every slow search. Three searches at
+    # this ceiling would exhaust AI_TIMEOUT, which wraps the whole loop.
+    WEB_SEARCH_TIMEOUT: int = 30
 
     EMBEDDINGS_SEARCH_MAX_SIZE: int = 3
 

@@ -117,7 +117,14 @@ def test_web_search_settings_keep_plugins():
     with patch.object(settings, 'IS_LOCAL', True):
         local = manager.get_model_settings('web_search', 'v1')
 
-    assert cloud['plugins'] == [{'id': 'web', 'engine': 'parallel', 'max_results': 3}]
+    plugin = cloud['plugins'][0]
+    assert plugin['id'] == 'web'
+    assert plugin['engine'] == 'parallel'
+    assert plugin['max_results'] == 3
+    # Overrides the plugin's own injected «cite them using markdown links», which
+    # otherwise outranks the extraction prompt and spends the 150-token budget on
+    # citations the parser then deletes.
+    assert 'search_prompt' in plugin
     assert cloud['max_tokens'] == 150
     assert local == cloud
 
@@ -136,6 +143,6 @@ def test_web_search_model_declares_plugins():
 
     llm = init_chat_model(**model_settings)
 
-    assert llm.plugins == [{'id': 'web', 'engine': 'parallel', 'max_results': 3}]
+    assert llm.plugins == model_settings['plugins']
     assert 'plugins' not in llm.model_kwargs
     assert llm._default_params['plugins'] == llm.plugins
