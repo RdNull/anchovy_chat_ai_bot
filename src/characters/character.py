@@ -78,7 +78,7 @@ class Character:
         ]
 
         tools_registry = ToolRegistry(
-            context_tools=(tools.search_messages, tools.get_user_facts,),
+            context_tools=(tools.search_messages, tools.get_user_facts, tools.search_web,),
             direct_tools=(tools.answer_text, tools.set_reaction,),
             context=ToolContext(chat_id=chat_id, replier=replier),
         )
