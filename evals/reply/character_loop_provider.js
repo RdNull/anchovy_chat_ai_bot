@@ -65,6 +65,9 @@ function extractAnswer(toolCalls) {
         const args = parseArgs(fn.arguments);
         if (fn.name === 'answer_text' && args.text) return args.text;
         if (fn.name === 'set_reaction' && args.emoji) return `[reaction: ${args.emoji}]`;
+        // Registered so a sticker choice reads as a scoreable answer instead of running
+        // the loop out to maxIterations and failing for the wrong reason.
+        if (fn.name === 'send_sticker' && args.sticker_id) return `[sticker: ${args.sticker_id}]`;
     }
     return null;
 }
