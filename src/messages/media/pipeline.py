@@ -2,6 +2,7 @@ import asyncio
 
 from telegram.ext import ContextTypes
 
+from src.embeddings.stickers import stickers_embedding_client
 from src.logs import logger
 from src.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescriptionData, MediaDetectionData,
@@ -68,13 +69,18 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
         await update_media_description_status(media_description.id, MessageMediaStatus.ERROR)
         return
 
-    await update_media_description(
+    updated = await update_media_description(
         description_id=media_description.id,
         content_hash=content_hash,
         description=image_description.description,
         ocr_text=image_description.ocr_text,
         status=MessageMediaStatus.READY,
     )
+    # Deliberately not gated on ENABLE_STICKER_REPLIES: the flag gates the tools, and
+    # the corpus has to accumulate while it is off so there is something there to
+    # search when it is flipped on.
+    if updated and updated.is_sticker:
+        await stickers_embedding_client.save_sticker(updated)
 
 
 async def wait_for_media_ready(unique_ids: list[str], timeout: float) -> None:

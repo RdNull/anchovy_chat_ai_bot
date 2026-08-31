@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from telegram import Sticker
 
+from src import settings
+
 from src.messages.media import (
     create_media_description, get_media_description_by_media_id, get_recent_sticker_ids,
     get_sendable_file_id, handle_media_message, reset_sticker_corpus_cache,
@@ -272,16 +274,8 @@ async def test_get_message_media_data_live_parse_wins_over_stored_row():
     assert media.sticker_set == 'fresh_pack'
 
 
-async def test_handle_media_message_passes_sticker_fields_through(mocker, mock_context):
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
-        content='base64content',
-        format='webp',
-    ))
-    mocker.patch(
-        'src.messages.media.pipeline._generate_media_description',
-        return_value=MediaDescriptionData(description='a dancing cat', ocr_text=None),
-    )
-    message = Message(
+def sticker_message():
+    return Message(
         chat_id=123,
         nickname='testuser',
         role=UserRole.USER,
@@ -296,12 +290,62 @@ async def test_handle_media_message_passes_sticker_fields_through(mocker, mock_c
         ),
     )
 
-    await handle_media_message(message, mock_context)
+
+async def test_handle_media_message_passes_sticker_fields_through(mocker, mock_context):
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+        content='base64content',
+        format='webp',
+    ))
+    mocker.patch(
+        'src.messages.media.pipeline._generate_media_description',
+        return_value=MediaDescriptionData(description='a dancing cat', ocr_text=None),
+    )
+    mocker.patch('src.messages.media.pipeline.stickers_embedding_client.save_sticker')
+
+    await handle_media_message(sticker_message(), mock_context)
 
     stored = await get_media_description_by_media_id('sticker_uid')
     assert stored.is_sticker is True
     assert stored.sticker_emoji == '💃'
     assert stored.sticker_set == 'cats'
+
+
+async def test_handle_media_message_indexes_a_ready_sticker(mocker, mock_context):
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+        content='base64content', format='webp',
+    ))
+    mocker.patch(
+        'src.messages.media.pipeline._generate_media_description',
+        return_value=MediaDescriptionData(description='кот танцует', ocr_text=None),
+    )
+    mock_save = mocker.patch(
+        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+    )
+    mocker.patch.object(settings, 'ENABLE_STICKER_REPLIES', False)
+
+    await handle_media_message(sticker_message(), mock_context)
+
+    # Indexing is not gated on the flag: the corpus has to accumulate while it is off.
+    assert mock_save.call_count == 1
+    assert mock_save.call_args[0][0].media_id == 'sticker_uid'
+    assert mock_save.call_args[0][0].status == MessageMediaStatus.READY
+
+
+async def test_handle_media_message_does_not_index_a_photo(mocker, sample_message, mock_context):
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+        content='base64content', format='jpg',
+    ))
+    mocker.patch(
+        'src.messages.media.pipeline._generate_media_description',
+        return_value=MediaDescriptionData(description='a screenshot', ocr_text=None),
+    )
+    mock_save = mocker.patch(
+        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+    )
+
+    await handle_media_message(sample_message, mock_context)
+
+    assert mock_save.call_count == 0
 
 
 # --- get_sendable_file_id / corpus helpers ---

@@ -66,6 +66,15 @@ class _Settings(BaseSettings):
     QUESTIONS_KEEP: int = 5
     JOKES_KEEP: int = 5
 
+    # Stickers ship cold: the index starts empty and fills from live traffic. The
+    # corpus gate is what keeps an empty `find_stickers` from spending one of the
+    # three context-tool calls the character gets per reply.
+    ENABLE_STICKER_REPLIES: bool = False
+    STICKER_SEARCH_LIMIT: int = 5
+    STICKER_SCORE_THRESHOLD: float = 0.25  # looser than facts: a plausible handful, not one hit
+    STICKER_MIN_CORPUS: int = 5
+    STICKER_RECENT_EXCLUDE: int = 10
+
     EMBEDDINGS_MODEL_NAME: str = 'text-embedding-3-small'
     EMBEDDINGS_VECTOR_SIZE: int = 1536
 
@@ -127,6 +136,11 @@ RECENT_MAX_CYCLES = _s.RECENT_MAX_CYCLES
 TOPICS_KEEP = _s.TOPICS_KEEP
 QUESTIONS_KEEP = _s.QUESTIONS_KEEP
 JOKES_KEEP = _s.JOKES_KEEP
+ENABLE_STICKER_REPLIES = _s.ENABLE_STICKER_REPLIES
+STICKER_SEARCH_LIMIT = _s.STICKER_SEARCH_LIMIT
+STICKER_SCORE_THRESHOLD = _s.STICKER_SCORE_THRESHOLD
+STICKER_MIN_CORPUS = _s.STICKER_MIN_CORPUS
+STICKER_RECENT_EXCLUDE = _s.STICKER_RECENT_EXCLUDE
 
 EMBEDDINGS_MODEL_SETTINGS = {
     'model_name': _s.EMBEDDINGS_MODEL_NAME,
