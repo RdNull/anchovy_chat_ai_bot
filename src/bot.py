@@ -10,8 +10,24 @@ from telegram.ext import (
 )
 
 from src import const, settings, tasks
+from src.logs import logger
 from src.messages import handlers
+from src.messages.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
+
+
+async def log_sticker_corpus():
+    """One line at boot: how much of the group's sticker vocabulary is searchable yet?
+
+    The corpus fills as people re-send stickers the bot has already seen, so this
+    number is how you watch a cold start warm up — and if it stalls, it is the
+    evidence that the group recycles a very small sticker set, the one thing that
+    would make the narrow-vocabulary decision worth revisiting.
+    """
+    size = await sticker_corpus_size()
+    logger.info(
+        f'STICKER_CORPUS size={size} enabled={settings.ENABLE_STICKER_REPLIES}'
+    )
 
 
 async def setup_scheduler():
@@ -32,6 +48,7 @@ def main() -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)  # so that both tg app and scheduler run on a single loop
 
+    loop.create_task(log_sticker_corpus())
     loop.create_task(setup_scheduler())
     app = ApplicationBuilder().token(
         settings.TELEGRAM_TOKEN

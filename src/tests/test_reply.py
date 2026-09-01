@@ -49,6 +49,40 @@ async def test_reply_message_attaches_user_message_as_reply(make_update):
     assert ai_msg.reply.nickname == 'questioner'
 
 
+async def test_reply_sticker_calls_telegram_api(make_update):
+    replier = make_replier(make_update)
+
+    await replier.reply_sticker('SENDABLE_FILE_ID', 'sticker_uid')
+
+    assert replier.update.message.reply_sticker.call_count == 1
+    assert replier.update.message.reply_sticker.call_args[0][0] == 'SENDABLE_FILE_ID'
+
+
+async def test_reply_sticker_persists_the_send(make_update):
+    # Persisting is not bookkeeping: it is what the recency exclusion in find_stickers
+    # reads, and what puts the sticker into the character's own history.
+    replier = make_replier(make_update)
+
+    await replier.reply_sticker('SENDABLE_FILE_ID', 'sticker_uid')
+
+    history = await get_messages(222)
+    assert len(history) == 1
+    saved = history[0]
+    assert saved.role == UserRole.AI
+    assert saved.media is not None
+    assert saved.media.media_id == 'SENDABLE_FILE_ID'
+    assert saved.media.unique_id == 'sticker_uid'
+    assert not saved.text
+
+
+async def test_reply_sticker_history_renders_without_literal_none(make_update):
+    replier = make_replier(make_update)
+
+    message = await replier.reply_sticker('SENDABLE_FILE_ID', 'sticker_uid')
+
+    assert 'None' not in message.embedding_text
+
+
 async def test_reply_reaction_calls_set_reaction(make_update):
     replier = make_replier(make_update)
 

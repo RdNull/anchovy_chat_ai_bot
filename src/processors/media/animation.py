@@ -28,7 +28,7 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
     logger.info(
         f"Generating animation description ({len(key_frames)} frames) for animation {animation.content_hash}"
     )
-    llm = ai.get_animation_descriptor_model()
+    llm = ai.get_animation_descriptor_model(version='v2')
     model_with_structure = llm.with_structured_output(MediaDescriptionData)
 
     messages = [

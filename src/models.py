@@ -38,6 +38,10 @@ def format_ts(value: datetime) -> str:
 class MessageMediaTypes(str, Enum):
     IMAGE = 'image'
     GIF = 'gif'
+    # Never produced by `messages/media/download.py`, which types by file extension and
+    # cannot tell a `.webp` sticker from a `.webp` photo. Set from Telegram's own
+    # metadata at parse time; see `messages/parsing.py:_mark_sticker`.
+    STICKER = 'sticker'
 
 
 class MessageMediaStatus(str, Enum):
@@ -77,6 +81,7 @@ class MessageMedia(BaseModel):
     unique_id: str | None = None  # for identification
     description: str | None = None
     ocr_text: str | None = None
+    sticker_emoji: str | None = None
 
     @property
     def ai_format(self):
@@ -101,7 +106,7 @@ class Message(BaseModel):
 
     @property
     def embedding_text(self) -> str:
-        message_part = self.text
+        message_part = self.text or ''
         if self.media:
             message_part = f'{message_part} [{self.media.ai_format}]'
 
@@ -190,11 +195,12 @@ class AnimationDetectionData(MediaDetectionData):
 
 class MediaDescription(BaseModel):
     id: MongoId | None = Field(default=None, alias='_id')
-    media_id: str | None = None
+    media_id: str | None = None  # holds a `file_unique_id`, NOT a sendable `file_id`
     description: str
     ocr_text: str | None = None
     type: MessageMediaTypes
     status: MessageMediaStatus = MessageMediaStatus.PROCESSING
+    sticker_emoji: str | None = None
 
 
 class MediaDescriptionData(BaseModel):

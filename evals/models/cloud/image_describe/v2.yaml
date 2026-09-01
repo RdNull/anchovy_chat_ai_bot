@@ -1,0 +1,6 @@
+id: openrouter:google/gemini-3.1-flash-lite
+label: "v2:gemini-3.1-fl"
+config:
+  max_tokens: 2048
+  temperature: 0.4
+  showThinking: false

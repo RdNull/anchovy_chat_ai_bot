@@ -106,7 +106,9 @@ mocker.patch('src.characters.tools.context.messages_embeddings_client.search', r
 
 ### Tool calls in character.respond()
 Patch `ToolRegistry.execute` — do NOT patch individual `StructuredTool` instances
-(they are frozen Pydantic models and cannot be patched directly):
+(they are frozen Pydantic models and cannot be patched directly). `execute` returns
+a **tuple** of `(ToolMessage, raw result)`; the loop reads the raw value to tell a
+`ToolFailure` from a delivered answer, so a bare `ToolMessage` return unpacks wrong:
 ```python
 from src.tools import ToolRegistry
 from langchain_core.messages import ToolMessage
@@ -114,9 +116,52 @@ from langchain_core.messages import ToolMessage
 mocker.patch.object(
     ToolRegistry,
     'execute',
-    new=AsyncMock(return_value=ToolMessage(tool_call_id='tc1', content='[]')),
+    new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content='[]'), None)),
 )
 ```
+To drive the failure-recovery path, return a `ToolFailure` as the raw value —
+`src/tests/test_character.py:execute_returning` wraps this for a sequence of calls:
+```python
+from src.tools import ToolFailure
+
+mocker.patch.object(
+    ToolRegistry,
+    'execute',
+    new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content='fail'),
+                                ToolFailure('стикер недоступен'))),
+)
+```
+
+---
+
+## No test-only code in production
+
+Production modules must not carry helpers that exist only for tests — reset
+hooks, clear functions, injection seams, `_for_testing` arguments. If a test
+needs to reach past a module's public surface, it reaches for the private
+directly, from the test layer:
+
+```python
+# BAD — src/characters/tools/context.py
+def reset_web_search_limiter():
+    """For tests."""
+    _web_search_limiter._call_times.clear()
+
+# GOOD — src/tests/test_tools.py
+@pytest.fixture(autouse=True)
+def reset_web_search_limiter():
+    _web_search_limiter._call_times.clear()
+    yield
+    _web_search_limiter._call_times.clear()
+```
+
+The test file is allowed to know a module private; the module is not allowed to
+grow API for its tests. Module-level state that leaks between tests (a rate
+limiter window, a cache) is the usual reason this comes up — clear it in an
+autouse fixture next to the tests that care.
+
+If the seam feels unavoidable, that is usually the state itself being wrong
+rather than the test: prefer deleting the module-level global.
 
 ---
 
@@ -188,6 +233,8 @@ update = make_update(reply_to_message=reply_msg)
 | `freezegun` breaks pymongo async | Never use `freezegun` in this project. Natural insertion order is reliable enough for ordering tests. |
 | `bind_tools()` returns a coroutine | Use `MagicMock()` base for LLM, not `AsyncMock()`. |
 | Patching `StructuredTool.ainvoke` fails | Patch `ToolRegistry.execute` instead. |
+| `ToolRegistry.execute` returns a tuple | `(ToolMessage, raw_result)`. Returning a bare `ToolMessage` from the mock makes the loop unpack it as two messages. |
+| A direct tool that fails must not end the turn | It returns `ToolFailure`; the loop appends the `ToolMessage` and recurses. `_MAX_LOOP_DEPTH` (8) is the absolute stop. |
 | `@restricted` blocks unexpected users | `make_update` defaults to `user_id=111`, `chat_id=222` which are in the allowlist. Use a different ID to test the rejection path. |
 | Test for rejection path needs `effective_message` mock | `make_update` sets `update.effective_message.reply_text = AsyncMock()` — use this, not `update.message.reply_text`, to assert rejection messages. |
 | `settings` variables are set at import time | Use `mocker.patch.object(settings, 'FIELD', value)` to override for a test. |

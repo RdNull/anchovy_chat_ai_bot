@@ -1,10 +1,14 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, call
+
+from telegram import Sticker
 
 from src import mongo, settings
 from src.characters.repository import CHARACTERS
 from src.chat_settings import repository as chat_settings_repository
 from src.messages import handlers
+from src.messages.media import create_media_description
 from src.messages.parsing import _get_message_medium
 from src.messages.repository import (
     get_messages, save_message,
@@ -94,6 +98,25 @@ async def test_restricted_blocks_unauthorized_user(make_update, make_context):
 
 # --- parse_user_message ---
 
+def make_sticker(file_id='sticker_fid', unique_id='sticker_uid', emoji='😀', set_name='pack'):
+    """A real `telegram.Sticker`, not a MagicMock.
+
+    `_mark_sticker` narrows with `isinstance`, so a bare MagicMock would be read as a
+    photo and the assertions below would pass for the wrong reason.
+    """
+    return Sticker(
+        file_id=file_id,
+        file_unique_id=unique_id,
+        width=512,
+        height=512,
+        is_animated=False,
+        is_video=False,
+        type=Sticker.REGULAR,
+        emoji=emoji,
+        set_name=set_name,
+    )
+
+
 async def test_parse_user_message_text(make_update, make_context):
     update = make_update(text='hi there', username='alice', chat_id=222)
 
@@ -146,6 +169,47 @@ async def test_parse_user_message_with_photo(make_update):
     assert msg.media is not None
     assert msg.media.media_id == 'file123'
     assert msg.media.unique_id == 'unique123'
+
+
+async def test_parse_user_message_with_sticker_types_it_as_a_sticker(make_update):
+    update = make_update(sticker=make_sticker(emoji='🔥'))
+
+    msg = await handlers.parse_user_message(update)
+
+    assert msg.media is not None
+    assert msg.media.media_id == 'sticker_fid'
+    assert msg.media.unique_id == 'sticker_uid'
+    assert msg.media.type == MessageMediaTypes.STICKER
+    assert msg.media.sticker_emoji == '🔥'
+
+
+async def test_parse_user_message_with_photo_is_not_a_sticker(make_update):
+    # The assertion the whole sticker index rests on: a photo and a static sticker are
+    # both MessageMediaTypes.IMAGE, so without this the bot can reply with a screenshot.
+    photo = MagicMock()
+    photo.file_id = 'photo_fid'
+    photo.file_unique_id = 'photo_uid'
+    photo.width = 400
+    photo.height = 400
+    update = make_update(photo=[photo])
+
+    msg = await handlers.parse_user_message(update)
+
+    assert msg.media.type != MessageMediaTypes.STICKER
+    assert msg.media.sticker_emoji is None
+
+
+async def test_parse_user_message_with_animation_is_not_a_sticker(make_update):
+    animation = MagicMock()
+    animation.file_id = 'anim_fid'
+    animation.file_unique_id = 'anim_uid'
+    animation.duration = 5
+    update = make_update(sticker=None, photo=None, animation=animation)
+
+    msg = await handlers.parse_user_message(update)
+
+    assert msg.media.type != MessageMediaTypes.STICKER
+    assert msg.media.sticker_emoji is None
 
 
 # --- handle_conversation ---
@@ -259,6 +323,34 @@ async def test_handle_media_no_message_returns_early(make_context, mocker):
     await handlers.handle_media(update, make_context)
 
     assert mock_gen.call_count == 0
+
+
+async def test_handle_conversation_dispatches_pipeline_for_described_media(
+    mocker, make_update, make_context,
+):
+    # A sticker the group has sent before comes back READY from the description row.
+    # Gating dispatch on PENDING would skip the pipeline entirely and leave
+    # `_backfill_sticker` unreachable on the path most stickers arrive by.
+    mocker.patch('src.messages.handlers.random.random', return_value=1.0)
+    mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
+    mock_handle_media = mocker.patch(
+        'src.messages.handlers.handle_media_message', new_callable=AsyncMock
+    )
+    await create_media_description(
+        media_id='sticker_uid',
+        type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY,
+        description='кот танцует',
+    )
+    update = make_update(sticker=make_sticker(), chat_id=222)
+
+    await handlers.handle_conversation(update, make_context)
+    await asyncio.sleep(0)
+
+    assert mock_handle_media.call_count == 1
+    dispatched = mock_handle_media.call_args[0][0]
+    assert dispatched.media.status == MessageMediaStatus.READY
+    assert dispatched.media.type == MessageMediaTypes.STICKER
 
 
 # --- handle_conversation early return ---
@@ -377,9 +469,7 @@ async def test_handle_conversation_random_reply_fires_after_cooldown(
 # --- parse_user_message reply with medium ---
 
 async def test_parse_user_message_reply_with_sticker(make_update):
-    sticker = MagicMock()
-    sticker.file_id = 'sticker_fid'
-    sticker.file_unique_id = 'sticker_uid'
+    sticker = make_sticker()
 
     reply_msg = MagicMock()
     reply_msg.text = 'sticker reply'
@@ -397,6 +487,8 @@ async def test_parse_user_message_reply_with_sticker(make_update):
     assert msg.reply is not None
     assert msg.reply.media is not None
     assert msg.reply.media.media_id == 'sticker_fid'
+    assert msg.reply.media.type == MessageMediaTypes.STICKER
+    assert msg.reply.media.sticker_emoji == '😀'
 
 
 # --- test handle_message_edit ---

@@ -183,6 +183,21 @@ def test_message_embedding_text_reply_with_media():
     assert 'other|' in msg.embedding_text
 
 
+def test_message_embedding_text_caption_less_media_has_no_literal_none():
+    # A bare sticker or photo carries no caption, and `None` used to reach both the
+    # prompt and the embeddings as the literal string "None [image: ...]".
+    media = MessageMedia(
+        status=MessageMediaStatus.READY,
+        type=MessageMediaTypes.IMAGE,
+        description='a cat',
+        ocr_text=None,
+    )
+    msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text=None, media=media)
+
+    assert 'None' not in msg.embedding_text
+    assert msg.embedding_text == 'nick:  [image: a cat | текст: ]'
+
+
 def test_message_embedding_text_with_timestamp():
     # 2026-04-19 10:00 UTC = 2026-04-19 15:00 Almaty (UTC+5)
     created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)

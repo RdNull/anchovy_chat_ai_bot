@@ -4,10 +4,41 @@ from uuid import UUID
 
 from qdrant_client.http.models import QueryResponse, ScoredPoint
 
+from src import settings
 from src.embeddings.facts import FactsEmbeddingClient, FactsSearchResult
 from src.embeddings.messages import MessageEmbeddingsClient, chunk_messages
-from src.models import Message, MessageMedia, RelatedMessagesData, UserFact, UserRole
+from src.embeddings.stickers import (
+    StickerEmbeddingsClient, StickerSearchResult, _point_id, sticker_embedding_text,
+)
+from src.models import (
+    MediaDescription, Message, MessageMedia, MessageMediaStatus, MessageMediaTypes,
+    RelatedMessagesData, UserFact, UserRole,
+)
 from src.processors.context.embeddings import search_related_messages, update_chat_embeddings
+
+
+def make_description(
+    unique_id='sticker_uid',
+    description='кот танцует',
+    ocr_text=None,
+    emoji='🔥',
+    status=MessageMediaStatus.READY,
+):
+    return MediaDescription(
+        media_id=unique_id,
+        description=description,
+        ocr_text=ocr_text,
+        type=MessageMediaTypes.STICKER,
+        status=status,
+        sticker_emoji=emoji,
+    )
+
+
+def make_sticker_client(mocker, qdrant):
+    mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=qdrant)
+    client = StickerEmbeddingsClient('stickers', 'test_model', 128)
+    client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
+    return client
 
 
 def create_mock_message(mid, text, chat_id=123, nickname='user'):
@@ -289,3 +320,162 @@ async def test_facts_embedding_client_search_facts(mocker):
     assert isinstance(results[0], FactsSearchResult)
     assert results[0].fact == fact
     assert results[0].score == 0.85
+
+
+# --- sticker_embedding_text ---
+
+def test_sticker_embedding_text_puts_emoji_first():
+    text = sticker_embedding_text(make_description(ocr_text='ЛОЛ'))
+
+    assert text == '🔥 | кот танцует | ЛОЛ'
+
+
+def test_sticker_embedding_text_drops_missing_parts():
+    assert sticker_embedding_text(make_description(emoji=None)) == 'кот танцует'
+    assert sticker_embedding_text(make_description(emoji=None, description='')) == ''
+
+
+# --- _point_id ---
+
+def test_point_id_is_stable_for_the_same_unique_id():
+    assert _point_id('abc') == _point_id('abc')
+    assert _point_id('abc') != _point_id('abd')
+
+
+# --- save_sticker ---
+
+async def test_save_sticker_indexes_identity_only(mocker):
+    qdrant = MagicMock(
+        collection_exists=AsyncMock(return_value=True),
+        upsert=AsyncMock(),
+    )
+    client = make_sticker_client(mocker, qdrant)
+
+    await client.save_sticker(make_description())
+
+    assert qdrant.upsert.call_count == 1
+    point = qdrant.upsert.call_args[1]['points'][0]
+    assert point.payload == {'unique_id': 'sticker_uid'}
+    assert 'file_id' not in point.payload
+    assert client._get_embedding_vectors.call_args == call('🔥 | кот танцует')
+
+
+async def test_save_sticker_skips_empty_composite(mocker):
+    qdrant = MagicMock(collection_exists=AsyncMock(return_value=True), upsert=AsyncMock())
+    client = make_sticker_client(mocker, qdrant)
+
+    await client.save_sticker(make_description(emoji=None, description='', ocr_text=None))
+
+    assert qdrant.upsert.call_count == 0
+
+
+async def test_save_sticker_skips_non_ready_row(mocker):
+    qdrant = MagicMock(collection_exists=AsyncMock(return_value=True), upsert=AsyncMock())
+    client = make_sticker_client(mocker, qdrant)
+
+    await client.save_sticker(make_description(status=MessageMediaStatus.PENDING))
+    assert qdrant.upsert.call_count == 0
+
+    await client.save_sticker(make_description(status=MessageMediaStatus.READY))
+    assert qdrant.upsert.call_count == 1
+
+
+async def test_save_sticker_twice_upserts_one_point(mocker):
+    # `facts.py` uses uuid4() here and duplicates every point on a backfill re-run.
+    qdrant = MagicMock(collection_exists=AsyncMock(return_value=True), upsert=AsyncMock())
+    client = make_sticker_client(mocker, qdrant)
+
+    await client.save_sticker(make_description())
+    await client.save_sticker(make_description())
+
+    assert qdrant.upsert.call_count == 2
+    first = qdrant.upsert.call_args_list[0][1]['points'][0]
+    second = qdrant.upsert.call_args_list[1][1]['points'][0]
+    assert first.id == second.id
+
+
+# --- search_stickers ---
+
+async def test_search_stickers_empty_collection_returns_empty(mocker):
+    qdrant = MagicMock(
+        collection_exists=AsyncMock(return_value=True),
+        query_points=AsyncMock(return_value=QueryResponse(points=[])),
+    )
+    client = make_sticker_client(mocker, qdrant)
+
+    assert await client.search_stickers('что угодно', limit=5) == []
+
+
+async def test_search_stickers_returns_rows_from_mongo(mocker):
+    qdrant = MagicMock(
+        collection_exists=AsyncMock(return_value=True),
+        query_points=AsyncMock(return_value=QueryResponse(points=[
+            ScoredPoint(id='p1', version=1, score=0.42, payload={'unique_id': 'sticker_uid'}),
+        ])),
+    )
+    client = make_sticker_client(mocker, qdrant)
+    mocker.patch.object(
+        StickerEmbeddingsClient, '_get_description',
+        AsyncMock(return_value=make_description(ocr_text='ЛОЛ')),
+    )
+
+    results = await client.search_stickers('кот', limit=5)
+
+    assert len(results) == 1
+    assert isinstance(results[0], StickerSearchResult)
+    assert results[0].unique_id == 'sticker_uid'
+    assert results[0].emoji == '🔥'
+    assert results[0].description == 'кот танцует'
+    assert results[0].ocr_text == 'ЛОЛ'
+    assert results[0].score == 0.42
+
+
+async def test_search_stickers_uses_the_configured_threshold(mocker):
+    qdrant = MagicMock(
+        collection_exists=AsyncMock(return_value=True),
+        query_points=AsyncMock(return_value=QueryResponse(points=[])),
+    )
+    client = make_sticker_client(mocker, qdrant)
+    mocker.patch.object(settings, 'STICKER_SCORE_THRESHOLD', 0.25)
+
+    await client.search_stickers('кот', limit=5)
+
+    assert qdrant.query_points.call_args[1]['score_threshold'] == 0.25
+
+
+async def test_search_stickers_skips_missing_or_non_ready_rows(mocker):
+    qdrant = MagicMock(
+        collection_exists=AsyncMock(return_value=True),
+        query_points=AsyncMock(return_value=QueryResponse(points=[
+            ScoredPoint(id='p1', version=1, score=0.9, payload={'unique_id': 'gone'}),
+            ScoredPoint(id='p2', version=1, score=0.8, payload={'unique_id': 'pending'}),
+            ScoredPoint(id='p3', version=1, score=0.7, payload={'unique_id': 'ok'}),
+        ])),
+    )
+    client = make_sticker_client(mocker, qdrant)
+
+    async def fake_get(unique_id):
+        if unique_id == 'gone':
+            return None
+        if unique_id == 'pending':
+            return make_description(unique_id, status=MessageMediaStatus.PENDING)
+        return make_description(unique_id)
+
+    mocker.patch.object(StickerEmbeddingsClient, '_get_description', AsyncMock(side_effect=fake_get))
+
+    results = await client.search_stickers('кот', limit=5)
+
+    assert [r.unique_id for r in results] == ['ok']
+
+
+# --- drop_sticker ---
+
+async def test_drop_sticker_removes_the_point_for_that_unique_id(mocker):
+    qdrant = MagicMock(collection_exists=AsyncMock(return_value=True), delete=AsyncMock())
+    client = make_sticker_client(mocker, qdrant)
+
+    await client.drop_sticker('sticker_uid')
+
+    assert qdrant.delete.call_count == 1
+    assert qdrant.delete.call_args[1]['collection_name'] == 'stickers'
+    assert qdrant.delete.call_args[1]['points_selector'] == [_point_id('sticker_uid')]

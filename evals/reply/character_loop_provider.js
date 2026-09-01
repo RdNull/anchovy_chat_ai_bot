@@ -1,7 +1,12 @@
 // Custom promptfoo provider that mirrors the bot's production tool loop
 // (src/characters/character.py::_run_llm_loop): keep calling an OpenAI-compat
 // chat completions endpoint, run context-tool callbacks, feed results back,
-// until `answer_text` / `set_reaction` is called or maxIterations is hit.
+// until a direct tool is called or maxIterations is hit.
+//
+// Knowingly out of sync with production: the loop there can recover from a direct
+// tool that fails (ToolFailure -> the model gets another turn, bounded by
+// _MAX_LOOP_DEPTH). This suite grades prompt and tool choice, not loop mechanics,
+// so a direct tool here always succeeds. Do not "fix" the divergence.
 
 const path = require('path');
 
@@ -60,6 +65,9 @@ function extractAnswer(toolCalls) {
         const args = parseArgs(fn.arguments);
         if (fn.name === 'answer_text' && args.text) return args.text;
         if (fn.name === 'set_reaction' && args.emoji) return `[reaction: ${args.emoji}]`;
+        // Registered so a sticker choice reads as a scoreable answer instead of running
+        // the loop out to maxIterations and failing for the wrong reason.
+        if (fn.name === 'send_sticker' && args.sticker_id) return `[sticker: ${args.sticker_id}]`;
     }
     return null;
 }

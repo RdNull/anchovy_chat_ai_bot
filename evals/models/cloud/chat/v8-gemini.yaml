@@ -64,6 +64,22 @@ config:
           required: [ query ]
     - type: function
       function:
+        name: find_stickers
+        description: |-
+          [context]: Найти стикеры, которые уже использует чат
+          Возвращает кандидатов с описанием - выбрать подходящий и отправить через send_sticker
+          Если список пуст - стикера на эту тему нет, отвечай текстом
+          Args:
+              search_query: О чём стикер, в свободной форме; максимум 1 предложение
+          Returns:
+              Список: sticker_id, emoji, описание, текст на картинке
+        parameters:
+          type: object
+          properties:
+            search_query: { type: string }
+          required: [ search_query ]
+    - type: function
+      function:
         name: answer_text
         description: |-
           [answer]: Ответить текстом (включая эмодзи)
@@ -83,5 +99,16 @@ config:
           properties:
             emoji: { type: string }
           required: [ emoji ]
+    - type: function
+      function:
+        name: send_sticker
+        description: |-
+          [answer]: Ответить стикером
+          sticker_id: ровно один id из результатов find_stickers
+        parameters:
+          type: object
+          properties:
+            sticker_id: { type: string }
+          required: [ sticker_id ]
 
   functionToolCallbacks: tool_callbacks.js

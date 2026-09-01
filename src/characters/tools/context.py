@@ -8,8 +8,10 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from src import ai, settings
 from src.characters.rate_limit import SlidingWindowRateLimiter
 from src.embeddings.messages import messages_embeddings_client
+from src.embeddings.stickers import stickers_embedding_client
 from src.facts.repository import get_facts
 from src.logs import logger
+from src.messages.media.repository import get_recent_sticker_ids
 from src.prompt_manager import prompt_manager
 from src.tools import ToolContext
 
@@ -194,3 +196,38 @@ def _log_search(chat_id: int, query: str, results: int, outcome: str, elapsed_ms
         f'TOOL_WEB_SEARCH chat_id={chat_id} query={query} results={results} '
         f'outcome={outcome} elapsed_ms={elapsed_ms}'
     )
+
+
+FIND_STICKERS_DESCRIPTION = '''
+[context]: Найти стикеры, которые уже использует чат
+Возвращает кандидатов с описанием - выбрать подходящий и отправить через send_sticker
+Если список пуст - стикера на эту тему нет, отвечай текстом
+Args:
+    search_query: О чём стикер, в свободной форме; максимум 1 предложение
+Returns:
+    Список: sticker_id, emoji, описание, текст на картинке
+'''
+
+
+@tool(description=FIND_STICKERS_DESCRIPTION)
+async def find_stickers(search_query: str) -> list[dict]:
+    tool_context: ToolContext = find_stickers.metadata['context']
+    limit = settings.STICKER_SEARCH_LIMIT
+    excluded = await get_recent_sticker_ids(
+        tool_context.chat_id, settings.STICKER_RECENT_EXCLUDE
+    )
+    # Over-fetch then trim: filtering server-side would need the exclusion list inside
+    # the Qdrant filter, and `_search` builds `must` from equality kwargs only.
+    results = await stickers_embedding_client.search_stickers(
+        search_query, limit=limit + len(excluded),
+    )
+    found = [r for r in results if r.unique_id not in excluded][:limit]
+    logger.info(f"[TOOL] Found {len(found)} stickers for {search_query}")
+    return [
+        {
+            'sticker_id': r.unique_id,
+            'emoji': r.emoji,
+            'description': r.description,
+            'text': r.ocr_text,
+        } for r in found
+    ]

@@ -16,7 +16,12 @@ from . import tools
 from .rate_limit import SlidingWindowRateLimiter
 from .reply import Replier
 from ..settings import CHAT_RATE_LIMIT
-from ..tools import ToolContext, ToolRegistry
+from ..tools import ToolContext, ToolFailure, ToolRegistry
+
+# The `_depth > 5` branch below terminates only because a direct tool always returned.
+# Now that one can fail and hand the model another turn, a send that fails every time
+# would recurse forever without an absolute stop.
+_MAX_LOOP_DEPTH = 8
 
 
 def _format_previous_messages(last_messages: list[Message]) -> Generator[
@@ -52,7 +57,7 @@ class Character:
     def system_message(self):
         setup_prompt = prompt_manager.get_prompt(
             'character_setup',
-            version='v7',
+            version='v8',
             character_description=self.style_prompt,
             memory=self.memory.prompt_format() if self.memory else None,
             related_messages=self.related_messages or None,
@@ -77,9 +82,20 @@ class Character:
             HumanMessage(user_message.ai_format),
         ]
 
+        context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web]
+        direct_tools = [tools.answer_text, tools.set_reaction]
+        # Both or neither: `send_sticker` without `find_stickers` gives the model an id
+        # parameter it can only hallucinate. There is no corpus-size gate — an empty
+        # result is a permanent condition, not a startup one (the index can hold
+        # hundreds of stickers and still have nothing on the topic at hand), so the
+        # empty case has to be handled on every call anyway.
+        if settings.ENABLE_STICKER_REPLIES:
+            context_tools.append(tools.find_stickers)
+            direct_tools.append(tools.send_sticker)
+
         tools_registry = ToolRegistry(
-            context_tools=(tools.search_messages, tools.get_user_facts, tools.search_web,),
-            direct_tools=(tools.answer_text, tools.set_reaction,),
+            context_tools=context_tools,
+            direct_tools=direct_tools,
             context=ToolContext(chat_id=chat_id, replier=replier),
         )
 
@@ -114,6 +130,10 @@ class Character:
         tools_registry: ToolRegistry,
         _depth=1,
     ):
+        if _depth > _MAX_LOOP_DEPTH:
+            logger.error(f'LLM loop hard depth cap hit for {self.name}, giving up')
+            return
+
         if _depth > 5:
             logger.warning(f'LLM loop depth exceeded for {self.name}, returning response')
             direct_response_llm = llm.bind_tools(
@@ -131,15 +151,20 @@ class Character:
 
         messages.append(response)
         for tool_call in response.tool_calls:  # type: ToolCall
-            tool_result = await tools_registry.execute(tool_call)
+            tool_message, tool_result = await tools_registry.execute(tool_call)
             if tools_registry.is_return_direct(tool_call):
-                if len(response.tool_calls) > 1:
-                    logger.warning(f'Multiple tools called for direct response')
-                    rt = langsmith.get_current_run_tree()
-                    rt.tags.append('multiple_response_called')
+                if not isinstance(tool_result, ToolFailure):
+                    if len(response.tool_calls) > 1:
+                        logger.warning(f'Multiple tools called for direct response')
+                        rt = langsmith.get_current_run_tree()
+                        rt.tags.append('multiple_response_called')
 
-                return
+                    return
 
-            messages.append(tool_result)
+                logger.warning(
+                    f'Direct tool {tool_call["name"]} failed: {tool_result.message}'
+                )
+
+            messages.append(tool_message)
 
         await self._run_llm_loop(llm, messages, tools_registry, _depth + 1)
