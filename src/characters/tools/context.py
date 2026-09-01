@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from src import ai, settings
 from src.characters.rate_limit import SlidingWindowRateLimiter
 from src.embeddings.messages import messages_embeddings_client
-from src.embeddings.stickers import stickers_embedding_client
+from src.embeddings.stickers import StickerSearchResult, stickers_embedding_client
 from src.facts.repository import get_facts
 from src.logs import logger
 from src.messages.media.repository import get_recent_sticker_ids
@@ -200,30 +200,69 @@ def _log_search(chat_id: int, query: str, results: int, outcome: str, elapsed_ms
 
 FIND_STICKERS_DESCRIPTION = '''
 [context]: Найти стикеры, которые уже использует чат
-Возвращает кандидатов с описанием - выбрать подходящий и отправить через send_sticker
-Если список пуст - стикера на эту тему нет, отвечай текстом
+Ищет по описаниям картинок, а не по тексту твоей реплики
 Args:
-    search_query: О чём стикер, в свободной форме; максимум 1 предложение
+    queries: 1-3 коротких описания КАРТИНКИ, которую ищешь («плачущий кот», «мужик скрывает боль»)
+    Несколько запросов - только если это разные картинки, а не синонимы
 Returns:
-    Список: sticker_id, emoji, описание, текст на картинке
+    Список кандидатов: sticker_id, emoji, описание, текст на картинке
+    Пустой список - ничего похожего нет, отвечай текстом
 '''
+
+_MAX_QUERIES = 3
+_RRF_K = 60
 
 
 @tool(description=FIND_STICKERS_DESCRIPTION)
-async def find_stickers(search_query: str) -> list[dict]:
+async def find_stickers(queries: list[str] | str) -> list[dict]:
+    if isinstance(queries, str):
+        # The union in the signature is what lets this run at all. `@tool` infers the
+        # args schema from the hint and pydantic validates before the body, so a bare
+        # string against a bare `list[str]` raises inside `ToolRegistry.execute` — and
+        # this is a context tool, so the loop's `ToolFailure` recovery does not cover
+        # it. It would unwind to `respond`'s broad except and cost the whole turn.
+        queries = [queries]
+
+    queries = list(dict.fromkeys(q.strip() for q in queries if q and q.strip()))
+    if len(queries) > _MAX_QUERIES:  # dumb check, but I don't trust AI
+        logger.warning(
+            f'[TOOL] find_stickers call with {len(queries)} queries, '
+            f'truncating to {_MAX_QUERIES}'
+        )
+        queries = queries[:_MAX_QUERIES]
+
+    if not queries:
+        return []
+
     tool_context: ToolContext = find_stickers.metadata['context']
-    limit = settings.STICKER_SEARCH_LIMIT
-    excluded = await get_recent_sticker_ids(
-        tool_context.chat_id, settings.STICKER_RECENT_EXCLUDE
-    )
-    logger.info(f"[TOOL] Excluded stickers {excluded} for {search_query}")
-    # Over-fetch then trim: filtering server-side would need the exclusion list inside
-    # the Qdrant filter, and `_search` builds `must` from equality kwargs only.
-    results = await stickers_embedding_client.search_stickers(
-        search_query, limit=limit + len(excluded),
-    )
-    found = [r for r in results if r.unique_id not in excluded][:limit]
-    logger.info(f"[TOOL] Found {len(found)} stickers for {search_query}")
+    chat_id = tool_context.chat_id
+    started = time.monotonic()
+
+    excluded = await get_recent_sticker_ids(chat_id, settings.STICKER_RECENT_EXCLUDE)
+    # Sequential, not gathered: `_search` calls `_check_collection` on the shared base
+    # client, and concurrent creates race on a cold index. A probe is one cached
+    # embedding call plus a local Qdrant query — cheap next to a loop turn, and
+    # `elapsed_ms` below is what would justify revisiting this.
+    probes = [
+        await stickers_embedding_client.search_sticker_ids(
+            query, limit=settings.STICKER_PROBE_LIMIT
+        )
+        for query in queries
+    ]
+
+    fused = [unique_id for unique_id in _fuse(probes) if unique_id not in excluded]
+
+    # Hydrate in fused order and stop at the limit: one Mongo read per candidate the
+    # character actually sees, not one per hit across every probe.
+    found = []
+    for unique_id in fused:
+        sticker = await stickers_embedding_client.get_sticker(unique_id)
+        if sticker:
+            found.append(sticker)
+        if len(found) >= settings.STICKER_SEARCH_LIMIT:
+            break
+
+    _log_sticker_search(chat_id, queries, probes, found, len(fused), _elapsed(started))
     return [
         {
             'sticker_id': r.unique_id,
@@ -232,3 +271,47 @@ async def find_stickers(search_query: str) -> list[dict]:
             'text': r.ocr_text,
         } for r in found
     ]
+
+
+def _fuse(probes: list[list[str]]) -> list[str]:
+    """Reciprocal Rank Fusion over the probes' rankings.
+
+    Cosine scores from different query embeddings are not calibrated against each
+    other, so concatenating and sorting by score is a single-probe result with extra
+    steps — one probe's scoring quirk dominates and the others silently contribute
+    nothing. Ranks are comparable; scores are not.
+
+    Buys two properties: every probe is represented near the top, and a sticker more
+    than one probe returned is promoted. Ties resolve toward the earlier probe and the
+    better rank, since `dict` keeps insertion order and `sorted` is stable.
+    """
+    scores: dict[str, float] = {}
+    for ids in probes:
+        for rank, unique_id in enumerate(ids, start=1):
+            scores[unique_id] = scores.get(unique_id, 0.0) + 1 / (_RRF_K + rank)
+
+    return sorted(scores, key=lambda unique_id: -scores[unique_id])
+
+
+def _log_sticker_search(
+    chat_id: int,
+    queries: list[str],
+    probes: list[list[str]],
+    found: list[StickerSearchResult],
+    fused: int,
+    elapsed_ms: int,
+) -> None:
+    """The unit's only instrument: what the bot looked for and which probe paid off.
+
+    `hits` and `contrib` are joined positionally against `queries`. `hits` is what a
+    probe returned; `contrib` is how many of the *returned* candidates it supplied.
+    Without `contrib`, «did the second probe ever contribute anything» — the only
+    question that says whether multi-query was worth adding — is unanswerable.
+    """
+    returned = {sticker.unique_id for sticker in found}
+    logger.info(
+        f'TOOL_STICKER_SEARCH chat_id={chat_id} queries={" | ".join(queries)} '
+        f'hits={"|".join(str(len(p)) for p in probes)} '
+        f'contrib={"|".join(str(len(returned.intersection(p))) for p in probes)} '
+        f'fused={fused} returned={len(found)} elapsed_ms={elapsed_ms}'
+    )

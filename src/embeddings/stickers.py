@@ -10,11 +10,16 @@ from src.models import MediaDescription, MessageMediaStatus
 
 @dataclass
 class StickerSearchResult:
+    """A hydrated candidate. Carries no similarity score on purpose.
+
+    Candidates now arrive fused from several probes, and cosine scores from different
+    query embeddings are not calibrated against each other — keeping the field would
+    invite exactly the score-sorted merge that fusion exists to avoid.
+    """
     unique_id: str
     emoji: str | None
     description: str
     ocr_text: str | None
-    score: float
 
 
 def sticker_embedding_text(description: MediaDescription) -> str:
@@ -57,35 +62,38 @@ class StickerEmbeddingsClient(EmbeddingsClient):
             )
         ])
 
-    async def search_stickers(self, query: str, limit: int) -> list[StickerSearchResult]:
+    async def search_sticker_ids(self, query: str, limit: int) -> list[str]:
+        """One probe's ranked identities, most relevant first.
+
+        Deliberately does not touch Mongo: several probes are fused before anything is
+        read back, so hydrating here would read the same row once per probe that
+        returned it and once more for every candidate the fusion then discards.
+        """
         search_results = await self._search(
             query, limit=limit, score_threshold=settings.STICKER_SCORE_THRESHOLD,
         )
-        if not search_results:
-            return []
 
         found = []
         for result in search_results:
             unique_id = result.payload.get('unique_id')
-            if not unique_id:
-                continue
-
-            description = await self._get_description(unique_id)
-            if not description or description.status != MessageMediaStatus.READY:
-                # The row was deleted or regressed; a point can outlive its description.
-                continue
-
-            found.append(
-                StickerSearchResult(
-                    unique_id=unique_id,
-                    emoji=description.sticker_emoji,
-                    description=description.description,
-                    ocr_text=description.ocr_text,
-                    score=result.score,
-                )
-            )
+            if unique_id and unique_id not in found:
+                found.append(unique_id)
 
         return found
+
+    async def get_sticker(self, unique_id: str) -> StickerSearchResult | None:
+        """Reads a fused candidate back, or `None` if the index outran the store."""
+        description = await self._get_description(unique_id)
+        if not description or description.status != MessageMediaStatus.READY:
+            # The row was deleted or regressed; a point can outlive its description.
+            return None
+
+        return StickerSearchResult(
+            unique_id=unique_id,
+            emoji=description.sticker_emoji,
+            description=description.description,
+            ocr_text=description.ocr_text,
+        )
 
     @staticmethod
     async def _get_description(unique_id: str) -> MediaDescription | None:
