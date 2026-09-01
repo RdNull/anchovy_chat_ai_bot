@@ -134,6 +134,37 @@ mocker.patch.object(
 
 ---
 
+## No test-only code in production
+
+Production modules must not carry helpers that exist only for tests — reset
+hooks, clear functions, injection seams, `_for_testing` arguments. If a test
+needs to reach past a module's public surface, it reaches for the private
+directly, from the test layer:
+
+```python
+# BAD — src/characters/tools/context.py
+def reset_web_search_limiter():
+    """For tests."""
+    _web_search_limiter._call_times.clear()
+
+# GOOD — src/tests/test_tools.py
+@pytest.fixture(autouse=True)
+def reset_web_search_limiter():
+    _web_search_limiter._call_times.clear()
+    yield
+    _web_search_limiter._call_times.clear()
+```
+
+The test file is allowed to know a module private; the module is not allowed to
+grow API for its tests. Module-level state that leaks between tests (a rate
+limiter window, a cache) is the usual reason this comes up — clear it in an
+autouse fixture next to the tests that care.
+
+If the seam feels unavoidable, that is usually the state itself being wrong
+rather than the test: prefer deleting the module-level global.
+
+---
+
 ## Assertion style
 
 **Never** use mock assertion methods. Use explicit `assert` statements:
