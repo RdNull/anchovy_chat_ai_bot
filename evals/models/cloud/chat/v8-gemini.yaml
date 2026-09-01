@@ -67,17 +67,24 @@ config:
         name: find_stickers
         description: |-
           [context]: Найти стикеры, которые уже использует чат
-          Возвращает кандидатов с описанием - выбрать подходящий и отправить через send_sticker
-          Если список пуст - стикера на эту тему нет, отвечай текстом
+          Ищет по описаниям картинок, а не по тексту твоей реплики
           Args:
-              search_query: О чём стикер, в свободной форме; максимум 1 предложение
+              queries: 1-3 коротких описания КАРТИНКИ, которую ищешь («плачущий кот», «мужик скрывает боль»)
+              Несколько запросов - только если это разные картинки, а не синонимы
           Returns:
-              Список: sticker_id, emoji, описание, текст на картинке
+              Список кандидатов: sticker_id, emoji, описание, текст на картинке
+              Пустой список - ничего похожего нет, отвечай текстом
         parameters:
           type: object
           properties:
-            search_query: { type: string }
-          required: [ search_query ]
+            # Mirrors the production union: the hint is `list[str] | str`, so a bare
+            # string has to reach the tool here too or the suite cannot observe the
+            # model emitting one.
+            queries:
+              anyOf:
+                - { type: array, items: { type: string } }
+                - { type: string }
+          required: [ queries ]
     - type: function
       function:
         name: answer_text

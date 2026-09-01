@@ -49,13 +49,14 @@ module.exports = {
         return fragments.slice(0, limit);
     },
 
-    // Deliberately empty. The unit ships cold — the index starts empty and fills from
-    // live traffic — so an empty list is the production state this suite should model,
-    // and it is the branch the prompt has to handle («список пуст → отвечай текстом»).
-    // It also keeps every existing case answering with text, so a red case here is a
-    // real problem rather than a case that picked a sticker it was never written to
-    // test. Return candidates instead once there is a labelled corpus to draw on, and
-    // expect the text rubrics to move when you do.
+    // Deliberately empty, and deliberately ignores `queries`. The unit ships cold —
+    // the index starts empty and fills from live traffic — so an empty list is the
+    // production state this suite should model, and it is the branch the tool
+    // description has to handle («пустой список → отвечай текстом»). It also keeps
+    // every existing case answering with text, so a red case here is a real problem
+    // rather than a case that picked a sticker it was never written to test. Return
+    // candidates instead once there is a labelled corpus to draw on, and expect the
+    // text rubrics to move when you do.
     find_stickers: () => [],
 
     // Never reached while find_stickers returns nothing, but registered so a
