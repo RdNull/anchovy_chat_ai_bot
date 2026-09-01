@@ -104,6 +104,9 @@ async def get_sendable_file_id(unique_id: str) -> str | None:
 
 async def get_recent_sticker_ids(chat_id: int, limit: int) -> set[str]:
     """The stickers this chat has just seen the bot send, to keep it from repeating."""
+    if limit < 1:
+        return set()
+
     cursor = messages.find(
         {'chat_id': chat_id, 'role': UserRole.AI.value, 'media_unique_id': {'$ne': None}},
         sort=[('created_at', -1)],
