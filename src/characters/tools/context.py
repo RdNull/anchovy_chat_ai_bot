@@ -216,6 +216,7 @@ async def find_stickers(search_query: str) -> list[dict]:
     excluded = await get_recent_sticker_ids(
         tool_context.chat_id, settings.STICKER_RECENT_EXCLUDE
     )
+    logger.info(f"[TOOL] Excluded stickers {excluded} for {search_query}")
     # Over-fetch then trim: filtering server-side would need the exclusion list inside
     # the Qdrant filter, and `_search` builds `must` from equality kwargs only.
     results = await stickers_embedding_client.search_stickers(
