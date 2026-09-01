@@ -38,6 +38,10 @@ def format_ts(value: datetime) -> str:
 class MessageMediaTypes(str, Enum):
     IMAGE = 'image'
     GIF = 'gif'
+    # Never produced by `messages/media/download.py`, which types by file extension and
+    # cannot tell a `.webp` sticker from a `.webp` photo. Set from Telegram's own
+    # metadata at parse time; see `messages/parsing.py:_mark_sticker`.
+    STICKER = 'sticker'
 
 
 class MessageMediaStatus(str, Enum):
@@ -77,12 +81,7 @@ class MessageMedia(BaseModel):
     unique_id: str | None = None  # for identification
     description: str | None = None
     ocr_text: str | None = None
-    # `type` cannot answer this: a static sticker and a photo are both `.webp`/`.jpg`
-    # and both map to IMAGE in `messages/media/download.py`. Orthogonal by design —
-    # an animated `.tgs` sticker is `type=GIF, is_sticker=True`.
-    is_sticker: bool = False
     sticker_emoji: str | None = None
-    sticker_set: str | None = None  # captured, unused in v1: makes a later set expansion config
 
     @property
     def ai_format(self):
@@ -201,9 +200,7 @@ class MediaDescription(BaseModel):
     ocr_text: str | None = None
     type: MessageMediaTypes
     status: MessageMediaStatus = MessageMediaStatus.PROCESSING
-    is_sticker: bool = False
     sticker_emoji: str | None = None
-    sticker_set: str | None = None
 
 
 class MediaDescriptionData(BaseModel):

@@ -3,14 +3,11 @@ import io
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from telegram import Sticker
-
 from src import settings
 
 from src.messages.media import (
     create_media_description, get_media_description_by_media_id, get_recent_sticker_ids,
-    get_sendable_file_id, handle_media_message, reset_sticker_corpus_cache,
-    sticker_corpus_size,
+    get_sendable_file_id, handle_media_message, sticker_corpus_size,
 )
 from src.messages.repository import get_message_media_data
 from src.mongo import media_descriptions, messages
@@ -20,14 +17,6 @@ from src.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescriptionData, MediaDetectionData,
     Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UserRole,
 )
-
-
-@pytest.fixture(autouse=True)
-def reset_corpus_cache():
-    # The count is cached at module level, so its value leaks between tests.
-    reset_sticker_corpus_cache()
-    yield
-    reset_sticker_corpus_cache()
 
 
 async def insert_carrier(unique_id, file_id, created_at, chat_id=123, role=UserRole.USER):
@@ -189,23 +178,19 @@ async def test_handle_media_message_generate_returns_none(mocker, sample_message
 
 # --- sticker metadata persistence ---
 
-async def test_create_media_description_persists_sticker_fields():
+async def test_create_media_description_persists_the_sticker_type_and_emoji():
     created = await create_media_description(
         media_id='sticker_uid',
-        type=MessageMediaTypes.IMAGE,
-        is_sticker=True,
+        type=MessageMediaTypes.STICKER,
         sticker_emoji='🔥',
-        sticker_set='hotpack',
     )
 
-    assert created.is_sticker is True
+    assert created.type == MessageMediaTypes.STICKER
     assert created.sticker_emoji == '🔥'
-    assert created.sticker_set == 'hotpack'
 
     read_back = await get_media_description_by_media_id('sticker_uid')
-    assert read_back.is_sticker is True
+    assert read_back.type == MessageMediaTypes.STICKER
     assert read_back.sticker_emoji == '🔥'
-    assert read_back.sticker_set == 'hotpack'
 
 
 async def test_parse_media_description_on_legacy_row_without_sticker_fields():
@@ -221,57 +206,33 @@ async def test_parse_media_description_on_legacy_row_without_sticker_fields():
 
     parsed = await get_media_description_by_media_id('legacy_uid')
 
-    assert parsed.is_sticker is False
+    assert parsed.type == MessageMediaTypes.IMAGE
     assert parsed.sticker_emoji is None
-    assert parsed.sticker_set is None
 
 
-async def test_get_message_media_data_hydrates_sticker_flag_from_stored_row():
-    # `_parse_media` reads history back with no PTB object, so without hydration every
-    # persisted sticker would come back looking like a photo.
+async def test_get_message_media_data_reads_the_sticker_type_from_the_row():
+    # `_parse_media` reads history back with no PTB object, so the row is the only
+    # source: without this every persisted sticker would come back looking like a photo.
     await create_media_description(
         media_id='sticker_uid',
-        type=MessageMediaTypes.IMAGE,
+        type=MessageMediaTypes.STICKER,
         status=MessageMediaStatus.READY,
         description='a dancing cat',
-        is_sticker=True,
         sticker_emoji='💃',
-        sticker_set='cats',
     )
 
-    media = await get_message_media_data('sendable_fid', 'sticker_uid', None)
+    media = await get_message_media_data('sendable_fid', 'sticker_uid')
 
-    assert media.is_sticker is True
+    assert media.type == MessageMediaTypes.STICKER
     assert media.sticker_emoji == '💃'
-    assert media.sticker_set == 'cats'
 
 
-async def test_get_message_media_data_live_parse_wins_over_stored_row():
-    await create_media_description(
-        media_id='sticker_uid',
-        type=MessageMediaTypes.IMAGE,
-        status=MessageMediaStatus.READY,
-        description='a dancing cat',
-        is_sticker=True,
-        sticker_emoji='stale',
-        sticker_set='stale_pack',
-    )
-    sticker = Sticker(
-        file_id='sendable_fid',
-        file_unique_id='sticker_uid',
-        width=512,
-        height=512,
-        is_animated=False,
-        is_video=False,
-        type=Sticker.REGULAR,
-        emoji='fresh',
-        set_name='fresh_pack',
-    )
+async def test_get_message_media_data_defaults_when_no_row_exists():
+    media = await get_message_media_data('sendable_fid', 'never_described')
 
-    media = await get_message_media_data('sendable_fid', 'sticker_uid', sticker)
-
-    assert media.sticker_emoji == 'fresh'
-    assert media.sticker_set == 'fresh_pack'
+    assert media.type is None
+    assert media.sticker_emoji is None
+    assert media.status == MessageMediaStatus.PENDING
 
 
 def sticker_message():
@@ -282,11 +243,9 @@ def sticker_message():
         media=MessageMedia(
             media_id='sendable_fid',
             unique_id='sticker_uid',
-            type=MessageMediaTypes.IMAGE,
+            type=MessageMediaTypes.STICKER,
             status=MessageMediaStatus.PENDING,
-            is_sticker=True,
             sticker_emoji='💃',
-            sticker_set='cats',
         ),
     )
 
@@ -305,9 +264,8 @@ async def test_handle_media_message_passes_sticker_fields_through(mocker, mock_c
     await handle_media_message(sticker_message(), mock_context)
 
     stored = await get_media_description_by_media_id('sticker_uid')
-    assert stored.is_sticker is True
+    assert stored.type == MessageMediaTypes.STICKER
     assert stored.sticker_emoji == '💃'
-    assert stored.sticker_set == 'cats'
 
 
 async def test_handle_media_message_indexes_a_ready_sticker(mocker, mock_context):
@@ -346,6 +304,97 @@ async def test_handle_media_message_does_not_index_a_photo(mocker, sample_messag
     await handle_media_message(sample_message, mock_context)
 
     assert mock_save.call_count == 0
+
+
+async def test_handle_media_message_backfills_a_legacy_sticker_row(mocker, mock_context):
+    # The row predates the sticker unit, so it is typed `image` and already READY —
+    # which means handle_media_message returns early and would never retype it. The
+    # backfill runs before that return, so re-sighting a known sticker is what fills
+    # the index. Without it the corpus could only grow from never-seen stickers.
+    await create_media_description(
+        media_id='sticker_uid',
+        type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY,
+        description='кот танцует',
+    )
+    mock_save = mocker.patch(
+        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+    )
+    mock_download = mocker.patch('src.messages.media.pipeline.get_message_media')
+
+    await handle_media_message(sticker_message(), mock_context)
+
+    stored = await get_media_description_by_media_id('sticker_uid')
+    assert stored.type == MessageMediaTypes.STICKER
+    assert stored.sticker_emoji == '💃'
+    assert mock_save.call_count == 1
+    # Still an early return: the description was already there, nothing is re-described.
+    assert mock_download.call_count == 0
+
+
+async def test_handle_media_message_backfill_is_once_not_every_sighting(mocker, mock_context):
+    await create_media_description(
+        media_id='sticker_uid',
+        type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY,
+        description='кот танцует',
+    )
+    mock_save = mocker.patch(
+        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+    )
+    mocker.patch('src.messages.media.pipeline.get_message_media')
+
+    await handle_media_message(sticker_message(), mock_context)
+    await handle_media_message(sticker_message(), mock_context)
+    await handle_media_message(sticker_message(), mock_context)
+
+    assert mock_save.call_count == 1
+
+
+async def test_handle_media_message_does_not_backfill_a_photo(mocker, sample_message, mock_context):
+    await create_media_description(
+        media_id='unique_id_123',
+        type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY,
+        description='a screenshot',
+    )
+    mock_save = mocker.patch(
+        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+    )
+    mocker.patch('src.messages.media.pipeline.get_message_media')
+
+    await handle_media_message(sample_message, mock_context)
+
+    stored = await get_media_description_by_media_id('unique_id_123')
+    assert stored.type == MessageMediaTypes.IMAGE
+    assert mock_save.call_count == 0
+
+
+async def test_handle_media_message_backfill_defers_indexing_until_ready(mocker, mock_context):
+    # A legacy row that never got described: retype it now, but the end-of-pipeline
+    # hook is what indexes it once the description lands.
+    await create_media_description(
+        media_id='sticker_uid',
+        type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.PENDING,
+    )
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+        content='base64content', format='webp',
+    ))
+    mocker.patch(
+        'src.messages.media.pipeline._generate_media_description',
+        return_value=MediaDescriptionData(description='кот танцует', ocr_text=None),
+    )
+    mock_save = mocker.patch(
+        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+    )
+
+    await handle_media_message(sticker_message(), mock_context)
+
+    stored = await get_media_description_by_media_id('sticker_uid')
+    assert stored.type == MessageMediaTypes.STICKER
+    assert stored.status == MessageMediaStatus.READY
+    assert mock_save.call_count == 1
 
 
 # --- get_sendable_file_id / corpus helpers ---
@@ -405,37 +454,19 @@ async def test_get_recent_sticker_ids_is_per_chat():
 
 async def test_sticker_corpus_size_counts_only_ready_stickers():
     await create_media_description(
-        media_id='ready_sticker', type=MessageMediaTypes.IMAGE,
-        status=MessageMediaStatus.READY, is_sticker=True,
+        media_id='ready_sticker', type=MessageMediaTypes.STICKER,
+        status=MessageMediaStatus.READY,
     )
     await create_media_description(
-        media_id='pending_sticker', type=MessageMediaTypes.IMAGE,
-        status=MessageMediaStatus.PENDING, is_sticker=True,
+        media_id='pending_sticker', type=MessageMediaTypes.STICKER,
+        status=MessageMediaStatus.PENDING,
     )
     await create_media_description(
         media_id='ready_photo', type=MessageMediaTypes.IMAGE,
-        status=MessageMediaStatus.READY, is_sticker=False,
+        status=MessageMediaStatus.READY,
     )
 
     assert await sticker_corpus_size() == 1
-
-
-async def test_sticker_corpus_size_is_cached():
-    await create_media_description(
-        media_id='ready_sticker', type=MessageMediaTypes.IMAGE,
-        status=MessageMediaStatus.READY, is_sticker=True,
-    )
-    assert await sticker_corpus_size() == 1
-
-    await create_media_description(
-        media_id='another_sticker', type=MessageMediaTypes.IMAGE,
-        status=MessageMediaStatus.READY, is_sticker=True,
-    )
-
-    # Still the cached value; only a reset (or the TTL) picks the new one up.
-    assert await sticker_corpus_size() == 1
-    reset_sticker_corpus_cache()
-    assert await sticker_corpus_size() == 2
 
 
 # --- _generate_media_description ---

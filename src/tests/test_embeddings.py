@@ -28,9 +28,8 @@ def make_description(
         media_id=unique_id,
         description=description,
         ocr_text=ocr_text,
-        type=MessageMediaTypes.IMAGE,
+        type=MessageMediaTypes.STICKER,
         status=status,
-        is_sticker=True,
         sticker_emoji=emoji,
     )
 

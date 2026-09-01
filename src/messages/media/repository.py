@@ -1,13 +1,7 @@
-import time
-
 from bson import ObjectId
 
 from src.models import MediaDescription, MessageMediaStatus, MessageMediaTypes, UserRole
 from src.mongo import media_descriptions, messages
-
-
-_CORPUS_SIZE_TTL = 300  # seconds
-_corpus_size_cache: tuple[int, float] | None = None
 
 
 async def create_media_description(
@@ -17,9 +11,7 @@ async def create_media_description(
     ocr_text: str | None = None,
     type: MessageMediaTypes = MessageMediaTypes.IMAGE,
     status: MessageMediaStatus = MessageMediaStatus.PENDING,
-    is_sticker: bool = False,
     sticker_emoji: str | None = None,
-    sticker_set: str | None = None,
 ):
     result = await media_descriptions.insert_one({
         'hash': content_hash or None,
@@ -28,9 +20,7 @@ async def create_media_description(
         'media_id': media_id,
         'type': type.value,
         'status': status.value,
-        'is_sticker': is_sticker,
         'sticker_emoji': sticker_emoji,
-        'sticker_set': sticker_set,
     })
     return await get_media_description(result.inserted_id)
 
@@ -55,6 +45,25 @@ async def update_media_description(
     if update:
         await media_descriptions.update_one({'_id': ObjectId(description_id)}, {'$set': update})
 
+    return await get_media_description(description_id)
+
+
+async def mark_as_sticker(
+    description_id: str, sticker_emoji: str | None,
+) -> MediaDescription | None:
+    """Retypes an existing row as a sticker.
+
+    Rows written before the sticker unit are typed `image` or `gif`, because only
+    Telegram's metadata can tell them apart and nothing was reading it. Backfilled on
+    re-sighting rather than by a migration — see `pipeline.py:_backfill_sticker`.
+    """
+    await media_descriptions.update_one(
+        {'_id': ObjectId(description_id)},
+        {'$set': {
+            'type': MessageMediaTypes.STICKER.value,
+            'sticker_emoji': sticker_emoji,
+        }},
+    )
     return await get_media_description(description_id)
 
 
@@ -103,33 +112,18 @@ async def get_recent_sticker_ids(chat_id: int, limit: int) -> set[str]:
 
 
 async def sticker_corpus_size() -> int:
-    """How many stickers are actually searchable — indexed and described.
+    """How many stickers are actually searchable — typed, described and indexed.
 
-    Cached because this runs on the reply path and the answer moves slowly: the count
-    only grows when someone sends a sticker the group has never used before.
+    Read once at boot for the corpus log; nothing on the reply path calls it.
     """
-    global _corpus_size_cache
-
-    now = time.monotonic()
-    if _corpus_size_cache and now - _corpus_size_cache[1] < _CORPUS_SIZE_TTL:
-        return _corpus_size_cache[0]
-
-    size = await media_descriptions.count_documents(
-        {'is_sticker': True, 'status': MessageMediaStatus.READY.value},
+    return await media_descriptions.count_documents(
+        {'type': MessageMediaTypes.STICKER.value, 'status': MessageMediaStatus.READY.value},
     )
-    _corpus_size_cache = (size, now)
-    return size
-
-
-def reset_sticker_corpus_cache() -> None:
-    """Drops the cached count. For tests — the cache is process-lifetime otherwise."""
-    global _corpus_size_cache
-    _corpus_size_cache = None
 
 
 def _parse_media_description(data: dict) -> MediaDescription:
-    # The sticker fields use `.get`, unlike their siblings: every row written before
-    # this unit has none of them, and they must parse as False/None rather than raise.
+    # `sticker_emoji` uses `.get`, unlike its siblings: every row written before the
+    # sticker unit lacks the key and must parse as None rather than raise.
     return MediaDescription(
         _id=str(data['_id']),
         description=data['description'] or '',
@@ -137,7 +131,5 @@ def _parse_media_description(data: dict) -> MediaDescription:
         type=data['type'],
         status=data['status'],
         media_id=data['media_id'],
-        is_sticker=data.get('is_sticker', False),
         sticker_emoji=data.get('sticker_emoji'),
-        sticker_set=data.get('sticker_set'),
     )

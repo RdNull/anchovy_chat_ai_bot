@@ -10,7 +10,6 @@ from langsmith import traceable
 from src import ai, settings
 from src.logs import logger
 from src.memory.models import MemoryData
-from src.messages.media.repository import sticker_corpus_size
 from src.models import Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
 from . import tools
@@ -85,13 +84,14 @@ class Character:
 
         context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web]
         direct_tools = [tools.answer_text, tools.set_reaction]
-        # The flag is checked first so an installation with stickers off never pays for
-        # the count. Bind both or neither: `send_sticker` without `find_stickers` gives
-        # the model an id parameter it can only hallucinate.
+        # Both or neither: `send_sticker` without `find_stickers` gives the model an id
+        # parameter it can only hallucinate. There is no corpus-size gate — an empty
+        # result is a permanent condition, not a startup one (the index can hold
+        # hundreds of stickers and still have nothing on the topic at hand), so the
+        # empty case has to be handled on every call anyway.
         if settings.ENABLE_STICKER_REPLIES:
-            if await sticker_corpus_size() >= settings.STICKER_MIN_CORPUS:
-                context_tools.append(tools.find_stickers)
-                direct_tools.append(tools.send_sticker)
+            context_tools.append(tools.find_stickers)
+            direct_tools.append(tools.send_sticker)
 
         tools_registry = ToolRegistry(
             context_tools=context_tools,

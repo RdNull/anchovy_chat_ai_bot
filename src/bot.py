@@ -17,17 +17,16 @@ from src.messages.utils import ReplyToBotFilter
 
 
 async def log_sticker_corpus():
-    """One line at boot: is there anything for `find_stickers` to find yet?
+    """One line at boot: how much of the group's sticker vocabulary is searchable yet?
 
-    At STICKER_MIN_CORPUS=5 the gate should open almost immediately. If it does not,
-    this is the evidence that the group recycles a very small sticker set — the one
-    thing that would make the narrow-vocabulary decision worth revisiting.
+    The corpus fills as people re-send stickers the bot has already seen, so this
+    number is how you watch a cold start warm up — and if it stalls, it is the
+    evidence that the group recycles a very small sticker set, the one thing that
+    would make the narrow-vocabulary decision worth revisiting.
     """
     size = await sticker_corpus_size()
     logger.info(
-        f'STICKER_CORPUS size={size} min={settings.STICKER_MIN_CORPUS} '
-        f'enabled={settings.ENABLE_STICKER_REPLIES} '
-        f'gate_open={settings.ENABLE_STICKER_REPLIES and size >= settings.STICKER_MIN_CORPUS}'
+        f'STICKER_CORPUS size={size} enabled={settings.ENABLE_STICKER_REPLIES}'
     )
 
 

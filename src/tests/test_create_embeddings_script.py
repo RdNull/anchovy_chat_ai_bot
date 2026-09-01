@@ -62,13 +62,14 @@ async def test_create_embeddings_empty_history(mocker):
 
 # --- create_sticker_embeddings ---
 
-async def seed_sticker(unique_id, is_sticker=True, status=MessageMediaStatus.READY):
+async def seed_sticker(
+    unique_id, type=MessageMediaTypes.STICKER, status=MessageMediaStatus.READY,
+):
     await create_media_description(
         media_id=unique_id,
-        type=MessageMediaTypes.IMAGE,
+        type=type,
         status=status,
         description='кот танцует',
-        is_sticker=is_sticker,
         sticker_emoji='🔥',
     )
 
@@ -76,7 +77,7 @@ async def seed_sticker(unique_id, is_sticker=True, status=MessageMediaStatus.REA
 async def test_create_sticker_embeddings_only_ready_stickers(mocker):
     await seed_sticker('ready_sticker')
     await seed_sticker('pending_sticker', status=MessageMediaStatus.PENDING)
-    await seed_sticker('ready_photo', is_sticker=False)
+    await seed_sticker('ready_photo', type=MessageMediaTypes.IMAGE)
 
     mock_save = mocker.patch(
         'src.scripts.create_sticker_embeddings.stickers_embedding_client.save_sticker'

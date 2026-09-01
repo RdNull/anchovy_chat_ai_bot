@@ -39,24 +39,21 @@ async def test_setup_scheduler(mocker):
     assert mock_scheduler.return_value.daily.call_count == 1
 
 
-async def test_log_sticker_corpus_reports_an_open_gate(mocker):
+async def test_log_sticker_corpus_reports_size_and_flag(mocker):
     mocker.patch('src.bot.sticker_corpus_size', return_value=7)
     mocker.patch.object(settings, 'ENABLE_STICKER_REPLIES', True)
-    mocker.patch.object(settings, 'STICKER_MIN_CORPUS', 5)
     mock_logger = mocker.patch('src.bot.logger')
 
     await log_sticker_corpus()
 
-    logged = mock_logger.info.call_args[0][0]
-    assert 'STICKER_CORPUS size=7 min=5 enabled=True gate_open=True' in logged
+    assert 'STICKER_CORPUS size=7 enabled=True' in mock_logger.info.call_args[0][0]
 
 
-async def test_log_sticker_corpus_reports_a_closed_gate(mocker):
-    mocker.patch('src.bot.sticker_corpus_size', return_value=2)
-    mocker.patch.object(settings, 'ENABLE_STICKER_REPLIES', True)
-    mocker.patch.object(settings, 'STICKER_MIN_CORPUS', 5)
+async def test_log_sticker_corpus_on_a_cold_start(mocker):
+    mocker.patch('src.bot.sticker_corpus_size', return_value=0)
+    mocker.patch.object(settings, 'ENABLE_STICKER_REPLIES', False)
     mock_logger = mocker.patch('src.bot.logger')
 
     await log_sticker_corpus()
 
-    assert 'gate_open=False' in mock_logger.info.call_args[0][0]
+    assert 'STICKER_CORPUS size=0 enabled=False' in mock_logger.info.call_args[0][0]

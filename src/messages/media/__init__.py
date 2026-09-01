@@ -7,7 +7,7 @@ from .repository import (
     get_media_descriptions_by_hash,
     get_recent_sticker_ids,
     get_sendable_file_id,
-    reset_sticker_corpus_cache,
+    mark_as_sticker,
     sticker_corpus_size,
     update_media_description,
     update_media_description_status,

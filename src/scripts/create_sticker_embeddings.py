@@ -5,6 +5,7 @@ from src import mongo
 from src.embeddings.stickers import stickers_embedding_client
 from src.logs import logger
 from src.messages.media.repository import _parse_media_description
+from src.models import MessageMediaStatus, MessageMediaTypes
 
 parser = argparse.ArgumentParser(description='Generate embeddings for stickers in DB.')
 parser.add_argument('--batch-size', type=int, default=100)
@@ -13,12 +14,13 @@ parser.add_argument('--batch-size', type=int, default=100)
 async def create_sticker_embeddings(batch_size: int):
     """Re-indexes the whole sticker corpus.
 
-    Not needed at launch — the unit ships cold and the index fills from live traffic
-    through the media pipeline. This is the re-index path after an embedding-model
-    change. Point ids are derived from `unique_id`, so re-running upserts rather than
-    duplicating.
+    Not needed at launch, and not the way the corpus fills: the media pipeline retypes
+    and indexes a sticker the first time it is seen after the sticker unit shipped, so
+    ordinary traffic does the backfill. This is the re-index path after an
+    embedding-model change. Point ids are derived from `unique_id`, so re-running
+    upserts rather than duplicating.
     """
-    query = {'is_sticker': True, 'status': 'ready'}
+    query = {'type': MessageMediaTypes.STICKER.value, 'status': MessageMediaStatus.READY.value}
     total = await mongo.media_descriptions.count_documents(query)
     logger.info(f"Found {total} stickers to embed")
 

@@ -99,7 +99,7 @@ async def test_restricted_blocks_unauthorized_user(make_update, make_context):
 def make_sticker(file_id='sticker_fid', unique_id='sticker_uid', emoji='😀', set_name='pack'):
     """A real `telegram.Sticker`, not a MagicMock.
 
-    `_as_sticker` narrows with `isinstance`, so a bare MagicMock would be read as a
+    `_mark_sticker` narrows with `isinstance`, so a bare MagicMock would be read as a
     photo and the assertions below would pass for the wrong reason.
     """
     return Sticker(
@@ -169,17 +169,16 @@ async def test_parse_user_message_with_photo(make_update):
     assert msg.media.unique_id == 'unique123'
 
 
-async def test_parse_user_message_with_sticker_sets_sticker_fields(make_update):
-    update = make_update(sticker=make_sticker(emoji='🔥', set_name='hotpack'))
+async def test_parse_user_message_with_sticker_types_it_as_a_sticker(make_update):
+    update = make_update(sticker=make_sticker(emoji='🔥'))
 
     msg = await handlers.parse_user_message(update)
 
     assert msg.media is not None
     assert msg.media.media_id == 'sticker_fid'
     assert msg.media.unique_id == 'sticker_uid'
-    assert msg.media.is_sticker is True
+    assert msg.media.type == MessageMediaTypes.STICKER
     assert msg.media.sticker_emoji == '🔥'
-    assert msg.media.sticker_set == 'hotpack'
 
 
 async def test_parse_user_message_with_photo_is_not_a_sticker(make_update):
@@ -194,9 +193,8 @@ async def test_parse_user_message_with_photo_is_not_a_sticker(make_update):
 
     msg = await handlers.parse_user_message(update)
 
-    assert msg.media.is_sticker is False
+    assert msg.media.type != MessageMediaTypes.STICKER
     assert msg.media.sticker_emoji is None
-    assert msg.media.sticker_set is None
 
 
 async def test_parse_user_message_with_animation_is_not_a_sticker(make_update):
@@ -208,7 +206,7 @@ async def test_parse_user_message_with_animation_is_not_a_sticker(make_update):
 
     msg = await handlers.parse_user_message(update)
 
-    assert msg.media.is_sticker is False
+    assert msg.media.type != MessageMediaTypes.STICKER
     assert msg.media.sticker_emoji is None
 
 
@@ -459,9 +457,8 @@ async def test_parse_user_message_reply_with_sticker(make_update):
     assert msg.reply is not None
     assert msg.reply.media is not None
     assert msg.reply.media.media_id == 'sticker_fid'
-    assert msg.reply.media.is_sticker is True
+    assert msg.reply.media.type == MessageMediaTypes.STICKER
     assert msg.reply.media.sticker_emoji == '😀'
-    assert msg.reply.media.sticker_set == 'pack'
 
 
 # --- test handle_message_edit ---

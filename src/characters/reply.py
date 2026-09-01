@@ -5,7 +5,7 @@ from telegram import Update
 from src import settings
 from src.logs import logger
 from src.messages.repository import add_bot_reaction, save_message
-from src.models import Message, MessageMedia, MessageReply, UserRole
+from src.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole
 from src.types import ReactionEmoji
 
 if TYPE_CHECKING:
@@ -29,7 +29,9 @@ class Replier:
         reply = await self.update.message.reply_sticker(file_id)
         return await self._save_message(
             reply.message_id,
-            media=MessageMedia(media_id=file_id, unique_id=unique_id, is_sticker=True),
+            media=MessageMedia(
+                media_id=file_id, unique_id=unique_id, type=MessageMediaTypes.STICKER,
+            ),
         )
 
     async def reply_reaction(self, emoji: ReactionEmoji, is_big: bool = False):

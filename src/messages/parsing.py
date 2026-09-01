@@ -1,7 +1,7 @@
 from telegram import Message as TgMessage, PhotoSize, Sticker
 from telegram._files._basemedium import _BaseMedium
 
-from src.models import Message, MessageReply, UserRole
+from src.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole
 from .repository import get_message_media_data
 
 
@@ -16,8 +16,9 @@ async def parse_user_message(update) -> Message | None:
         reply_media = None
         if reply_medium := _get_message_medium(reply_msg):
             reply_media = await get_message_media_data(
-                reply_medium.file_id, reply_medium.file_unique_id, _as_sticker(reply_medium),
+                reply_medium.file_id, reply_medium.file_unique_id,
             )
+            _mark_sticker(reply_media, reply_medium)
 
         reply_text = reply_msg.text or reply_msg.caption
         reply = MessageReply(
@@ -30,9 +31,8 @@ async def parse_user_message(update) -> Message | None:
     user_nickname = update.message.from_user.username or update.message.from_user.first_name
     media = None
     if medium := _get_message_medium(update.message):
-        media = await get_message_media_data(
-            medium.file_id, medium.file_unique_id, _as_sticker(medium),
-        )
+        media = await get_message_media_data(medium.file_id, medium.file_unique_id)
+        _mark_sticker(media, medium)
 
     message_text = update.message.text or update.message.caption
     return Message(
@@ -46,14 +46,21 @@ async def parse_user_message(update) -> Message | None:
     )
 
 
-def _as_sticker(medium: _BaseMedium) -> Sticker | None:
-    """Narrows a medium to a `Sticker`, or None if it is a photo or an animation.
+def _mark_sticker(media: MessageMedia, medium: _BaseMedium) -> None:
+    """Stamps Telegram's own answer to "is this a sticker?" onto freshly parsed media.
 
-    Done at the call site rather than in `_get_message_medium` on purpose: that
-    function already returns the raw PTB object, and changing its return type to
-    carry the distinction would buy nothing.
+    This is the only place the system can learn it. The file extension cannot tell a
+    `.webp` sticker from a `.webp` photo, so `download.py` never produces
+    `MessageMediaTypes.STICKER` — and `get_message_media_data` reads a row that does
+    not exist yet on first sighting. Overlaying here also means the live parse wins
+    over a stored row written before stickers were typed, which is what lets
+    `handle_media_message` backfill it.
     """
-    return medium if isinstance(medium, Sticker) else None
+    if not isinstance(medium, Sticker):
+        return
+
+    media.type = MessageMediaTypes.STICKER
+    media.sticker_emoji = medium.emoji
 
 
 def _get_message_medium(tg_message: TgMessage) -> _BaseMedium | None:
