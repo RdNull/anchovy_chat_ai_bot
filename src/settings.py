@@ -69,6 +69,10 @@ class _Settings(BaseSettings):
     # Stickers ship cold: the index starts empty and fills from live traffic as people
     # re-send stickers the bot has already described.
     ENABLE_STICKER_REPLIES: bool = False
+    # Two different questions: how deep one probe goes before the probes are fused
+    # (over-fetch freely, Qdrant is local and the fusion discards the tail), and how
+    # many candidates the character finally gets to pick from.
+    STICKER_PROBE_LIMIT: int = 15
     STICKER_SEARCH_LIMIT: int = 10
     STICKER_SCORE_THRESHOLD: float = 0.25
     STICKER_RECENT_EXCLUDE: int = 0
@@ -135,6 +139,7 @@ TOPICS_KEEP = _s.TOPICS_KEEP
 QUESTIONS_KEEP = _s.QUESTIONS_KEEP
 JOKES_KEEP = _s.JOKES_KEEP
 ENABLE_STICKER_REPLIES = _s.ENABLE_STICKER_REPLIES
+STICKER_PROBE_LIMIT = _s.STICKER_PROBE_LIMIT
 STICKER_SEARCH_LIMIT = _s.STICKER_SEARCH_LIMIT
 STICKER_SCORE_THRESHOLD = _s.STICKER_SCORE_THRESHOLD
 STICKER_RECENT_EXCLUDE = _s.STICKER_RECENT_EXCLUDE
