@@ -10,7 +10,7 @@ from src.prompt_manager import prompt_manager
 
 @traceable
 async def describe_image(image: ImageDetectionData) -> MediaDescriptionData | None:
-    llm = ai.get_image_descriptor_model()
+    llm = ai.get_image_descriptor_model(version='v2')
     model_with_structure = llm.with_structured_output(MediaDescriptionData)
 
     messages = [
