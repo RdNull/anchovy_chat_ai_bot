@@ -48,12 +48,13 @@ Facts about individual users are extracted automatically in the same pass as eac
 - If a character is triggered while a referenced image/sticker is still processing, response generation polls (with a bounded timeout) until the media description is ready before building the prompt
 
 **Sticker Replies From the Group's Own Vocabulary**
-Everything a sticker reply needs was already being collected and then thrown away: every sticker anyone sends is downloaded, deduplicated and vision-described, and nothing ever read it back. Making that corpus searchable turned out to rest on a single distinction the code could not draw — a static sticker and a screenshot are both `.webp`-or-`.jpg` images and were classified identically, so an index built the obvious way would have let the bot answer with someone's screenshot. Sticker identity is therefore captured at intake as a flag of its own, orthogonal to media type, and carried through to the description record.
+Everything a sticker reply needs was already being collected and then thrown away: every sticker anyone sends is downloaded, deduplicated and vision-described, and nothing ever read it back. Making that corpus searchable turned out to rest on a single distinction the code could not draw — a static sticker and a screenshot are both `.webp`-or-`.jpg` images and were classified identically, so an index built the obvious way would have let the bot answer with someone's screenshot. The media type enum turned out to be doing two unrelated jobs: choosing a decoder from the file extension, and labelling the stored record. Only the second needs to know about stickers, so that is where the distinction lives, taken from Telegram's own metadata at intake rather than guessed from the bytes.
 
 - **Retrieval proposes, the character disposes.** Nearest-neighbour search returns the most literally relevant sticker, which is frequently the least funny one, so the search returns a handful of candidates with their descriptions and the character picks. The similarity threshold is deliberately looser than the one used for facts: the job is a plausible shortlist, not one confident hit. Stickers the bot sent in the recent past are filtered out, so it does not lean on the same one twice.
 - **Two fields named the same thing, one of them sendable.** Telegram issues both a stable identifier and a reusable one, and the two collections here call both `media_id`. The index stores identity only and the sendable id is resolved from the message log at send time, so an identifier the platform re-issues costs nothing — copying it into the index would have made a single re-issue evict the sticker permanently.
 - **The vocabulary is narrow on purpose** — only stickers the group already sends, never a pack expansion. In-group callback beats having a sticker for everything.
-- **It ships cold and off.** There is no backfill: the index fills from live traffic, and indexing runs even while the feature flag is off so there is something there when it is switched on. The tools stay unbound until the corpus crosses a floor, which keeps an empty search from spending one of the three context-tool calls a reply gets. A single line at startup reports the corpus size and whether the gate opened — and if it stays shut, that is the evidence the group recycles a smaller sticker set than assumed, which is the one finding that would reopen the narrow-vocabulary decision.
+- **It ships cold, and repeat traffic warms it up.** There is no migration: records predating the feature are unmarked, and the first version could only have learned stickers nobody had ever sent, because the pipeline skips anything it has already described. Re-sending a sticker the bot has seen before is now what classifies and indexes it — which is the common case, so the corpus fills by itself from ordinary conversation. A line at startup reports its size; if that number stalls, it is the evidence the group recycles a smaller sticker set than assumed, the one finding that would reopen the narrow-vocabulary decision.
+- **No readiness gate.** An early version withheld the tools until the index passed a size floor. That was guarding a temporary version of a permanent problem — an index holding hundreds of stickers still comes back empty on an unrelated topic — so the empty result has to be handled on every single call anyway, and the floor bought nothing but a cache and a stale count.
 - **Failure is eviction, not a dead turn.** A sticker Telegram refuses is dropped from the index and reported back into the loop, so the character answers some other way. Only that specific refusal evicts; a network error is allowed to surface, because quietly discarding a perfectly good sticker on a blip is the worse failure.
 
 **LLM Prompt Evaluation**
@@ -112,8 +113,9 @@ Message Handlers  (handlers.py)
      |
      +---> [async] Media pipeline
      |          Download -> hash dedup -> vision LLM -> store description
-     |          (a sticker is flagged as one at intake and, once described,
-     |           indexed into Qdrant regardless of the reply flag)
+     |          (a sticker is typed as one at intake and indexed into Qdrant
+     |           once described; a sticker predating the feature is retyped
+     |           and indexed the next time anyone sends it)
      |
      +---> [async] Context checks
      |          Memory update (if message count since last snapshot >= its own trigger, and enabled)
@@ -141,7 +143,6 @@ Message Handlers  (handlers.py)
                      |                                   (rate-limited per chat, own timeout)
                      |-- tool_call: find_stickers    --> Qdrant vector search over sticker
                      |                                   descriptions, minus recent sends
-                     |                                   (bound only past a corpus floor)
                      |-- tool_call: answer_text       --> Replier sends text, saves to MongoDB
                      |-- tool_call: set_reaction      --> Replier sets emoji reaction
                      |-- tool_call: send_sticker      --> resolve sendable id -> Replier sends
