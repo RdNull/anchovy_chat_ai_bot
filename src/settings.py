@@ -70,8 +70,8 @@ class _Settings(BaseSettings):
     # re-send stickers the bot has already described.
     ENABLE_STICKER_REPLIES: bool = False
     STICKER_SEARCH_LIMIT: int = 5
-    STICKER_SCORE_THRESHOLD: float = 0.25  # looser than facts: a plausible handful, not one hit
-    STICKER_RECENT_EXCLUDE: int = 10
+    STICKER_SCORE_THRESHOLD: float = 0.3
+    STICKER_RECENT_EXCLUDE: int = 0
 
     EMBEDDINGS_MODEL_NAME: str = 'text-embedding-3-small'
     EMBEDDINGS_VECTOR_SIZE: int = 1536
