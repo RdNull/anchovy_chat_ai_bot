@@ -447,29 +447,39 @@ async def test_search_web_not_found_voids_trailing_commentary(mocker):
 
 # --- find_stickers ---
 
-def make_hit(unique_id, score=0.5):
+def make_hit(unique_id):
     return StickerSearchResult(
         unique_id=unique_id,
         emoji='🔥',
         description=f'описание {unique_id}',
         ocr_text='ЛОЛ',
-        score=score,
     )
 
 
-def stub_sticker_search(mocker, hits):
+def stub_sticker_search(mocker, probes, excluded=frozenset()):
+    """Wires one ranked id list per probe, plus a hydration stub that always succeeds.
+
+    `probes` is a list of id lists, consumed in call order — one per query.
+    """
     find_stickers.metadata = {'context': make_context()}
-    return mocker.patch(
-        'src.characters.tools.context.stickers_embedding_client.search_stickers',
-        return_value=hits,
+    mocker.patch(
+        'src.characters.tools.context.get_recent_sticker_ids', return_value=set(excluded),
     )
+    mock_search = mocker.patch(
+        'src.characters.tools.context.stickers_embedding_client.search_sticker_ids',
+        side_effect=list(probes),
+    )
+    mock_get = mocker.patch(
+        'src.characters.tools.context.stickers_embedding_client.get_sticker',
+        side_effect=lambda unique_id: make_hit(unique_id),
+    )
+    return mock_search, mock_get
 
 
 async def test_find_stickers_returns_the_four_key_shape(mocker):
-    stub_sticker_search(mocker, [make_hit('uid1', score=0.42)])
-    mocker.patch('src.characters.tools.context.get_recent_sticker_ids', return_value=set())
+    stub_sticker_search(mocker, [['uid1']])
 
-    result = await find_stickers.ainvoke({'search_query': 'кот'})
+    result = await find_stickers.ainvoke({'queries': ['кот']})
 
     assert result == [{
         'sticker_id': 'uid1',
@@ -479,36 +489,126 @@ async def test_find_stickers_returns_the_four_key_shape(mocker):
     }]
 
 
-async def test_find_stickers_excludes_recent_and_still_fills_the_limit(mocker, ):
-    mocker.patch.object(settings, 'STICKER_SEARCH_LIMIT', 3)
-    hits = [make_hit(f'uid{i}') for i in range(6)]
-    mock_search = stub_sticker_search(mocker, hits)
+async def test_find_stickers_accepts_a_bare_string(mocker):
+    # The union in the signature is load-bearing: pydantic validates before the body,
+    # and a ValidationError here is not covered by the loop's ToolFailure recovery.
+    mock_search, _ = stub_sticker_search(mocker, [['uid1']])
+
+    result = await find_stickers.ainvoke({'queries': 'кот'})
+
+    assert [r['sticker_id'] for r in result] == ['uid1']
+    assert mock_search.call_count == 1
+    assert mock_search.call_args[0][0] == 'кот'
+
+
+async def test_find_stickers_probes_every_query(mocker):
+    mock_search, _ = stub_sticker_search(mocker, [['a'], ['b'], ['c']])
+
+    result = await find_stickers.ainvoke({'queries': ['кот', 'клоун', 'гарольд']})
+
+    assert mock_search.call_count == 3
+    assert [c[0][0] for c in mock_search.call_args_list] == ['кот', 'клоун', 'гарольд']
+    assert {r['sticker_id'] for r in result} == {'a', 'b', 'c'}
+
+
+async def test_find_stickers_clamps_the_query_count(mocker):
+    mock_search, _ = stub_sticker_search(mocker, [['a'], ['b'], ['c']])
+    mock_logger = mocker.patch('src.characters.tools.context.logger')
+
+    await find_stickers.ainvoke({'queries': ['q1', 'q2', 'q3', 'q4', 'q5']})
+
+    assert mock_search.call_count == 3
+    assert [c[0][0] for c in mock_search.call_args_list] == ['q1', 'q2', 'q3']
+    assert 'truncating to 3' in mock_logger.warning.call_args[0][0]
+
+
+async def test_find_stickers_drops_duplicate_queries(mocker):
+    # Synonyms collapse under fusion anyway; an exact repeat should not spend a probe.
+    mock_search, _ = stub_sticker_search(mocker, [['a']])
+
+    await find_stickers.ainvoke({'queries': ['кот', ' кот ', 'кот']})
+
+    assert mock_search.call_count == 1
+
+
+async def test_find_stickers_without_usable_queries_does_not_search(mocker):
+    mock_search, _ = stub_sticker_search(mocker, [])
+
+    assert await find_stickers.ainvoke({'queries': ['', '   ']}) == []
+    assert mock_search.call_count == 0
+
+
+async def test_find_stickers_fusion_promotes_a_shared_candidate(mocker):
+    # `shared` is second in one probe and first in the other; `top` is first in one.
+    # Summed reciprocal ranks put `shared` ahead — the signal that two different
+    # descriptions both landed on it, which no single cosine score can express.
+    stub_sticker_search(mocker, [['top', 'shared'], ['shared', 'tail']])
+
+    result = await find_stickers.ainvoke({'queries': ['кот', 'клоун']})
+
+    assert [r['sticker_id'] for r in result] == ['shared', 'top', 'tail']
+
+
+async def test_find_stickers_hydrates_once_per_returned_candidate(mocker):
+    mocker.patch.object(settings, 'STICKER_SEARCH_LIMIT', 2)
+    _, mock_get = stub_sticker_search(mocker, [['a', 'b', 'c'], ['c', 'd', 'e']])
+
+    result = await find_stickers.ainvoke({'queries': ['кот', 'клоун']})
+
+    assert len(result) == 2
+    # Five distinct ids across the probes, but only the survivors are read back.
+    assert mock_get.call_count == 2
+
+
+async def test_find_stickers_skips_candidates_that_do_not_hydrate(mocker):
+    mocker.patch.object(settings, 'STICKER_SEARCH_LIMIT', 2)
+    stub_sticker_search(mocker, [['gone', 'ok1', 'ok2']])
     mocker.patch(
-        'src.characters.tools.context.get_recent_sticker_ids',
-        return_value={'uid0', 'uid1'},
+        'src.characters.tools.context.stickers_embedding_client.get_sticker',
+        side_effect=lambda unique_id: None if unique_id == 'gone' else make_hit(unique_id),
     )
 
-    result = await find_stickers.ainvoke({'search_query': 'кот'})
+    result = await find_stickers.ainvoke({'queries': ['кот']})
 
-    assert [r['sticker_id'] for r in result] == ['uid2', 'uid3', 'uid4']
-    # Over-fetched by the size of the exclusion set, then trimmed.
-    assert mock_search.call_args[1]['limit'] == 5
+    assert [r['sticker_id'] for r in result] == ['ok1', 'ok2']
+
+
+async def test_find_stickers_excludes_recent_after_fusion(mocker):
+    mocker.patch.object(settings, 'STICKER_SEARCH_LIMIT', 2)
+    stub_sticker_search(mocker, [['uid0', 'uid1', 'uid2', 'uid3']], excluded={'uid0', 'uid1'})
+
+    result = await find_stickers.ainvoke({'queries': ['кот']})
+
+    # The exclusion no longer eats into the final count: trimming happens after it.
+    assert [r['sticker_id'] for r in result] == ['uid2', 'uid3']
 
 
 async def test_find_stickers_empty_collection_returns_empty_list(mocker):
-    stub_sticker_search(mocker, [])
-    mocker.patch('src.characters.tools.context.get_recent_sticker_ids', return_value=set())
+    stub_sticker_search(mocker, [[]])
 
-    assert await find_stickers.ainvoke({'search_query': 'кот'}) == []
+    assert await find_stickers.ainvoke({'queries': ['кот']}) == []
 
 
 async def test_find_stickers_everything_excluded_returns_empty_list(mocker):
-    stub_sticker_search(mocker, [make_hit('uid1')])
-    mocker.patch(
-        'src.characters.tools.context.get_recent_sticker_ids', return_value={'uid1'},
-    )
+    stub_sticker_search(mocker, [['uid1']], excluded={'uid1'})
 
-    assert await find_stickers.ainvoke({'search_query': 'кот'}) == []
+    assert await find_stickers.ainvoke({'queries': ['кот']}) == []
+
+
+async def test_find_stickers_logs_per_probe_hits_and_contribution(mocker):
+    mocker.patch.object(settings, 'STICKER_SEARCH_LIMIT', 2)
+    stub_sticker_search(mocker, [['a', 'b'], []])
+    mock_logger = mocker.patch('src.characters.tools.context.logger')
+
+    await find_stickers.ainvoke({'queries': ['кот', 'клоун']})
+
+    line = mock_logger.info.call_args[0][0]
+    assert 'TOOL_STICKER_SEARCH chat_id=123' in line
+    assert 'queries=кот | клоун' in line
+    assert 'hits=2|0' in line
+    # The question the whole change rests on: did the second probe contribute anything?
+    assert 'contrib=2|0' in line
+    assert 'fused=2 returned=2' in line
 
 
 # --- send_sticker ---
