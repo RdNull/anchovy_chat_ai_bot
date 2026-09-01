@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -7,6 +8,7 @@ from src import mongo, settings
 from src.characters.repository import CHARACTERS
 from src.chat_settings import repository as chat_settings_repository
 from src.messages import handlers
+from src.messages.media import create_media_description
 from src.messages.parsing import _get_message_medium
 from src.messages.repository import (
     get_messages, save_message,
@@ -321,6 +323,34 @@ async def test_handle_media_no_message_returns_early(make_context, mocker):
     await handlers.handle_media(update, make_context)
 
     assert mock_gen.call_count == 0
+
+
+async def test_handle_conversation_dispatches_pipeline_for_described_media(
+    mocker, make_update, make_context,
+):
+    # A sticker the group has sent before comes back READY from the description row.
+    # Gating dispatch on PENDING would skip the pipeline entirely and leave
+    # `_backfill_sticker` unreachable on the path most stickers arrive by.
+    mocker.patch('src.messages.handlers.random.random', return_value=1.0)
+    mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
+    mock_handle_media = mocker.patch(
+        'src.messages.handlers.handle_media_message', new_callable=AsyncMock
+    )
+    await create_media_description(
+        media_id='sticker_uid',
+        type=MessageMediaTypes.IMAGE,
+        status=MessageMediaStatus.READY,
+        description='кот танцует',
+    )
+    update = make_update(sticker=make_sticker(), chat_id=222)
+
+    await handlers.handle_conversation(update, make_context)
+    await asyncio.sleep(0)
+
+    assert mock_handle_media.call_count == 1
+    dispatched = mock_handle_media.call_args[0][0]
+    assert dispatched.media.status == MessageMediaStatus.READY
+    assert dispatched.media.type == MessageMediaTypes.STICKER
 
 
 # --- handle_conversation early return ---

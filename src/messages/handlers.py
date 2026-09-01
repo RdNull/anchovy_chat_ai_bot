@@ -12,7 +12,7 @@ from telegram.ext import CallbackContext, ContextTypes
 from src import settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
-from src.models import MessageMediaStatus, UpdateMessage, UserRole
+from src.models import UpdateMessage, UserRole
 from .media import handle_media_message
 from .parsing import parse_user_message
 from .repository import (
@@ -123,7 +123,11 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     await save_message(user_message)
-    if user_message.media and user_message.media.status == MessageMediaStatus.PENDING:
+    # Dispatched for any media, not just PENDING: the pipeline has its own skip checks,
+    # and it has to see already-described media too so `_backfill_sticker` can retype a
+    # sticker whose row predates the sticker unit. Gating on PENDING here would leave
+    # that backfill unreachable on the path most stickers actually arrive by.
+    if user_message.media:
         asyncio.create_task(handle_media_message(user_message, context))
 
     asyncio.create_task(run_context_checks(chat_id))
