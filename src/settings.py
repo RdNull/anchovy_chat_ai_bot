@@ -69,8 +69,8 @@ class _Settings(BaseSettings):
     # Stickers ship cold: the index starts empty and fills from live traffic as people
     # re-send stickers the bot has already described.
     ENABLE_STICKER_REPLIES: bool = False
-    STICKER_SEARCH_LIMIT: int = 5
-    STICKER_SCORE_THRESHOLD: float = 0.3
+    STICKER_SEARCH_LIMIT: int = 10
+    STICKER_SCORE_THRESHOLD: float = 0.25
     STICKER_RECENT_EXCLUDE: int = 0
 
     EMBEDDINGS_MODEL_NAME: str = 'text-embedding-3-small'
