@@ -74,7 +74,7 @@ class _Settings(BaseSettings):
     # many candidates the character finally gets to pick from.
     STICKER_PROBE_LIMIT: int = 15
     STICKER_SEARCH_LIMIT: int = 10
-    STICKER_SCORE_THRESHOLD: float = 0.25
+    STICKER_SCORE_THRESHOLD: float = 0.3
     STICKER_RECENT_EXCLUDE: int = 0
 
     EMBEDDINGS_MODEL_NAME: str = 'text-embedding-3-small'
