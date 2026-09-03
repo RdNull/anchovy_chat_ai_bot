@@ -10,9 +10,10 @@ spec:
   # updates are dropped or doubled between the two.
   replicas: 1
   # For the same reason the default RollingUpdate is wrong here: maxSurge 25% starts the new
-  # pod before the old one terminates, so every single deploy ran two pollers against one
-  # token for the length of the overlap. The previous pod's log carried 29 of those
-  # conflicts. Recreate trades a few seconds of downtime for never having two.
+  # pod before the old one terminates, so every deploy ran two pollers against one token for
+  # the length of the overlap. Whether that surfaces is a race — one pod's log carries 29
+  # `Conflict: terminated by other getUpdates` lines and the next carries none, which is why
+  # it went unnoticed. Recreate trades a few seconds of downtime for never having two.
   strategy:
     type: Recreate
   selector:
