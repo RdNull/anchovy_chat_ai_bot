@@ -49,6 +49,7 @@ jobs:
       contents: read
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      MONGO_INITDB_ROOT_PASSWORD: ${{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       QDRANT_URL: ${{ secrets.QDRANT_URL }}
