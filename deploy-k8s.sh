@@ -1,28 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Everything below writes into the cluster without failing on an empty value: envsubst
-# substitutes the empty string for an unexported ${VAR}, and --from-literal happily stores
-# "". A blank is invisible until a pod is recreated, which is how an empty mongo password
-# sat in bot-secrets for three months. No `set -x` — it would print these into the CI log.
+# envsubst substitutes the empty string for an unexported ${VAR} rather than failing, so a
+# name missing from the job's env: block writes a blank into the cluster. A blank is
+# invisible until a pod is recreated, which is how an empty mongo password sat in
+# bot-secrets for three months. No `set -x` — it would print these into the CI log.
 for v in MONGO_INITDB_ROOT_PASSWORD DATABASE_URL TELEGRAM_TOKEN OPENROUTER_API_KEY QDRANT_URL LANGSMITH_API_KEY IMAGE_TAG; do
   [[ -n "${!v:-}" ]] || { echo "missing required env: $v" >&2; exit 1; }
 done
 
 echo "apply secrets"
-# Never round-trips through YAML: a value holding `"`, `\` or a newline breaks the document,
-# and one holding `$` is partly eaten by envsubst — both silently, both producing a wrong
-# secret rather than an error. --server-side keeps the values out of the
-# kubectl.kubernetes.io/last-applied-configuration annotation, where a client-side apply
-# leaves the whole manifest in etcd for anyone with `kubectl get secret -o yaml`.
-kubectl create secret generic bot-secrets \
-  --from-literal=MONGO_INITDB_ROOT_PASSWORD="$MONGO_INITDB_ROOT_PASSWORD" \
-  --from-literal=DATABASE_URL="$DATABASE_URL" \
-  --from-literal=TELEGRAM_TOKEN="$TELEGRAM_TOKEN" \
-  --from-literal=OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
-  --from-literal=QDRANT_URL="$QDRANT_URL" \
-  --from-literal=LANGSMITH_API_KEY="$LANGSMITH_API_KEY" \
-  --dry-run=client -o yaml | kubectl apply --server-side --force-conflicts -f -
+# See the header of manifests/secrets.yaml for what a value may safely contain — envsubst
+# renders it into a quoted YAML scalar and cannot escape it.
+envsubst < manifests/secrets.yaml | kubectl apply -f -
 
 echo "apply configmaps"
 envsubst < manifests/configmap.yaml | kubectl apply -f -

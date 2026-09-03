@@ -1,10 +1,8 @@
 """Deploy-config invariants.
 
-Two mechanisms put values into the cluster and neither fails on a missing one.
 `deploy-k8s.sh` renders `manifests/*.yaml` through `envsubst`, which substitutes the
-**empty string** for anything the CI job never exported, and it writes `bot-secrets` with
-`--from-literal=VAR="$VAR"`, which stores `""` just as willingly. Nothing errors — the
-cluster simply receives a blank.
+**empty string** for anything the CI job never exported. Nothing errors — the cluster
+simply receives a blank.
 
 `MONGO_INITDB_ROOT_PASSWORD` was blanked on every deploy for three months and surfaced only
 when a node restart recreated the mongo pod against the by-then-empty secret. The configmap
@@ -25,32 +23,28 @@ _MANIFESTS = _ROOT / 'manifests'
 _SCRIPT = _ROOT / 'deploy-k8s.sh'
 
 _PLACEHOLDER = re.compile(r'\$\{(\w+)\}')
-_FROM_LITERAL = re.compile(r'--from-literal=(\w+)=')
 _GUARD = re.compile(r'^for v in ([\w\s]+); do', re.MULTILINE)
 
 # Set by the `Deploy k8s` step's own `env:` block, not by the job-level one.
 _STEP_LEVEL = frozenset({'IMAGE_TAG'})
 
 
-def secret_keys() -> set[str]:
-    """The keys `deploy-k8s.sh` writes into `bot-secrets`.
-
-    The script is the source of truth for these — `manifests/secrets.yaml` is gone, since
-    a password holding a quote, a backslash or a `$` cannot survive a YAML round trip.
-    """
-    return set(_FROM_LITERAL.findall(_SCRIPT.read_text()))
-
-
 def required_vars() -> dict[str, set[str]]:
-    """Every name the deploy substitutes into the cluster, keyed by where it is read."""
-    sources = {
+    """Every `${VAR}` envsubst will substitute, keyed by manifest file name."""
+    return {
         path.name: names
         for path in sorted(_MANIFESTS.glob('*.yaml'))
         if (names := set(_PLACEHOLDER.findall(path.read_text())))
     }
-    sources[_SCRIPT.name] = secret_keys()
 
-    return sources
+
+def secret_keys() -> set[str]:
+    """The keys the deploy writes into `bot-secrets`.
+
+    `manifests/secrets.yaml` is the source of truth: every kube object stays in one
+    directory, and the script does not grow a line per secret.
+    """
+    return required_vars()['secrets.yaml']
 
 
 def deploy_job_env() -> set[str]:
@@ -95,7 +89,7 @@ def test_the_invariant_is_not_vacuous():
     """A moved manifest or a renamed job would turn the assertions above green forever."""
     sources = required_vars()
 
-    assert set(sources) >= {'configmap.yaml', 'deployment.yaml', 'deploy-k8s.sh'}
-    assert 'MONGO_INITDB_ROOT_PASSWORD' in sources['deploy-k8s.sh']
+    assert set(sources) >= {'configmap.yaml', 'deployment.yaml', 'secrets.yaml'}
+    assert 'MONGO_INITDB_ROOT_PASSWORD' in sources['secrets.yaml']
     assert len(deploy_job_env()) > 1
     assert guarded_vars()
