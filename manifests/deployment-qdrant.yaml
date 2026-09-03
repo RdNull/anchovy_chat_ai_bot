@@ -5,6 +5,16 @@ metadata:
   labels:
     app: qdrant
 spec:
+  # Headless DNS resolves straight to the pod IP, so the client reaching 6333 works with or
+  # without this block. It is here because nothing else documents the port, and the day
+  # anyone gives this Service a ClusterIP the omission stops being harmless.
+  ports:
+    - port: 6333
+      targetPort: 6333
+      name: http
+    - port: 6334
+      targetPort: 6334
+      name: grpc
   clusterIP: None
   selector:
     app: qdrant
@@ -28,11 +38,39 @@ spec:
     spec:
       containers:
         - name: qdrant
-          image: qdrant/qdrant:latest
+          # Pinned to the version qdrant-0 is actually running. See deployment-mongo.yaml
+          # for why `:latest` on a store with a volume is the same shape of fuse.
+          image: qdrant/qdrant:v1.19.0
+          ports:
+            - containerPort: 6333
+              name: http
+            - containerPort: 6334
+              name: grpc
+          resources:
+            requests:
+              cpu: 25m
+              memory: 128Mi
+          # httpGet costs nothing in the container — kubelet makes the request. `/readyz`
+          # reports shard readiness, which is stricter than a listening socket and is what
+          # the rollout wait in deploy-k8s.sh should block on.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6333
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 6333
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 5
           volumeMounts:
             - name: qdrant-storage
               mountPath: /qdrant/storage
 
+  # Immutable on an existing StatefulSet; the bound volume is 10Gi (Linode minimum).
   volumeClaimTemplates:
     - metadata:
         name: qdrant-storage
