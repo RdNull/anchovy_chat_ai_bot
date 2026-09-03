@@ -1,0 +1,68 @@
+# Nothing in the repo contributed to the 2026-09-03 incident being survivable — the volume
+# simply happened to be intact. One replica, no replica set, no oplog: a nightly dump to a
+# second volume is what turns the next scare into an inconvenience.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-backup
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  resources:
+    requests:
+      # Linode's minimum, and honest about it: asking for less still provisions 10Gi.
+      storage: 10Gi
+
+---
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongo-backup
+spec:
+  schedule: "17 3 * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: mongodump
+              # The same image the store runs, so this pulls nothing new; it already ships
+              # mongodump and mongosh.
+              image: mongo:8.3.8
+              env:
+                # DATABASE_URL rather than MONGO_INITDB_ROOT_PASSWORD, and the distinction
+                # matters: on an initialized volume the injected root password is decorative
+                # — it satisfies the entrypoint guard and puts `--auth` on the argv, while
+                # the credential that actually authenticates lives in /data/db. DATABASE_URL
+                # is the one proven to work, because the bot is authenticating with it.
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: bot-secrets
+                      key: DATABASE_URL
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  mongodump --uri="$DATABASE_URL" --gzip --archive="/backup/mongo-$(date -u +%Y%m%dT%H%M%SZ).gz"
+                  find /backup -name 'mongo-*.gz' -mtime +7 -delete
+                  ls -lh /backup
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 128Mi
+              volumeMounts:
+                - name: mongo-backup
+                  mountPath: /backup
+          volumes:
+            - name: mongo-backup
+              persistentVolumeClaim:
+                claimName: mongo-backup

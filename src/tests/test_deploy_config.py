@@ -1,17 +1,16 @@
 """Deploy-config invariants.
 
 `deploy-k8s.sh` renders `manifests/*.yaml` through `envsubst`, which substitutes the
-**empty string** for anything the CI job never exported. Nothing fails at deploy time —
-the cluster simply receives a blank value. `MONGO_INITDB_ROOT_PASSWORD` was blanked on
-every deploy for three months and surfaced only when a node restart recreated the mongo
-pod against the by-then-empty secret.
+**empty string** for anything the CI job never exported. Nothing errors — the cluster
+simply receives a blank.
 
-The configmap half is quieter still: `settings.py` sets `env_ignore_empty=True`, so a
-blanked value falls through to a code default and the bot runs on defaults with nothing
-in the logs.
+`MONGO_INITDB_ROOT_PASSWORD` was blanked on every deploy for three months and surfaced only
+when a node restart recreated the mongo pod against the by-then-empty secret. The configmap
+half is quieter still: `settings.py` sets `env_ignore_empty=True`, so a blanked value falls
+through to a code default and the bot runs on defaults with nothing in the logs.
 
-These tests close the class. A placeholder the deploy job does not export is a red test
-here, not an incident three months from now.
+These tests close the class. A value the deploy job does not export is a red test here, not
+an incident three months from now.
 """
 import re
 from pathlib import Path
@@ -30,13 +29,22 @@ _GUARD = re.compile(r'^for v in ([\w\s]+); do', re.MULTILINE)
 _STEP_LEVEL = frozenset({'IMAGE_TAG'})
 
 
-def manifest_placeholders() -> dict[str, set[str]]:
+def required_vars() -> dict[str, set[str]]:
     """Every `${VAR}` envsubst will substitute, keyed by manifest file name."""
     return {
         path.name: names
         for path in sorted(_MANIFESTS.glob('*.yaml'))
         if (names := set(_PLACEHOLDER.findall(path.read_text())))
     }
+
+
+def secret_keys() -> set[str]:
+    """The keys the deploy writes into `bot-secrets`.
+
+    `manifests/secrets.yaml` is the source of truth: every kube object stays in one
+    directory, and the script does not grow a line per secret.
+    """
+    return required_vars()['secrets.yaml']
 
 
 def deploy_job_env() -> set[str]:
@@ -51,16 +59,23 @@ def guarded_vars() -> set[str]:
     return set(_GUARD.search(_SCRIPT.read_text()).group(1).split())
 
 
-def test_every_manifest_placeholder_is_exported_by_the_deploy_job():
-    """The whole bug: an unexported placeholder reaches the cluster as an empty string."""
+def test_every_required_var_is_exported_by_the_deploy_job():
+    """The whole bug: an unexported name reaches the cluster as an empty value."""
     exported = deploy_job_env() | _STEP_LEVEL
     missing = {
-        name: sorted(placeholders - exported)
-        for name, placeholders in manifest_placeholders().items()
-        if placeholders - exported
+        source: sorted(names - exported)
+        for source, names in required_vars().items()
+        if names - exported
     }
 
-    assert not missing, f'envsubst will blank these — add them to jobs.deploy.env: {missing}'
+    assert not missing, f'the deploy will blank these — add them to jobs.deploy.env: {missing}'
+
+
+def test_the_shell_guard_covers_every_secret_the_deploy_writes():
+    """A secret outside the guard is this same bug one file over, and just as quiet."""
+    unguarded = sorted(secret_keys() - guarded_vars())
+
+    assert not unguarded, f'written to bot-secrets but not guarded: {unguarded}'
 
 
 def test_the_shell_guard_only_requires_what_the_job_exports():
@@ -72,9 +87,9 @@ def test_the_shell_guard_only_requires_what_the_job_exports():
 
 def test_the_invariant_is_not_vacuous():
     """A moved manifest or a renamed job would turn the assertions above green forever."""
-    placeholders = manifest_placeholders()
+    sources = required_vars()
 
-    assert set(placeholders) >= {'configmap.yaml', 'secrets.yaml', 'deployment.yaml'}
-    assert 'MONGO_INITDB_ROOT_PASSWORD' in placeholders['secrets.yaml']
+    assert set(sources) >= {'configmap.yaml', 'deployment.yaml', 'secrets.yaml'}
+    assert 'MONGO_INITDB_ROOT_PASSWORD' in sources['secrets.yaml']
     assert len(deploy_job_env()) > 1
     assert guarded_vars()

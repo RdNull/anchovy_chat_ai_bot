@@ -5,7 +5,17 @@ metadata:
   labels:
     app: anchovy-bot-deployment
 spec:
+  # Load-bearing, not a resource decision: Telegram allows exactly one `getUpdates` caller
+  # per token. A second replica gets `Conflict: terminated by other getUpdates request` and
+  # updates are dropped or doubled between the two.
   replicas: 1
+  # For the same reason the default RollingUpdate is wrong here: maxSurge 25% starts the new
+  # pod before the old one terminates, so every deploy ran two pollers against one token for
+  # the length of the overlap. Whether that surfaces is a race — one pod's log carries 29
+  # `Conflict: terminated by other getUpdates` lines and the next carries none, which is why
+  # it went unnoticed. Recreate trades a few seconds of downtime for never having two.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: anchovy-bot-deployment
@@ -19,6 +29,13 @@ spec:
           image: ${IMAGE_TAG}
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "src.bot"]
+          # Requests only — see deployment-mongo.yaml. No probes: the bot serves no health
+          # endpoint, and a polling loop that dies takes the process with it, so an exec
+          # probe would only re-assert what the container's exit status already says.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
           env:
             - name: PYTHONUNBUFFERED
               value: "1"

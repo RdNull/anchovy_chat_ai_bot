@@ -32,7 +32,12 @@ spec:
     spec:
       containers:
         - name: mongo
-          image: mongo:latest
+          # Pinned to the version mongo-0 is actually running, read off the cluster rather
+          # than picked from docs. `:latest` implies imagePullPolicy Always, so every pod
+          # recreation is a chance to pull a new major over an existing volume: mongod
+          # refuses to start on data more than one major behind, and a major that does
+          # start rewrites the FCV with no rollback. Upgrades belong in a reviewed commit.
+          image: mongo:8.3.8
           env:
             - name: MONGO_INITDB_ROOT_USERNAME
               value: anchovy
@@ -42,11 +47,37 @@ spec:
                   name: bot-secrets
                   key: MONGO_INITDB_ROOT_PASSWORD
           ports:
-            - containerPort: 27019
+            - containerPort: 27017
               name: mongo
+          # Requests only, deliberately no limits: WiredTiger sizes its cache from the
+          # cgroup memory limit, so on a 2Gi node any limit tight enough to be worth
+          # setting is one that OOM-kills mongod. The request is what buys Burstable QoS —
+          # a BestEffort pod is the first thing kubelet evicts under node pressure.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+          # TCP rather than `mongosh --eval "db.adminCommand('ping')"`: mongosh is a full
+          # Node.js runtime and this node has one CPU, so an exec probe every few seconds
+          # costs more than the extra signal is worth. A listening socket is what the bot
+          # needs to connect, and it is what gates the rollout wait in deploy-k8s.sh.
+          readinessProbe:
+            tcpSocket:
+              port: 27017
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 27017
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
           volumeMounts:
             - name: mongo-storage
               mountPath: /data/db
+  # Immutable on an existing StatefulSet — `kubectl apply` rejects any edit to this block,
+  # so the 1Gi below cannot be corrected in place and is not worth trying. The bound volume
+  # is 10Gi in any case: Linode block storage has a 10Gi minimum.
   volumeClaimTemplates:
     - metadata:
         name: mongo-storage

@@ -4,6 +4,13 @@ on:
     branches:
       - main
 
+# One cluster, one Telegram token: two pushes in quick succession would otherwise run
+# overlapping deploys against both. Queue rather than cancel — a half-applied deploy is
+# worse than a slow one.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
