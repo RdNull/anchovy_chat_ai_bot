@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from telegram import Update
+from telegram import Bot, ReplyParameters
 
 from src import settings
 from src.logs import logger
@@ -13,20 +13,30 @@ if TYPE_CHECKING:
 
 
 class Replier:
-    def __init__(self, character: Character, update: Update, user_message: Message):
-        self.chat_id = update.effective_chat.id
-        self.update = update
-        self.user_message = user_message
+    def __init__(self, bot: Bot, character: Character, chat_id: int, target: Message | None):
+        self.bot = bot
         self.character = character
+        self.chat_id = chat_id
+        self.target_message = target
+
 
     async def reply_message(self, text: str) -> Message:
         logger.info(f'Replying to user message with text: {text}')
-        reply = await self.update.message.reply_text(text)
+
+        reply = await self.bot.send_message(
+            chat_id=self.chat_id,
+            reply_parameters=self._get_reply_params(),
+            text=text,
+        )
         return await self._save_message(reply.message_id, text)
 
     async def reply_sticker(self, file_id: str, unique_id: str) -> Message:
         logger.info(f'Replying to user message with sticker: {unique_id}')
-        reply = await self.update.message.reply_sticker(file_id)
+        reply = await self.bot.send_sticker(
+            chat_id=self.chat_id,
+            reply_parameters=self._get_reply_params(),
+            sticker=file_id,
+        )
         return await self._save_message(
             reply.message_id,
             media=MessageMedia(
@@ -36,11 +46,27 @@ class Replier:
 
     async def reply_reaction(self, emoji: ReactionEmoji, is_big: bool = False):
         logger.info(f'Setting reaction with emoji: {emoji}')
-        result = await self.update.message.set_reaction(emoji, is_big=is_big)
+        if not self.target_message or not self.target_message.telegram_id:
+            raise ValueError('Target message is not set for reply reaction')
+
+        result = await self.bot.set_message_reaction(
+            chat_id=self.chat_id,
+            message_id=self.target_message.telegram_id,
+            reaction=emoji,
+            is_big=is_big
+        )
         if not result:
             raise ValueError(f'Failed to set reaction with emoji {emoji}')
 
-        await add_bot_reaction(self.user_message, settings.BOT_NICKNAME, str(emoji))
+        await add_bot_reaction(self.target_message, settings.BOT_NICKNAME, str(emoji))
+
+    def _get_reply_params(self) -> ReplyParameters | None:
+        if self.target_message and self.target_message.telegram_id:
+            return ReplyParameters(
+                message_id=self.target_message.telegram_id,
+            )
+
+        return None
 
     async def _save_message(
         self,

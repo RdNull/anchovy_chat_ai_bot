@@ -12,6 +12,7 @@ from .media.pipeline import wait_for_media_ready
 from .parsing import parse_user_message
 from .repository import get_messages, save_message
 from .utils import get_chat_character, send_action
+from ..bot import get_bot
 from ..characters.reply import Replier
 from ..processors.context.handlers import run_context_checks
 
@@ -27,13 +28,15 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await save_message(user_message)
 
+    bot = get_bot()
     last_memory = await get_last_memory(chat_id)
     character = await get_chat_character(
         chat_id=chat_id,
         memory=last_memory if last_memory else None,
     )
+    replier = Replier(bot, character, chat_id, user_message)
+
     last_messages = await _get_last_messages(chat_id)
-    replier = Replier(character, update, user_message)
     await character.respond(replier, user_message, last_messages)
 
     asyncio.create_task(run_context_checks(chat_id))
