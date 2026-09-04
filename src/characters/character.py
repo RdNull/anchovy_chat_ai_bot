@@ -27,8 +27,8 @@ _MAX_LOOP_DEPTH = 8
 def _format_previous_messages(
     replier: Replier, last_messages: list[Message]
 ) -> Generator[HumanMessage | AIMessage, None, None]:
-    for idx, message in enumerate(last_messages, start=1):
-        prefix = '[TARGET] ' if message.id == replier.target_message.id else ''
+    for message in last_messages:
+        prefix = '[TARGET] ' if str(message.id) == str(replier.target_message.id) else ''
         if message.role == UserRole.USER:
             yield HumanMessage(f'{prefix}{message.ai_format}')
         else:

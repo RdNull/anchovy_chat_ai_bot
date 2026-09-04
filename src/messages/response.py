@@ -54,7 +54,7 @@ async def _get_last_messages(chat_id: int) -> list[Message]:
         if m.media and m.media.status.is_pending
     ]
     if not pending_media_ids:
-        return last_messages[:-1]  # to trim the current user message from history
+        return last_messages
 
     await wait_for_media_ready(
         pending_media_ids,
