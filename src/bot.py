@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+from _contextvars import ContextVar
 
 from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
@@ -15,17 +16,15 @@ from src.messages import handlers
 from src.messages.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
 
-_running_app: Application | None = None
+_running_app: ContextVar[Application] = ContextVar('_running_app')
 
 
-def _set_running_app(app: Application):
-    global _running_app
-    _running_app = app
-
+async def post_init(application: Application) -> None:
+    _running_app.set(application)
 
 def get_bot() -> Bot:
-    assert _running_app, 'Application not initialized'
-    return _running_app.bot
+    running_app = _running_app.get()
+    return running_app.bot
 
 
 async def log_sticker_corpus():
@@ -64,7 +63,7 @@ def main() -> None:
     loop.create_task(setup_scheduler())
     app = ApplicationBuilder().token(
         settings.TELEGRAM_TOKEN
-    ).http_version('2').build()
+    ).http_version('2').post_init(post_init).build()
 
     mention_handler = MessageHandler(
         filters.TEXT & (
@@ -119,7 +118,6 @@ def main() -> None:
 
     app.add_error_handler(handlers.error_handler)
 
-    _set_running_app(app)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
