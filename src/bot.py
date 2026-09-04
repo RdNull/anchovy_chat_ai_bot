@@ -5,7 +5,7 @@ from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
+    Application, ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
     MessageReactionHandler, filters,
 )
 
@@ -14,7 +14,7 @@ from src.logs import logger
 from src.messages import handlers
 from src.messages.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
-from src.running_app import post_init
+from src.running_app import set_application
 
 
 async def log_sticker_corpus():
@@ -44,6 +44,9 @@ async def setup_scheduler():
     while True:
         await asyncio.sleep(1)
 
+
+async def post_init(application: Application) -> None:
+    set_application(application)
 
 def main() -> None:
     loop = asyncio.new_event_loop()

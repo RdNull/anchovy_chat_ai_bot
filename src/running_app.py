@@ -4,7 +4,7 @@ from telegram.ext import Application
 _running_app: Application | None = None
 
 
-async def post_init(application: Application) -> None:
+def set_application(application: Application) -> None:
     global _running_app
     _running_app = application
 
