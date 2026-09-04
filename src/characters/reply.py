@@ -74,6 +74,15 @@ class Replier:
         text: str | None = None,
         media: MessageMedia | None = None,
     ) -> Message:
+        reply = None
+        if self.target_message:
+            reply = MessageReply(
+                telegram_id=self.target_message.telegram_id,
+                text=self.target_message.text,
+                nickname=self.target_message.nickname,
+                media=self.target_message.media
+            )
+
         message = Message(
             telegram_id=message_id,
             chat_id=self.chat_id,
@@ -81,12 +90,7 @@ class Replier:
             role=UserRole.AI,
             text=text,
             media=media,
-            reply=MessageReply(
-                telegram_id=self.user_message.telegram_id,
-                text=self.user_message.text,
-                nickname=self.user_message.nickname,
-                media=self.user_message.media
-            ),
+            reply=reply,
         )
         await save_message(message)
         return message
