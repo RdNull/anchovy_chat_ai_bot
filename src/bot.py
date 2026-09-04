@@ -1,12 +1,11 @@
 import asyncio
 import datetime as dt
-from _contextvars import ContextVar
 
 from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
-from telegram import Bot, Update
+from telegram import Update
 from telegram.ext import (
-    Application, ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
+    ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
     MessageReactionHandler, filters,
 )
 
@@ -15,16 +14,7 @@ from src.logs import logger
 from src.messages import handlers
 from src.messages.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
-
-_running_app: ContextVar[Application] = ContextVar('_running_app')
-
-
-async def post_init(application: Application) -> None:
-    _running_app.set(application)
-
-def get_bot() -> Bot:
-    running_app = _running_app.get()
-    return running_app.bot
+from src.running_app import post_init
 
 
 async def log_sticker_corpus():

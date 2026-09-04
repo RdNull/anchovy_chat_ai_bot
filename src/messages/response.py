@@ -8,11 +8,11 @@ from src import settings
 from src.logs import logger
 from src.memory.repository import get_last_memory
 from src.models import Message
+from src.running_app import get_bot
 from .media.pipeline import wait_for_media_ready
 from .parsing import parse_user_message
 from .repository import get_messages, save_message
 from .utils import get_chat_character, send_action
-from ..bot import get_bot
 from ..characters.character import Character
 from ..characters.reply import Replier
 from ..processors.context.handlers import run_context_checks
