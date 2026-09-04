@@ -4,7 +4,7 @@ from pydantic import Field
 
 from src.const import TIMEZONE_ALMATY
 from src.memory.keys import normalize
-from src.models import TIMESTAMP_FORMAT, BaseModel
+from src.models import BaseModel, TIMESTAMP_FORMAT
 
 WEEK_DAYS = 7
 
@@ -126,6 +126,20 @@ class MemoryData(BaseModel):
             if items:
                 lines.append(header)
                 lines.extend(f'- {t}' for t in items)
+
+        return '\n'.join(lines)
+
+    def initiative_format(self) -> str:
+        lines = ['=== ПАМЯТЬ ===']
+
+        if self.content.participants:
+            lines.append('УЧАСТНИКИ:')
+            for nick, info in self.content.participants.items():
+                lines.append(nick)
+                lines.extend(f'  • {t}' for t in info.traits)
+
+        lines.append('\nТЕКУЩИЕ ШУТКИ:')
+        lines.extend(f'- {t}' for t in self.content.state.running_jokes)
 
         return '\n'.join(lines)
 
