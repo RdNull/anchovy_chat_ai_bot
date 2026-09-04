@@ -28,7 +28,8 @@ def _format_previous_messages(
     replier: Replier, last_messages: list[Message]
 ) -> Generator[HumanMessage | AIMessage, None, None]:
     for message in last_messages:
-        prefix = '[TARGET] ' if str(message.id) == str(replier.target_message.id) else ''
+        is_target = replier.target_message and str(message.id) == str(replier.target_message.id)
+        prefix = '[TARGET] ' if is_target else ''
         if message.role == UserRole.USER:
             yield HumanMessage(f'{prefix}{message.ai_format}')
         else:
