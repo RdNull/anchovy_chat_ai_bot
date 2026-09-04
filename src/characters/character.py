@@ -35,6 +35,26 @@ def _format_previous_messages(
             yield AIMessage(f'{prefix}{message.response_format}')
 
 
+def _get_tools_registry(replier: Replier) -> ToolRegistry:
+    context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web, ]
+    direct_tools = [tools.answer_text, ]
+
+    if replier.target_message:
+        # reactions only possible when replying to a message
+        direct_tools.append(tools.set_reaction)
+
+    if settings.ENABLE_STICKER_REPLIES:
+        # Both or neither: `send_sticker` without `find_stickers` gives the model an id
+        # parameter it can only hallucinate.
+        context_tools.append(tools.find_stickers)
+        direct_tools.append(tools.send_sticker)
+
+    return ToolRegistry(
+        context_tools=context_tools,
+        direct_tools=direct_tools,
+        context=ToolContext(chat_id=replier.chat_id, replier=replier),
+    )
+
 
 class Character:
     memory: MemoryData | None = None
@@ -82,21 +102,7 @@ class Character:
             *_format_previous_messages(replier, last_messages or []),
         ]
 
-        context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web]
-        direct_tools = [tools.answer_text, tools.set_reaction]
-
-        if settings.ENABLE_STICKER_REPLIES:
-            # Both or neither: `send_sticker` without `find_stickers` gives the model an id
-            # parameter it can only hallucinate.
-            context_tools.append(tools.find_stickers)
-            direct_tools.append(tools.send_sticker)
-
-        tools_registry = ToolRegistry(
-            context_tools=context_tools,
-            direct_tools=direct_tools,
-            context=ToolContext(chat_id=chat_id, replier=replier),
-        )
-
+        tools_registry = _get_tools_registry(replier)
         logger.debug(
             f'Invoking LLM for character {self.name} with {len(messages)} messages'
         )
