@@ -3,9 +3,9 @@ import datetime as dt
 
 from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
-from telegram import Update
+from telegram import Bot, Update
 from telegram.ext import (
-    ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
+    Application, ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
     MessageReactionHandler, filters,
 )
 
@@ -14,6 +14,18 @@ from src.logs import logger
 from src.messages import handlers
 from src.messages.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
+
+_running_app: Application | None = None
+
+
+def _set_running_app(app: Application):
+    global _running_app
+    _running_app = app
+
+
+def get_bot() -> Bot:
+    assert _running_app, 'Application not initialized'
+    return _running_app.bot
 
 
 async def log_sticker_corpus():
@@ -107,6 +119,7 @@ def main() -> None:
 
     app.add_error_handler(handlers.error_handler)
 
+    _set_running_app(app)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
