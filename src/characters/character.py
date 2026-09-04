@@ -24,13 +24,15 @@ from ..tools import ToolContext, ToolFailure, ToolRegistry
 _MAX_LOOP_DEPTH = 8
 
 
-def _format_previous_messages(last_messages: list[Message]) -> Generator[
-    HumanMessage | AIMessage, None, None]:
-    for message in last_messages:
+def _format_previous_messages(
+    replier: Replier, last_messages: list[Message]
+) -> Generator[HumanMessage | AIMessage, None, None]:
+    for idx, message in enumerate(last_messages, start=1):
+        prefix = '[TARGET] ' if message.id == replier.target_message.id else ''
         if message.role == UserRole.USER:
-            yield HumanMessage(message.ai_format)
+            yield HumanMessage(f'{prefix}{message.ai_format}')
         else:
-            yield AIMessage(message.response_format)
+            yield AIMessage(f'{prefix}{message.response_format}')
 
 
 
@@ -77,7 +79,7 @@ class Character:
         llm = self._get_llm(versions=('v8',))
         messages = [
             self.system_message,
-            *_format_previous_messages(last_messages or []),
+            *_format_previous_messages(replier, last_messages or []),
         ]
 
         context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web]
