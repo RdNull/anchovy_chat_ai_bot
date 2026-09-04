@@ -68,28 +68,24 @@ class Character:
     async def respond(
         self,
         replier: Replier,
-        user_message: Message,
         last_messages: list[Message] = None,
     ) -> None:
-        chat_id = user_message.chat_id
+        chat_id = replier.chat_id
         if self.rate_limiter.is_exceeded(chat_id):
             return None
 
         llm = self._get_llm(versions=('v8',))
         messages = [
             self.system_message,
-            *_format_previous_messages(last_messages),
-            HumanMessage(user_message.ai_format),
+            *_format_previous_messages(last_messages or []),
         ]
 
         context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web]
         direct_tools = [tools.answer_text, tools.set_reaction]
-        # Both or neither: `send_sticker` without `find_stickers` gives the model an id
-        # parameter it can only hallucinate. There is no corpus-size gate — an empty
-        # result is a permanent condition, not a startup one (the index can hold
-        # hundreds of stickers and still have nothing on the topic at hand), so the
-        # empty case has to be handled on every call anyway.
+
         if settings.ENABLE_STICKER_REPLIES:
+            # Both or neither: `send_sticker` without `find_stickers` gives the model an id
+            # parameter it can only hallucinate.
             context_tools.append(tools.find_stickers)
             direct_tools.append(tools.send_sticker)
 

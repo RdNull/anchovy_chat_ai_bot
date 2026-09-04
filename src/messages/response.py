@@ -13,6 +13,7 @@ from .parsing import parse_user_message
 from .repository import get_messages, save_message
 from .utils import get_chat_character, send_action
 from ..bot import get_bot
+from ..characters.character import Character
 from ..characters.reply import Replier
 from ..processors.context.handlers import run_context_checks
 
@@ -30,14 +31,14 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     bot = get_bot()
     last_memory = await get_last_memory(chat_id)
-    character = await get_chat_character(
+    character: Character = await get_chat_character(
         chat_id=chat_id,
         memory=last_memory if last_memory else None,
     )
     replier = Replier(bot, character, chat_id, user_message)
 
     last_messages = await _get_last_messages(chat_id)
-    await character.respond(replier, user_message, last_messages)
+    await character.respond(replier, last_messages)
 
     asyncio.create_task(run_context_checks(chat_id))
 
@@ -59,5 +60,4 @@ async def _get_last_messages(chat_id: int) -> list[Message]:
         pending_media_ids,
         timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
     )
-    last_messages = await get_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
-    return last_messages[:-1]
+    return await get_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
