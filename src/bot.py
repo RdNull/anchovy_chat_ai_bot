@@ -14,7 +14,7 @@ from src.logs import logger
 from src.messages import handlers
 from src.messages.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
-from src.running_app import set_application
+from src.running_app import set_running_app
 
 
 async def log_sticker_corpus():
@@ -46,7 +46,8 @@ async def setup_scheduler():
 
 
 async def post_init(application: Application) -> None:
-    set_application(application)
+    set_running_app(application)
+
 
 def main() -> None:
     loop = asyncio.new_event_loop()
