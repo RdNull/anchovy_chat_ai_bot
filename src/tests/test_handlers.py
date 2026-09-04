@@ -250,10 +250,12 @@ async def test_handle_conversation_skips_random_reply_if_last_was_ai(
 
 # --- generate_answer ---
 
-async def test_generate_answer_full_flow(make_update, make_context, mock_llm, mocker):
+async def test_generate_answer_full_flow(make_update, make_context, make_bot, mock_llm, mocker):
     mocker.patch(
         'src.messages.response.run_context_checks', new_callable=AsyncMock
     )
+    bot = make_bot()
+    mocker.patch('src.messages.response.get_bot', return_value=bot)
     update = make_update(text='question', chat_id=222)
 
     await handlers.generate_answer(update, make_context)
@@ -265,9 +267,9 @@ async def test_generate_answer_full_flow(make_update, make_context, mock_llm, mo
     assert history[0].text == 'question'
     assert history[1].role == UserRole.AI
     assert history[1].text == 'мок ответ'
-    # Telegram reply was sent
-    assert update.message.reply_text.call_count == 1
-    assert update.message.reply_text.call_args == call('мок ответ')
+    # Reply was sent via the Bot API, not update.message
+    assert bot.send_message.call_count == 1
+    assert bot.send_message.call_args.kwargs['text'] == 'мок ответ'
 
 
 async def test_error_handler(mocker):
@@ -534,6 +536,8 @@ async def test_handle_message_edit_no_message_found(mocker, make_update, make_co
 # --- _get_last_messages ---
 
 async def test_get_last_messages_no_pending_media_returns_without_wait(mocker):
+    # The triggering message is no longer trimmed off: it stays in the window so
+    # _format_previous_messages can mark it with [TARGET].
     msg1 = Message(chat_id=222, nickname='user', role=UserRole.USER, text='hi')
     msg2 = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
     mocker.patch('src.messages.response.get_messages', return_value=[msg1, msg2])
@@ -541,7 +545,7 @@ async def test_get_last_messages_no_pending_media_returns_without_wait(mocker):
 
     result = await _get_last_messages(222)
 
-    assert result == [msg1]
+    assert result == [msg1, msg2]
     assert mock_wait.call_count == 0
 
 
@@ -560,7 +564,7 @@ async def test_get_last_messages_with_ready_media_no_wait(mocker):
     result = await _get_last_messages(222)
 
     assert mock_wait.call_count == 0
-    assert result == [msg_ready]
+    assert result == [msg_ready, msg_current]
 
 
 async def test_get_last_messages_pending_media_waits_and_refetches(mocker):
@@ -585,7 +589,7 @@ async def test_get_last_messages_pending_media_waits_and_refetches(mocker):
         ['uid1'], timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
     )
     assert mock_get.call_count == 2
-    assert result == [msg_pending]
+    assert result == [msg_pending, msg_current]
 
 
 async def test_get_last_messages_processing_media_waits(mocker):

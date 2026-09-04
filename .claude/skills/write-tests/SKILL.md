@@ -38,10 +38,26 @@ docker compose exec bot pytest -k test_name      # single test
 | `mock_langsmith` | `autouse` | Patches `langsmith.get_current_run_tree` with a run tree whose `tags` is a real list |
 | `make_update(...)` | factory | `MagicMock` Telegram `Update`; params: `message_id`, `text`, `updated_text`, `user_id`, `chat_id`, `username`, `reply_to_message`, `photo`, `sticker`, `animation` |
 | `make_context` | plain | `MagicMock` PTB context with `bot.send_chat_action = AsyncMock()` |
+| `make_bot()` | factory | `MagicMock` `telegram.Bot` with `send_message`/`send_sticker`/`set_message_reaction` as `AsyncMock`s (see `Replier` below) |
 | `mock_llm` | mocker | Patches `src.characters.character.ai.get_model`; returns an `AIMessage` carrying an `answer_text` tool call with `text='мок ответ'` |
 
 `make_update` defaults: `user_id=111`, `chat_id=222` — these match `ALLOWED_USER_IDS`/`ALLOWED_CHAT_IDS` in `pytest_env`, so `@restricted` passes transparently.
 Pass `updated_text=...` to get an `edited_message`; otherwise `update.edited_message` is `None`.
+
+### Replier
+
+`Replier(bot, character, chat_id, target)` is `Bot`-based, not `Update`-based — it holds
+no reference to a PTB `Update`. `target` is the `Message` being answered (`None` for an
+untargeted send) and drives both the reply-threading (`reply_parameters`) and whether
+`set_reaction` gets bound as a tool at all (`src/characters/character.py:_get_tools_registry`).
+Build one with `make_bot()`:
+```python
+replier = Replier(make_bot(), character, chat_id, target_message)
+```
+`generate_answer` (`src/messages/response.py`) resolves its bot via `src.running_app.get_bot()`
+rather than `update.message.reply_text` — patch `src.messages.response.get_bot` to return a
+`make_bot()` instance when testing that path, and assert on `bot.send_message`/`send_sticker`/
+`set_message_reaction`, not `update.message.*`.
 
 `mock_llm` returns a tool call, not plain content — the character loop terminates on the
 `return_direct` tool, so a bare `AIMessage(content='reply')` would loop instead of answering.

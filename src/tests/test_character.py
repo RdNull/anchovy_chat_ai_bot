@@ -6,11 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, call
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from src import settings
-from src.characters.character import _MAX_LOOP_DEPTH, Character
+from src.characters.character import _MAX_LOOP_DEPTH, Character, _format_previous_messages
 from src.characters.rate_limit import SlidingWindowRateLimiter
 from src.memory.models import ChatState, MemoryData, StructuredMemory
 from src.models import Message, UserRole
 from src.tools import ToolFailure, ToolRegistry
+
+_NOT_SET = object()
 
 
 def make_character():
@@ -27,8 +29,12 @@ def make_user_message(chat_id=1, text='hello'):
     return Message(chat_id=chat_id, role=UserRole.USER, text=text, nickname='user1')
 
 
-def make_replier():
+def make_replier(chat_id=1, target=_NOT_SET):
+    """target defaults to a fresh message — production always has one for a normal
+    reply; pass target=None to exercise the harness for an untargeted send."""
     replier = MagicMock()
+    replier.chat_id = chat_id
+    replier.target_message = make_user_message(chat_id=chat_id) if target is _NOT_SET else target
     replier.reply_message = AsyncMock()
     replier.reply_reaction = AsyncMock()
     return replier
@@ -67,21 +73,20 @@ async def test_respond_adds_version_tag_to_run_tree(mocker, mock_langsmith):
     )
     replier = make_replier()
 
-    await make_character().respond(replier, make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[])
 
     assert mock_langsmith.tags == ['test-version']
 
 
 async def test_respond_calls_answer_tool(mocker):
     llm = mock_chat_llm(mocker, [answer_tool_call(text='привет!')])
-    user_msg = make_user_message()
+    replier = make_replier()
     mock_execute = mocker.patch.object(
         ToolRegistry, 'execute',
         new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None))
     )
-    replier = make_replier()
 
-    await make_character().respond(replier, user_msg, last_messages=[])
+    await make_character().respond(replier, last_messages=[replier.target_message])
 
     assert llm.ainvoke.call_count == 1
     msgs = llm.ainvoke.call_args[0][0]
@@ -89,23 +94,24 @@ async def test_respond_calls_answer_tool(mocker):
     assert len(msgs) == 3
     assert isinstance(msgs[0], SystemMessage)
     assert isinstance(msgs[1], HumanMessage)
-    assert msgs[1].content == user_msg.embedding_text
+    # the only message in last_messages is the target — it gets marked
+    assert msgs[1].content == f'[TARGET] {replier.target_message.ai_format}'
     assert isinstance(msgs[2], AIMessage)  # the answer_text tool_call response
     assert mock_execute.call_count == 1
 
 
 async def test_respond_with_history(mocker):
     llm = mock_chat_llm(mocker, [answer_tool_call(text='ответ')])
+    replier = make_replier()
     history = [
         Message(chat_id=1, role=UserRole.USER, text='раньше', nickname='user1'),
         Message(chat_id=1, role=UserRole.AI, text='ок', nickname='bot'),
+        replier.target_message,
     ]
-    user_msg = make_user_message(text='last message')
     mocker.patch.object(ToolRegistry, 'execute',
                         new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None)))
-    replier = make_replier()
 
-    await make_character().respond(replier, user_msg, last_messages=history)
+    await make_character().respond(replier, last_messages=history)
 
     msgs = llm.ainvoke.call_args[0][0]
     # ainvoke called with [System, Human(раньше), AI(ок), Human(current)] (4 msgs);
@@ -128,7 +134,7 @@ async def test_respond_executes_context_tool_then_direct_tool(mocker):
     )
     replier = make_replier()
 
-    await make_character().respond(replier, make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[replier.target_message])
 
     assert llm.ainvoke.call_count == 2
     assert mock_execute.call_count == 2
@@ -152,7 +158,7 @@ async def test_respond_timeout_calls_replier_fallback(mocker):
     mocker.patch.object(settings, 'AI_TIMEOUT', 0.01)
     replier = make_replier()
 
-    await make_character().respond(replier, make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[])
 
     assert replier.reply_message.call_count == 1
     error_text = replier.reply_message.call_args[0][0]
@@ -166,7 +172,7 @@ async def test_respond_exception_calls_replier_fallback(mocker):
     mocker.patch('src.characters.character.ai.get_model', return_value=llm)
     replier = make_replier()
 
-    await make_character().respond(replier, make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[])
 
     assert replier.reply_message.call_count == 1
     assert replier.reply_message.call_args[0][0] == 'Голова чё-то разболелась, давай потом...'
@@ -176,7 +182,7 @@ async def test_respond_rate_limited_returns_silently(mocker):
     mocker.patch('src.characters.rate_limit.SlidingWindowRateLimiter.is_exceeded', return_value=True)
     replier = make_replier()
 
-    await make_character().respond(replier, make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[])
 
     assert replier.reply_message.call_count == 0
 
@@ -190,7 +196,7 @@ async def test_respond_not_rate_limited_proceeds(mocker):
     )
     replier = make_replier()
 
-    await make_character().respond(replier, make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[])
 
     assert mock_execute.call_count == 1
 
@@ -200,7 +206,7 @@ async def test_respond_no_tool_calls_stays_silent(mocker):
     mock_warning = mocker.patch('src.characters.character.logger.warning')
     replier = make_replier()
 
-    await make_character().respond(replier, make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[])
 
     # No tool_calls means intended silence — nothing is sent, just a warning logged
     assert replier.reply_message.call_count == 0
@@ -221,9 +227,34 @@ async def test_respond_multiple_direct_tools_tags_langsmith(mocker, mock_langsmi
     )
     replier = make_replier()
 
-    await make_character().respond(replier, make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[])
 
     assert 'multiple_response_called' in mock_langsmith.tags
+
+
+# --- _format_previous_messages ---
+# The bot may eventually answer a chat without pointing at any one message; when
+# that happens replier.target_message is None and this must not crash.
+
+def test_format_previous_messages_marks_only_the_target_message():
+    replier = make_replier()
+    replier.target_message.id = 'target-id'
+    other = Message(chat_id=1, role=UserRole.USER, text='раньше', nickname='user1')
+    other.id = 'other-id'
+
+    msgs = list(_format_previous_messages(replier, [other, replier.target_message]))
+
+    assert '[TARGET]' not in msgs[0].content
+    assert msgs[1].content.startswith('[TARGET] ')
+
+
+def test_format_previous_messages_handles_missing_target():
+    replier = make_replier(target=None)
+    other = make_user_message()
+
+    msgs = list(_format_previous_messages(replier, [other]))
+
+    assert '[TARGET]' not in msgs[0].content
 
 
 # --- sticker tool binding ---
@@ -249,7 +280,7 @@ async def respond_and_capture(mocker, enabled):
     mocker.patch.object(settings, 'ENABLE_STICKER_REPLIES', enabled)
     captured = captured_registry(mocker)
 
-    await make_character().respond(make_replier(), make_user_message(), last_messages=[])
+    await make_character().respond(make_replier(), last_messages=[])
 
     return captured['registry']
 
@@ -282,6 +313,17 @@ async def test_base_tools_are_always_bound(mocker):
     }
 
 
+async def test_set_reaction_not_bound_without_a_target_message(mocker):
+    # Reactions attach to a specific message; an untargeted send has none to react to.
+    mock_chat_llm(mocker, [answer_tool_call()])
+    mocker.patch.object(ToolRegistry, 'execute', new=execute_returning(None))
+    captured = captured_registry(mocker)
+
+    await make_character().respond(make_replier(target=None), last_messages=[])
+
+    assert 'set_reaction' not in tool_names(captured['registry'])
+
+
 # --- direct-tool failure recovery ---
 
 def execute_returning(*results):
@@ -297,7 +339,7 @@ async def test_direct_tool_returning_none_terminates_immediately(mocker):
     llm = mock_chat_llm(mocker, [answer_tool_call(), answer_tool_call()])
     mocker.patch.object(ToolRegistry, 'execute', new=execute_returning(None))
 
-    await make_character().respond(make_replier(), make_user_message(), last_messages=[])
+    await make_character().respond(make_replier(), last_messages=[])
 
     assert llm.ainvoke.call_count == 1
 
@@ -307,8 +349,9 @@ async def test_direct_tool_failure_gives_the_model_another_turn(mocker):
     mocker.patch.object(
         ToolRegistry, 'execute', new=execute_returning(ToolFailure('стикер недоступен'), None),
     )
+    replier = make_replier()
 
-    await make_character().respond(make_replier(), make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[replier.target_message])
 
     assert llm.ainvoke.call_count == 2
     # The failure is fed back as a ToolMessage so the model can pick something else.
@@ -323,7 +366,7 @@ async def test_direct_tool_failure_then_success_terminates(mocker):
         ToolRegistry, 'execute', new=execute_returning(ToolFailure('boom'), None),
     )
 
-    await make_character().respond(make_replier(), make_user_message(), last_messages=[])
+    await make_character().respond(make_replier(), last_messages=[])
 
     assert llm.ainvoke.call_count == 2
 
@@ -339,7 +382,7 @@ async def test_direct_tool_failing_every_turn_stops_at_the_depth_cap(mocker):
     )
     mock_error = mocker.patch('src.characters.character.logger.error')
 
-    await make_character().respond(make_replier(), make_user_message(), last_messages=[])
+    await make_character().respond(make_replier(), last_messages=[])
 
     assert llm.ainvoke.call_count == _MAX_LOOP_DEPTH
     assert 'hard depth cap hit' in mock_error.call_args[0][0]
@@ -358,7 +401,7 @@ async def test_failed_direct_tool_falls_through_to_the_next_in_the_batch(mocker)
         ToolRegistry, 'execute', new=execute_returning(ToolFailure('boom'), None),
     )
 
-    await make_character().respond(make_replier(), make_user_message(), last_messages=[])
+    await make_character().respond(make_replier(), last_messages=[])
 
     assert mock_execute.call_count == 2
     assert llm.ainvoke.call_count == 1
@@ -367,8 +410,9 @@ async def test_failed_direct_tool_falls_through_to_the_next_in_the_batch(mocker)
 async def test_context_tool_result_is_unaffected_by_the_tuple_return(mocker):
     llm = mock_chat_llm(mocker, [search_tool_call(), answer_tool_call()])
     mocker.patch.object(ToolRegistry, 'execute', new=execute_returning([], None))
+    replier = make_replier()
 
-    await make_character().respond(make_replier(), make_user_message(), last_messages=[])
+    await make_character().respond(replier, last_messages=[replier.target_message])
 
     assert llm.ainvoke.call_count == 2
     msgs = llm.ainvoke.call_args_list[-1][0][0]

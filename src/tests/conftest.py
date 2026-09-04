@@ -68,6 +68,18 @@ def make_context():
 
 
 @pytest.fixture
+def make_bot():
+    def _factory():
+        bot = MagicMock()
+        bot.send_message = AsyncMock(return_value=MagicMock(message_id=999))
+        bot.send_sticker = AsyncMock(return_value=MagicMock(message_id=998))
+        bot.set_message_reaction = AsyncMock(return_value=True)
+        return bot
+
+    return _factory
+
+
+@pytest.fixture
 def mock_llm(mocker):
     llm = MagicMock()
     llm.bind_tools.return_value = llm
