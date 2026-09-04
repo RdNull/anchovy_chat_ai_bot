@@ -35,7 +35,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=chat_id,
         memory=last_memory if last_memory else None,
     )
-    replier = Replier(bot, character, chat_id, user_message)
+    replier = Replier(bot=bot, character=character, chat_id=chat_id, target=user_message)
 
     last_messages = await _get_last_messages(chat_id)
     await character.respond(replier, last_messages)
