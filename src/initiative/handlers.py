@@ -9,7 +9,7 @@ from src.initiative.processors import evaluate_initiative
 from src.initiative.repository import get_last_initiative_run, save_initiative_run
 from src.logs import logger
 from src.memory.repository import get_last_memory
-from src.messages.repository import fetch_last_messages, get_messages_count, get_messages_count_since
+from src.messages.repository import fetch_last_messages
 from src.messages.utils import get_chat_character
 from src.models import Message
 from src.running_app import get_bot
@@ -22,26 +22,22 @@ async def run_initiative_checks(chat_id: int):
     logger.info(f'Running initiative checks for chat {chat_id}')
     last_initiative_run = await get_last_initiative_run(chat_id)
 
-    messages_count = await _get_message_count_since_last_run(chat_id, last_initiative_run)
-    if messages_count < settings.INITIATIVE_TRIGGER_SIZE:
-        return
-
     messages = await _get_messages(chat_id, last_initiative_run)
-    # Marks this window as considered regardless of outcome below, so a chat stuck in
-    # cooldown or scoring low doesn't get re-evaluated on every single new message.
-    await save_initiative_run(chat_id, last_message_time=messages[-1].created_at)
 
     if not await pre_check(chat_id, messages):
         logger.info(f'Initiative run pre-checks failed for chat {chat_id}')
         return
 
-    logger.info(f'Triggering initiative run for chat {chat_id}')
+    logger.info(f'Triggering initiative run for chat {chat_id} {len(messages)}')
+    await save_initiative_run(chat_id, last_message_time=messages[-1].created_at)
 
     last_memory = await get_last_memory(chat_id)
     character: Character = await get_chat_character(chat_id=chat_id, memory=last_memory)
     evaluation = await evaluate_initiative(character, messages)
     if not await decide(evaluation):
-        logger.info(f'Initiative run skipped for chat {chat_id}; {evaluation.score=}')
+        logger.info(
+            f'Initiative run skipped for chat {chat_id}; {evaluation.score=}, {evaluation.reason=}'
+        )
         return
 
     if not settings.INITIATIVE_ENABLED:
@@ -54,17 +50,6 @@ async def run_initiative_checks(chat_id: int):
     asyncio.create_task(
         _run_initiative_reply(chat_id=chat_id, character=character, evaluation=evaluation)
     )
-
-
-async def _get_message_count_since_last_run(
-    chat_id: int, last_initiative_run: InitiativeRun | None,
-) -> int:
-    if last_initiative_run:
-        return await get_messages_count_since(
-            chat_id, last_initiative_run.last_message_time.timestamp()
-        )
-
-    return await get_messages_count(chat_id)
 
 
 async def _get_messages(chat_id: int, last_initiative_run: InitiativeRun | None) -> list[Message]:

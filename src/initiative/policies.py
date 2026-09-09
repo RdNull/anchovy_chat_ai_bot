@@ -8,6 +8,10 @@ from src.models import Message, UserRole
 
 
 async def pre_check(chat_id: int, messages: list[Message]) -> bool:
+    if len(messages) < settings.INITIATIVE_TRIGGER_SIZE:
+        logger.info(f'Skipping initiative reply in chat {chat_id}: messages count too low')
+        return False
+
     last_message = messages[-1]
     if last_message.role == UserRole.AI:
         logger.info(f'Skipping initiative reply in chat {chat_id}: last message was from AI')
