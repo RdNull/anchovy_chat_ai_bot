@@ -37,6 +37,10 @@ async def run_initiative_checks(chat_id: int):
         logger.info(f'Initiative run skipped for chat {chat_id}; {evaluation.score=}')
         return
 
+    if not settings.INITIATIVE_ENABLED:
+        logger.info(f'Initiative run skipped for chat {chat_id}; initiative is disabled')
+        return
+
     asyncio.create_task(
         _run_initiative_reply(chat_id=chat_id, character=character, evaluation=evaluation)
     )
