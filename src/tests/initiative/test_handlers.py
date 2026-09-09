@@ -2,6 +2,8 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
+from telegram.constants import ChatAction
+
 from src import settings
 from src.initiative import handlers
 from src.initiative.models import InitiativeRun, InitiativeVerdict
@@ -27,33 +29,18 @@ async def test_run_initiative_checks_noop_when_checks_disabled(mocker):
     assert mock_get_run.call_count == 0
 
 
-# --- run_initiative_checks: trigger gate ---
+# --- run_initiative_checks: pre_check gates the watermark save ---
 
-async def test_run_initiative_checks_returns_when_not_enough_new_messages(mocker):
+async def test_run_initiative_checks_does_not_save_watermark_when_pre_check_fails(mocker):
+    # Regression: save_initiative_run used to run before pre_check, so a chat that
+    # keeps failing pre_check (cooldown, gap, too few messages) had its watermark
+    # reset on every single message — the "since last run" count could never grow
+    # past ~1, and the feature could never trigger again.
     mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
-    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 5)
     mocker.patch('src.initiative.handlers.get_last_initiative_run', AsyncMock(return_value=None))
-    mocker.patch('src.initiative.handlers.get_messages_count', AsyncMock(return_value=4))
-    mock_save_run = mocker.patch(
-        'src.initiative.handlers.save_initiative_run', new_callable=AsyncMock
+    mocker.patch(
+        'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[make_message()])
     )
-
-    await handlers.run_initiative_checks(222)
-
-    assert mock_save_run.call_count == 0
-
-
-# --- run_initiative_checks: watermark persistence ---
-
-async def test_run_initiative_checks_saves_watermark_even_when_pre_check_fails(mocker):
-    # Regression: save_initiative_run used to never be called at all, so the trigger
-    # gate above would stay permanently satisfied once a chat crossed it once.
-    mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
-    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
-    mocker.patch('src.initiative.handlers.get_last_initiative_run', AsyncMock(return_value=None))
-    mocker.patch('src.initiative.handlers.get_messages_count', AsyncMock(return_value=5))
-    newest = make_message()
-    mocker.patch('src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[newest]))
     mock_save_run = mocker.patch(
         'src.initiative.handlers.save_initiative_run', new_callable=AsyncMock
     )
@@ -64,8 +51,7 @@ async def test_run_initiative_checks_saves_watermark_even_when_pre_check_fails(m
 
     await handlers.run_initiative_checks(222)
 
-    assert mock_save_run.call_count == 1
-    assert mock_save_run.call_args == call(222, last_message_time=newest.created_at)
+    assert mock_save_run.call_count == 0
     assert mock_evaluate.call_count == 0
 
 
@@ -75,13 +61,10 @@ async def test_run_initiative_checks_passes_memory_to_character_and_stops_on_low
     # Regression: get_chat_character used to be called with no memory=, so
     # evaluate_initiative crashed on character.memory being None.
     mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
-    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
     mocker.patch('src.initiative.handlers.get_last_initiative_run', AsyncMock(return_value=None))
-    mocker.patch('src.initiative.handlers.get_messages_count', AsyncMock(return_value=5))
-    mocker.patch(
-        'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[make_message()])
-    )
-    mocker.patch('src.initiative.handlers.save_initiative_run', new_callable=AsyncMock)
+    newest = make_message()
+    mocker.patch('src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[newest]))
+    mock_save_run = mocker.patch('src.initiative.handlers.save_initiative_run', new_callable=AsyncMock)
     mocker.patch('src.initiative.handlers.pre_check', AsyncMock(return_value=True))
     sentinel_memory = object()
     mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=sentinel_memory))
@@ -94,6 +77,9 @@ async def test_run_initiative_checks_passes_memory_to_character_and_stops_on_low
 
     await handlers.run_initiative_checks(222)
 
+    # The watermark is saved once pre_check passes, regardless of the eventual score.
+    assert mock_save_run.call_count == 1
+    assert mock_save_run.call_args == call(222, last_message_time=newest.created_at)
     assert mock_get_character.call_args == call(chat_id=222, memory=sentinel_memory)
     assert mock_create_task.call_count == 0
 
@@ -102,9 +88,7 @@ async def test_run_initiative_checks_passes_memory_to_character_and_stops_on_low
 
 def _mock_full_pass(mocker, score=0.9):
     mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
-    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
     mocker.patch('src.initiative.handlers.get_last_initiative_run', AsyncMock(return_value=None))
-    mocker.patch('src.initiative.handlers.get_messages_count', AsyncMock(return_value=5))
     mocker.patch(
         'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[make_message()])
     )
@@ -179,34 +163,6 @@ async def test_get_messages_resumes_from_watermark_oldest_first(mocker):
     )
 
 
-# --- _get_message_count_since_last_run ---
-
-async def test_message_count_falls_back_to_chat_total_with_no_prior_run(mocker):
-    mock_count = mocker.patch(
-        'src.initiative.handlers.get_messages_count', AsyncMock(return_value=7)
-    )
-    mock_count_since = mocker.patch('src.initiative.handlers.get_messages_count_since')
-
-    result = await handlers._get_message_count_since_last_run(222, None)
-
-    assert result == 7
-    assert mock_count.call_count == 1
-    assert mock_count_since.call_count == 0
-
-
-async def test_message_count_counts_since_the_watermark(mocker):
-    watermark = datetime.now(timezone.utc)
-    last_run = InitiativeRun(chat_id=222, last_message_time=watermark, created_at=watermark)
-    mock_count_since = mocker.patch(
-        'src.initiative.handlers.get_messages_count_since', AsyncMock(return_value=3)
-    )
-
-    result = await handlers._get_message_count_since_last_run(222, last_run)
-
-    assert result == 3
-    assert mock_count_since.call_args == call(222, watermark.timestamp())
-
-
 # --- _run_initiative_reply ---
 
 async def test_run_initiative_reply_builds_replier_targeting_the_evaluated_message(
@@ -214,6 +170,7 @@ async def test_run_initiative_reply_builds_replier_targeting_the_evaluated_messa
 ):
     bot = make_bot()
     mocker.patch('src.initiative.handlers.get_bot', return_value=bot)
+    mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
     memory = object()
     mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=memory))
     last_messages = [make_message(text='fresh')]
@@ -238,6 +195,7 @@ async def test_run_initiative_reply_builds_replier_targeting_the_evaluated_messa
 
 async def test_run_initiative_reply_targets_the_chat_when_no_target_message(mocker, make_bot):
     mocker.patch('src.initiative.handlers.get_bot', return_value=make_bot())
+    mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
     mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=None))
     mocker.patch('src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[]))
     character = MagicMock()
@@ -248,3 +206,17 @@ async def test_run_initiative_reply_targets_the_chat_when_no_target_message(mock
 
     replier = character.respond.call_args[0][0]
     assert replier.target_message is None
+
+
+async def test_run_initiative_reply_sends_typing_action(mocker, make_bot):
+    mocker.patch('src.initiative.handlers.get_bot', return_value=make_bot())
+    mock_typing = mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
+    mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=None))
+    mocker.patch('src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[]))
+    character = MagicMock()
+    character.respond = AsyncMock()
+    evaluation = InitiativeVerdict(target_message=None, score=0.9, reason='r')
+
+    await handlers._run_initiative_reply(chat_id=222, character=character, evaluation=evaluation)
+
+    assert mock_typing.call_args == call(222, ChatAction.TYPING)

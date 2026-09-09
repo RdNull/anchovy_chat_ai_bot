@@ -89,6 +89,16 @@ async def test_evaluate_initiative_handles_llm_error(mocker):
     assert result.reason == 'Initiative evaluation error'
 
 
+async def test_evaluate_initiative_handles_empty_response(mocker):
+    mock_initiative_llm(mocker, None)
+
+    result = await evaluate_initiative(make_character(), [make_message()])
+
+    assert result.target_message is None
+    assert result.score == 0
+    assert result.reason == 'Initiative evaluation empty response'
+
+
 # --- character.memory handling ---
 
 async def test_evaluate_initiative_without_memory_does_not_crash(mocker):
