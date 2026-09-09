@@ -150,12 +150,14 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
     return await _parse_message_record(message)
 
 
-async def get_messages_count_since(chat_id: int, timestamp: float) -> int:
-    logger.debug(f"Counting messages for chat {chat_id} since {timestamp}")
-    return await mongo.messages.count_documents({
-        'chat_id': chat_id,
-        'created_at': {'$gt': timestamp}
-    })
+async def get_messages_count_since(
+    chat_id: int, timestamp: float, role: UserRole | None = None,
+) -> int:
+    logger.debug(f'Counting messages for chat {chat_id} since {timestamp}')
+    query = {'chat_id': chat_id, 'created_at': {'$gt': timestamp}}
+    if role:
+        query['role'] = role.value
+    return await mongo.messages.count_documents(query)
 
 
 async def get_messages_count(chat_id: int) -> int:
