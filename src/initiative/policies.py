@@ -12,8 +12,10 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
         logger.info(f'Skipping initiative reply in chat {chat_id}: messages count too low')
         return False
 
-    last_message = messages[-1]
-    if last_message.role == UserRole.AI:
+    # The chat's true newest, not `messages[-1]`: on a backlog past the fetch cap the
+    # window ends mid-history, and this guard has to see what was actually said last.
+    last_message = await get_last_message(chat_id)
+    if last_message and last_message.role == UserRole.AI:
         logger.info(f'Skipping initiative reply in chat {chat_id}: last message was from AI')
         return False
 
