@@ -10,7 +10,7 @@ from src.initiative.repository import get_last_initiative_run
 from src.logs import logger
 from src.memory.repository import get_last_memory
 from src.messages.repository import get_messages_count, get_messages_count_since
-from src.messages.response import get_last_messages
+from src.messages.response import fetch_last_messages
 from src.messages.utils import get_chat_character
 from src.models import Message
 from src.running_app import get_bot
@@ -59,7 +59,7 @@ async def _get_message_count_since_last_run(
 
 async def _get_messages(chat_id: int, last_initiative_run: InitiativeRun | None) -> list[Message]:
     from_date = last_initiative_run.last_message_time if last_initiative_run else None
-    return await get_last_messages(
+    return await fetch_last_messages(
         chat_id,
         size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE,
         from_date=from_date,
@@ -81,5 +81,5 @@ async def _run_initiative_reply(
     )
 
     # reload messages to fetch messages that might be sent in-between initiative evaluation
-    last_messages = await get_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
+    last_messages = await fetch_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
     await character.respond(replier, last_messages)

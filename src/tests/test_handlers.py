@@ -13,7 +13,7 @@ from src.messages.parsing import _get_message_medium
 from src.messages.repository import (
     get_messages, save_message,
 )
-from src.messages.response import get_last_messages
+from src.messages.response import fetch_last_messages
 from src.models import (
     Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UpdateMessage,
     UserRole,
@@ -543,7 +543,7 @@ async def test_get_last_messages_no_pending_media_returns_without_wait(mocker):
     mocker.patch('src.messages.response.get_messages', return_value=[msg1, msg2])
     mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
 
-    result = await get_last_messages(222)
+    result = await fetch_last_messages(222)
 
     assert result == [msg1, msg2]
     assert mock_wait.call_count == 0
@@ -561,7 +561,7 @@ async def test_get_last_messages_with_ready_media_no_wait(mocker):
     mocker.patch('src.messages.response.get_messages', return_value=[msg_ready, msg_current])
     mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
 
-    result = await get_last_messages(222)
+    result = await fetch_last_messages(222)
 
     assert mock_wait.call_count == 0
     assert result == [msg_ready, msg_current]
@@ -582,7 +582,7 @@ async def test_get_last_messages_pending_media_waits_and_refetches(mocker):
     )
     mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
 
-    result = await get_last_messages(222)
+    result = await fetch_last_messages(222)
 
     assert mock_wait.call_count == 1
     assert mock_wait.call_args == call(
@@ -607,7 +607,7 @@ async def test_get_last_messages_processing_media_waits(mocker):
     )
     mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
 
-    await get_last_messages(222)
+    await fetch_last_messages(222)
 
     assert mock_wait.call_count == 1
     assert mock_wait.call_args == call(

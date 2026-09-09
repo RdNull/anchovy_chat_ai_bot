@@ -7,11 +7,9 @@ from telegram.ext import ContextTypes
 from src import settings
 from src.logs import logger
 from src.memory.repository import get_last_memory
-from src.models import Message
 from src.running_app import get_bot
-from .media.pipeline import wait_for_media_ready
 from .parsing import parse_user_message
-from .repository import get_messages, save_message
+from .repository import fetch_last_messages, save_message
 from .utils import get_chat_character, send_action
 from ..characters.character import Character
 from ..characters.reply import Replier
@@ -37,25 +35,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     replier = Replier(bot=bot, character=character, chat_id=chat_id, target=user_message)
 
-    last_messages = await get_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
+    last_messages = await fetch_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
     await character.respond(replier, last_messages)
 
     asyncio.create_task(run_context_checks(chat_id))
-
-
-async def get_last_messages(chat_id: int, size: int, **kwargs) -> list[Message]:
-    # todo move somewhere?
-    last_messages = await get_messages(chat_id, size=size, **kwargs)
-    pending_media_ids = [
-        m.media.unique_id
-        for m in last_messages
-        if m.media and m.media.status.is_pending
-    ]
-    if not pending_media_ids:
-        return last_messages
-
-    await wait_for_media_ready(
-        pending_media_ids,
-        timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
-    )
-    return await get_messages(chat_id, size=size, **kwargs)

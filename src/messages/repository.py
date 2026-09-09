@@ -4,9 +4,10 @@ from typing import Iterable
 
 from bson import ObjectId
 
-from src import mongo
+from src import mongo, settings
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
+from src.messages.media.pipeline import wait_for_media_ready
 from src.models import Message, MessageMedia, MessageReply, UpdateMessage, UserRole
 
 
@@ -125,6 +126,22 @@ async def get_messages_by_ids(
         for message in messages
     ]
 
+
+async def fetch_last_messages(chat_id: int, size: int, **kwargs) -> list[Message]:
+    last_messages = await get_messages(chat_id, size=size, **kwargs)
+    pending_media_ids = [
+        m.media.unique_id
+        for m in last_messages
+        if m.media and m.media.status.is_pending
+    ]
+    if not pending_media_ids:
+        return last_messages
+
+    await wait_for_media_ready(
+        pending_media_ids,
+        timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
+    )
+    return await get_messages(chat_id, size=size, **kwargs)
 
 async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None:
     logger.debug(f"Fetching message by telegram id {telegram_id}")
