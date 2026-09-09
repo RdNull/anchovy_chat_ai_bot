@@ -15,6 +15,7 @@ async def clean_collections():
     await mongo.embedding_tasks.drop()
     await mongo.media_descriptions.drop()
     await mongo.chat_settings.drop()
+    await mongo.initiative_runs.drop()
 
 
 @pytest.fixture

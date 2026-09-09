@@ -4,13 +4,13 @@ from src import ai
 from src.characters.character import Character
 from src.initiative.models import InitiativeDecision, InitiativeVerdict
 from src.logs import logger
-from src.models import Message, UserRole
+from src.models import Message
 from src.prompt_manager import prompt_manager
 
 
 async def evaluate_initiative(character: Character, messages: list[Message]) -> InitiativeVerdict:
     rendered_messages = '\n'.join([
-        f'#{i} ▸ {m.ai_format if m.role == UserRole.USER else m.response_format}'
+        f'#{i} ▸ {m.ai_format}'
         for i, m in enumerate(messages, start=1)
     ])
 
@@ -21,7 +21,7 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
         'initiative',
         version='v1',
         messages=rendered_messages,
-        current_memory=character.memory.initiative_format(),
+        current_memory=character.memory.initiative_format() if character.memory else None,
         character_description=character.style_prompt,
     )
 
@@ -37,9 +37,10 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
             reason='Initiative evaluation error'
         )
 
+    # target_index is 1-based, matching the `#N` labels the model was shown above.
     target_message = None
-    if evaluation_result.target_index and evaluation_result.target_index < len(messages):
-        target_message = messages[evaluation_result.target_index]
+    if evaluation_result.target_index and evaluation_result.target_index <= len(messages):
+        target_message = messages[evaluation_result.target_index - 1]
 
     logger.info(
         f'Initiative evaluation result: '

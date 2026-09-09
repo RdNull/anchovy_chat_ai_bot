@@ -533,23 +533,23 @@ async def test_handle_message_edit_no_message_found(mocker, make_update, make_co
     assert update_message_mock.call_count == 0
 
 
-# --- _get_last_messages ---
+# --- fetch_last_messages ---
 
-async def test_get_last_messages_no_pending_media_returns_without_wait(mocker):
+async def test_fetch_last_messages_no_pending_media_returns_without_wait(mocker):
     # The triggering message is no longer trimmed off: it stays in the window so
     # _format_previous_messages can mark it with [TARGET].
     msg1 = Message(chat_id=222, nickname='user', role=UserRole.USER, text='hi')
     msg2 = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
-    mocker.patch('src.messages.response.get_messages', return_value=[msg1, msg2])
-    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+    mocker.patch('src.messages.repository.get_messages', return_value=[msg1, msg2])
+    mock_wait = mocker.patch('src.messages.repository.wait_for_media_ready', new_callable=AsyncMock)
 
-    result = await fetch_last_messages(222)
+    result = await fetch_last_messages(222, size=settings.LAST_MESSAGES_SIZE)
 
     assert result == [msg1, msg2]
     assert mock_wait.call_count == 0
 
 
-async def test_get_last_messages_with_ready_media_no_wait(mocker):
+async def test_fetch_last_messages_with_ready_media_no_wait(mocker):
     msg_ready = Message(
         chat_id=222, nickname='user', role=UserRole.USER, text=None,
         media=MessageMedia(
@@ -558,16 +558,16 @@ async def test_get_last_messages_with_ready_media_no_wait(mocker):
         ),
     )
     msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
-    mocker.patch('src.messages.response.get_messages', return_value=[msg_ready, msg_current])
-    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+    mocker.patch('src.messages.repository.get_messages', return_value=[msg_ready, msg_current])
+    mock_wait = mocker.patch('src.messages.repository.wait_for_media_ready', new_callable=AsyncMock)
 
-    result = await fetch_last_messages(222)
+    result = await fetch_last_messages(222, size=settings.LAST_MESSAGES_SIZE)
 
     assert mock_wait.call_count == 0
     assert result == [msg_ready, msg_current]
 
 
-async def test_get_last_messages_pending_media_waits_and_refetches(mocker):
+async def test_fetch_last_messages_pending_media_waits_and_refetches(mocker):
     msg_pending = Message(
         chat_id=222, nickname='user', role=UserRole.USER, text=None,
         media=MessageMedia(
@@ -577,12 +577,12 @@ async def test_get_last_messages_pending_media_waits_and_refetches(mocker):
     )
     msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
     mock_get = mocker.patch(
-        'src.messages.response.get_messages',
+        'src.messages.repository.get_messages',
         side_effect=[[msg_pending, msg_current], [msg_pending, msg_current]],
     )
-    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+    mock_wait = mocker.patch('src.messages.repository.wait_for_media_ready', new_callable=AsyncMock)
 
-    result = await fetch_last_messages(222)
+    result = await fetch_last_messages(222, size=settings.LAST_MESSAGES_SIZE)
 
     assert mock_wait.call_count == 1
     assert mock_wait.call_args == call(
@@ -592,7 +592,7 @@ async def test_get_last_messages_pending_media_waits_and_refetches(mocker):
     assert result == [msg_pending, msg_current]
 
 
-async def test_get_last_messages_processing_media_waits(mocker):
+async def test_fetch_last_messages_processing_media_waits(mocker):
     msg_processing = Message(
         chat_id=222, nickname='user', role=UserRole.USER, text=None,
         media=MessageMedia(
@@ -602,12 +602,12 @@ async def test_get_last_messages_processing_media_waits(mocker):
     )
     msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
     mocker.patch(
-        'src.messages.response.get_messages',
+        'src.messages.repository.get_messages',
         side_effect=[[msg_processing, msg_current], [msg_processing, msg_current]],
     )
-    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+    mock_wait = mocker.patch('src.messages.repository.wait_for_media_ready', new_callable=AsyncMock)
 
-    await fetch_last_messages(222)
+    await fetch_last_messages(222, size=settings.LAST_MESSAGES_SIZE)
 
     assert mock_wait.call_count == 1
     assert mock_wait.call_args == call(
