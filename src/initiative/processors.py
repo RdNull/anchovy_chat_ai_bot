@@ -41,6 +41,10 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
     if evaluation_result.target_index and evaluation_result.target_index < len(messages):
         target_message = messages[evaluation_result.target_index]
 
+    logger.info(
+        f'Initiative evaluation result: '
+        f'{target_message=}|{evaluation_result.reason=}|{evaluation_result.score=}'
+    )
     return InitiativeVerdict(
         target_message=target_message,
         score=evaluation_result.score,
