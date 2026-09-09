@@ -11,7 +11,7 @@ from src.prompt_manager import prompt_manager
 async def evaluate_initiative(character: Character, messages: list[Message]) -> InitiativeVerdict:
     rendered_messages = '\n'.join([
         f'#{i} ▸ {m.ai_format if m.role == UserRole.USER else m.response_format}'
-        for i, m in enumerate(messages)
+        for i, m in enumerate(messages, start=1)
     ])
 
     llm = ai.get_initiative_model(version='v1')
