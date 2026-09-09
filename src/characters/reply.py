@@ -19,7 +19,6 @@ class Replier:
         self.chat_id = chat_id
         self.target_message = target
 
-
     async def reply_message(self, text: str) -> Message:
         logger.info(f'Replying to user message with text: {text}')
 

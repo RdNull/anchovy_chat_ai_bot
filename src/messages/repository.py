@@ -143,6 +143,7 @@ async def fetch_last_messages(chat_id: int, size: int, **kwargs) -> list[Message
     )
     return await get_messages(chat_id, size=size, **kwargs)
 
+
 async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None:
     logger.debug(f"Fetching message by telegram id {telegram_id}")
     message = await mongo.messages.find_one({
@@ -153,6 +154,7 @@ async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None
         return None
 
     return await _parse_message_record(message)
+
 
 async def get_last_message(chat_id: int, role: UserRole | None = None) -> Message | None:
     logger.debug(f"Fetching last message for chat {chat_id} (role={role})")
