@@ -47,13 +47,15 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
         )
 
     # target_index is 1-based, matching the `#N` labels the model was shown above.
-    target_message = None
-    if evaluation_result.target_index and evaluation_result.target_index <= len(messages):
-        target_message = messages[evaluation_result.target_index - 1]
+    # Anything outside that range — `0` included — means 'no target', not a failed
+    # run: a stray index must not throw away an otherwise good score.
+    target_index = evaluation_result.target_index or 0
+    target_message = messages[target_index - 1] if 0 < target_index <= len(messages) else None
 
     logger.info(
         f'Initiative evaluation result: '
-        f'{target_message.embedding_text if target_message else "<direct>"}|{evaluation_result.reason=}|{evaluation_result.score=}'
+        f'{target_message.embedding_text if target_message else "<direct>"}'
+        f'|{evaluation_result.reason=}|{evaluation_result.score=}'
     )
     return InitiativeVerdict(
         target_message=target_message,
