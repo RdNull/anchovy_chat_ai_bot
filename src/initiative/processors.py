@@ -1,4 +1,5 @@
 from langchain_core.messages import SystemMessage
+from langsmith import traceable
 
 from src import ai
 from src.characters.character import Character
@@ -8,6 +9,7 @@ from src.models import Message
 from src.prompt_manager import prompt_manager
 
 
+@traceable
 async def evaluate_initiative(character: Character, messages: list[Message]) -> InitiativeVerdict:
     rendered_messages = '\n'.join([
         f'#{i} ▸ {m.ai_format}'
@@ -37,6 +39,13 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
             reason='Initiative evaluation error'
         )
 
+    if not evaluation_result:
+        return InitiativeVerdict(
+            target_message=None,
+            score=0,
+            reason='Initiative evaluation empty response'
+        )
+
     # target_index is 1-based, matching the `#N` labels the model was shown above.
     target_message = None
     if evaluation_result.target_index and evaluation_result.target_index <= len(messages):
@@ -44,7 +53,7 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
 
     logger.info(
         f'Initiative evaluation result: '
-        f'{target_message=}|{evaluation_result.reason=}|{evaluation_result.score=}'
+        f'{target_message.embedding_text if target_message else "<direct>"}|{evaluation_result.reason=}|{evaluation_result.score=}'
     )
     return InitiativeVerdict(
         target_message=target_message,
