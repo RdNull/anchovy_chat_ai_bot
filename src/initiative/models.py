@@ -1,6 +1,15 @@
+from datetime import datetime
+
 from pydantic import Field
 
-from src.models import BaseModel, Message
+from src.models import BaseModel, Message, MongoId
+
+
+class InitiativeRun(BaseModel):
+    id: MongoId | None = Field(default=None, alias='_id')
+    chat_id: int
+    last_message_time: datetime
+    created_at: datetime
 
 
 class InitiativeDecision(BaseModel):
