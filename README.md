@@ -18,6 +18,17 @@ The loop also distinguishes a tool that *is* final from a tool that *succeeded*.
 **Multi-Character Persona System**
 Characters are defined as YAML configs (name, description, detailed system prompt, style guidelines, behavioral constraints). The character repository loads them at startup; each character instance is independently rate-limited per chat. Each chat can run a different character, selected via `/list` (inline keyboard), `/random`, or left on the default; the choice is persisted per chat in MongoDB.
 
+**Speaking Unprompted**
+The bot used to interject on a coin flip — a fixed chance per message and a cooldown, with no idea what it was interrupting, which produces a bot that is annoying at exactly the rate you configure. It now runs a judge instead: after every message a separate scoring call reads the recent window and rates whether there is anything worth saying, and names which message to answer, or none. It is a second call rather than a smaller model — the same one that writes the replies, asked for a number and a reason instead of a line. The prompt is written around the negative cases, because the default answer has to be silence — two people converging on where to meet want a result, not a character, and a joke that already landed does not need a second one. Deterministic gates run first and cost nothing: a minimum number of new messages, a cooldown since the bot last spoke, a minimum number of human messages since then, and never immediately after itself, so the model only ever judges conversations that are already plausible.
+
+- **It ships as a dry run.** Two flags, not one: the first kills the pipeline outright, the second gates only the send. In between is the state the feature ships in — every window evaluated, scored and logged, nothing sent — so the score threshold can be calibrated against real conversations before the bot is allowed to open its mouth.
+- **A bookmark, claimed under a lock.** Each chat records the newest message it has already judged. Because the check runs as a detached task per message, two messages arriving together would otherwise both read that bookmark before either moved it, judge the same window, and post twice; the read-and-advance is serialized, and the lock is released before the model call rather than held across it.
+- **The bookmark advances on judging, not on speaking.** What is being rate-limited is the evaluation, and re-reading a window the model already declined only buys the same verdict a second time.
+- **Which message it answers is part of the verdict.** The judge returns an index into the window, or nothing, and the character prompt marks that one message so the reply quotes it. With no index the reply goes out unquoted, and the prompt asks for a line that stands on its own — naming the topic or the person, since a "да ты гонишь" addressed to nobody reads as noise.
+- **The judge and the answerer read different windows.** The judge looks further back than the character does, so a message it picks can be missing from the character's context entirely — which would produce a reply visibly quoting a message the model was never shown, and answering the room instead. The chosen message is carried forward into the reply window rather than trusting the two ranges to overlap.
+
+Dispatching a reply is addressed by chat rather than by incoming Telegram update, which is what makes a reply to nothing expressible at all: the same code path serves a mention, a reply-to-bot, and a message the bot decided to write on its own.
+
 **Message Reactions**
 The bot both reads and writes Telegram message reactions. Incoming `message_reaction` updates are diffed against the stored reaction set and applied as an atomic MongoDB update; the `set_reaction` tool lets a character emoji-react instead of replying (from a curated `ALLOWED_REACTIONS` set). Reactions render into the LLM prompt (collapsed/aggregated once a chat has more than a few reactors) but are excluded from embeddings.
 
@@ -89,7 +100,7 @@ Two constraints in the manifests are load-bearing and read like frugality: the b
 | Local LLM            | Ollama                                          | Self-hosted fallback for all tasks              |
 | Embeddings           | OpenAI text-embedding-3-small (via OpenRouter)  | 1536-dim vectors for RAG, cached via async-cache|
 | Vector Database      | Qdrant (AsyncQdrantClient)                      | Message, fact and sticker retrieval             |
-| Document Database    | MongoDB (AsyncIOMotorClient)                    | Chat history, memory, facts, chat settings      |
+| Document Database    | MongoDB (AsyncIOMotorClient)                    | Chat history, memory, facts, chat + initiative state |
 | Data Validation      | Pydantic v2 / pydantic-settings                 | Models, structured LLM output, settings         |
 | Prompt Templating    | Jinja2                                          | Versioned, task-specific prompt files           |
 | Media Processing     | Pillow, OpenCV, Lottie, CairoSVG                | Image resizing, GIF/sticker frame extraction    |
@@ -125,6 +136,10 @@ Message Handlers  (handlers.py)
      |           and indexed the next time anyone sends it)
      |
      +---> [async] Context checks
+     |          Initiative check (cheap gates -> judge LLM -> score + chosen message)
+     |            |         (window claimed under a lock; bookmark advances on judging,
+     |            |          not on speaking; the send itself is behind a second flag)
+     |            +---> [async] unprompted reply -> Character.respond()
      |          Memory update (if message count since last snapshot >= its own trigger, and enabled)
      |            |         (serialized by one process-wide lock; embeddings run outside it)
      |            |         Read window oldest-first, capped
@@ -140,7 +155,8 @@ Message Handlers  (handlers.py)
                |
                If a referenced media item is still processing, poll until ready
                |
-               Build prompt (system + memory + related messages + history)
+               Build prompt (system + memory + related messages + history,
+               with the message being answered marked in place)
                |
                Agentic loop (context-tool depth 5, hard cap 8):
                    LLM call
