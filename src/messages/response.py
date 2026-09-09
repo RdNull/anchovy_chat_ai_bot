@@ -37,17 +37,15 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     replier = Replier(bot=bot, character=character, chat_id=chat_id, target=user_message)
 
-    last_messages = await _get_last_messages(chat_id)
+    last_messages = await get_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
     await character.respond(replier, last_messages)
 
     asyncio.create_task(run_context_checks(chat_id))
 
 
-async def _get_last_messages(chat_id: int) -> list[Message]:
-    last_messages = await get_messages(
-        chat_id,
-        size=settings.LAST_MESSAGES_SIZE,
-    )
+async def get_last_messages(chat_id: int, size: int, **kwargs) -> list[Message]:
+    # todo move somewhere?
+    last_messages = await get_messages(chat_id, size=size, **kwargs)
     pending_media_ids = [
         m.media.unique_id
         for m in last_messages
@@ -60,4 +58,4 @@ async def _get_last_messages(chat_id: int) -> list[Message]:
         pending_media_ids,
         timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
     )
-    return await get_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
+    return await get_messages(chat_id, size=size, **kwargs)
