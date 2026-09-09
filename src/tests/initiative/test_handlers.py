@@ -7,6 +7,7 @@ from telegram.constants import ChatAction
 from src import settings
 from src.initiative import handlers
 from src.initiative.models import InitiativeRun, InitiativeVerdict
+from src.messages.repository import save_message
 from src.models import Message, UserRole
 
 
@@ -53,6 +54,32 @@ async def test_run_initiative_checks_does_not_save_watermark_when_pre_check_fail
 
     assert mock_save_run.call_count == 0
     assert mock_evaluate.call_count == 0
+
+
+async def test_concurrent_checks_claim_the_same_window_only_once(mocker):
+    # Two messages arriving together spawn two `run_context_checks` tasks. Without a
+    # lock over the watermark's read-then-write both read the same watermark, claim
+    # the same window and the bot answers it twice.
+    mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
+    mocker.patch.object(settings, 'INITIATIVE_ENABLED', False)
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch.object(settings, 'INITIATIVE_COOLDOWN_MINUTES', 0)
+    mocker.patch.object(settings, 'INITIATIVE_MIN_GAP_MESSAGES', 0)
+    for _ in range(3):
+        await save_message(make_message())
+    mocker.patch('src.initiative.handlers.get_chat_character', new_callable=AsyncMock)
+    mock_evaluate = mocker.patch(
+        'src.initiative.handlers.evaluate_initiative',
+        AsyncMock(return_value=InitiativeVerdict(target_message=None, score=0.0, reason='r')),
+    )
+
+    await asyncio.gather(
+        handlers.run_initiative_checks(222),
+        handlers.run_initiative_checks(222),
+    )
+
+    # The second claim re-reads the freshly saved watermark and finds nothing pending.
+    assert mock_evaluate.call_count == 1
 
 
 # --- run_initiative_checks: character memory + low score ---
@@ -171,20 +198,27 @@ async def test_run_initiative_reply_builds_replier_targeting_the_evaluated_messa
     bot = make_bot()
     mocker.patch('src.initiative.handlers.get_bot', return_value=bot)
     mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
-    memory = object()
-    mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=memory))
+    mock_get_memory = mocker.patch(
+        'src.initiative.handlers.get_last_memory', new_callable=AsyncMock
+    )
     last_messages = [make_message(text='fresh')]
     mocker.patch(
         'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=last_messages)
     )
     character = MagicMock()
     character.respond = AsyncMock()
+    own_memory = object()
+    character.memory = own_memory
     target = make_message(text='target')
     evaluation = InitiativeVerdict(target_message=target, score=0.9, reason='r')
 
     await handlers._run_initiative_reply(chat_id=222, character=character, evaluation=evaluation)
 
-    assert character.memory is memory
+    # `get_character` hands out a shared singleton, so a detached task re-stamping
+    # `.memory` could land this chat's snapshot in another chat's in-flight reply.
+    # The snapshot is passed in by `run_initiative_checks` instead.
+    assert mock_get_memory.call_count == 0
+    assert character.memory is own_memory
     assert character.respond.call_count == 1
     replier, respond_messages = character.respond.call_args[0]
     assert replier.target_message is target
@@ -196,7 +230,6 @@ async def test_run_initiative_reply_builds_replier_targeting_the_evaluated_messa
 async def test_run_initiative_reply_targets_the_chat_when_no_target_message(mocker, make_bot):
     mocker.patch('src.initiative.handlers.get_bot', return_value=make_bot())
     mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
-    mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=None))
     mocker.patch('src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[]))
     character = MagicMock()
     character.respond = AsyncMock()
@@ -211,7 +244,6 @@ async def test_run_initiative_reply_targets_the_chat_when_no_target_message(mock
 async def test_run_initiative_reply_sends_typing_action(mocker, make_bot):
     mocker.patch('src.initiative.handlers.get_bot', return_value=make_bot())
     mock_typing = mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
-    mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=None))
     mocker.patch('src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[]))
     character = MagicMock()
     character.respond = AsyncMock()
@@ -220,3 +252,34 @@ async def test_run_initiative_reply_sends_typing_action(mocker, make_bot):
     await handlers._run_initiative_reply(chat_id=222, character=character, evaluation=evaluation)
 
     assert mock_typing.call_args == call(222, ChatAction.TYPING)
+
+
+# --- _with_target: the evaluation window is wider than the reply window ---
+
+def test_with_target_prepends_a_target_that_fell_out_of_the_reply_window():
+    # INITIATIVE_RUN_MESSAGES_MAX_SIZE > LAST_MESSAGES_SIZE, so a target picked from
+    # the older half of the evaluation window is absent from the messages the
+    # character answers — it would get no `[TARGET]` marker while the reply still
+    # quotes that message.
+    target = make_message(text='target')
+    target.id = 'target-id'
+    window = [make_message(text='fresh')]
+    window[0].id = 'fresh-id'
+
+    result = handlers._with_target(window, target)
+
+    assert result == [target, window[0]]
+
+
+def test_with_target_leaves_the_window_alone_when_the_target_is_already_in_it():
+    target = make_message(text='target')
+    target.id = 'target-id'
+    window = [target]
+
+    assert handlers._with_target(window, target) is window
+
+
+def test_with_target_leaves_the_window_alone_without_a_target():
+    window = [make_message()]
+
+    assert handlers._with_target(window, None) is window

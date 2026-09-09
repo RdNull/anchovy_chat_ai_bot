@@ -62,6 +62,29 @@ async def test_evaluate_initiative_out_of_range_target_index_yields_no_target(mo
     assert result.target_message is None
 
 
+async def test_evaluate_initiative_zero_target_index_means_no_target(mocker):
+    # `0` is a natural 'no target' for a model shown a 1-based list, so the field
+    # carries no `gt` bound: a stray index resolves to None instead of raising in
+    # validation and turning a good score into 'Initiative evaluation error'.
+    messages = [make_message()]
+    mock_initiative_llm(mocker, InitiativeDecision(score=0.7, target_index=0, reason='r'))
+
+    result = await evaluate_initiative(make_character(), messages)
+
+    assert result.target_message is None
+    assert result.score == 0.7
+
+
+async def test_evaluate_initiative_negative_target_index_means_no_target(mocker):
+    messages = [make_message()]
+    mock_initiative_llm(mocker, InitiativeDecision(score=0.7, target_index=-1, reason='r'))
+
+    result = await evaluate_initiative(make_character(), messages)
+
+    assert result.target_message is None
+    assert result.score == 0.7
+
+
 async def test_evaluate_initiative_null_target_index_means_reply_to_chat(mocker):
     messages = [make_message()]
     mock_initiative_llm(

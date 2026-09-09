@@ -35,6 +35,9 @@ def make_replier(chat_id=1, target=_NOT_SET):
     replier = MagicMock()
     replier.chat_id = chat_id
     replier.target_message = make_user_message(chat_id=chat_id) if target is _NOT_SET else target
+    if replier.target_message is not None:
+        # Production targets are read back from Mongo, so they always carry an `_id`.
+        replier.target_message.id = 'target-id'
     replier.reply_message = AsyncMock()
     replier.reply_reaction = AsyncMock()
     return replier
@@ -246,6 +249,20 @@ def test_format_previous_messages_marks_only_the_target_message():
 
     assert '[TARGET]' not in msgs[0].content
     assert msgs[1].content.startswith('[TARGET] ')
+
+
+def test_format_previous_messages_does_not_mark_id_less_messages():
+    # Regression: the ids were compared as strings, so a target with no `_id` (any
+    # Message built in memory rather than read from Mongo) matched every other
+    # id-less message in the window — `str(None) == str(None)`.
+    replier = make_replier()
+    replier.target_message.id = None
+    other = Message(chat_id=1, role=UserRole.USER, text='раньше', nickname='user1')
+
+    msgs = list(_format_previous_messages(replier, [other, replier.target_message]))
+
+    assert '[TARGET]' not in msgs[0].content
+    assert '[TARGET]' not in msgs[1].content
 
 
 def test_format_previous_messages_handles_missing_target():
