@@ -2,14 +2,16 @@ import asyncio
 from functools import wraps
 
 from telegram import Message, Update
+from telegram.constants import ChatAction
 from telegram.ext import (ContextTypes, filters)
 
 from src import settings
 from src.characters.repository import get_character
 from src.chat_settings import repository as chat_settings_repository
 from src.logs import logger
-from src.models import RelatedMessagesData
 from src.memory.models import MemoryData
+from src.models import RelatedMessagesData
+from src.running_app import get_bot
 
 
 class ReplyToBotFilter(filters.MessageFilter):
@@ -78,7 +80,7 @@ def restricted(func):
     return wrapped
 
 
-def send_action(action):
+def send_action(action: ChatAction):
     """Sends `action` while processing func command."""
 
     def decorator(func):
@@ -116,3 +118,8 @@ def send_action(action):
         return command_func
 
     return decorator
+
+
+async def send_chat_action(chat_id: int, action: ChatAction):
+    bot = get_bot()
+    await bot.send_chat_action(chat_id=chat_id, action=action)

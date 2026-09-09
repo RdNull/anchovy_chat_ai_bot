@@ -1,5 +1,7 @@
 import asyncio
 
+from telegram.constants import ChatAction
+
 from src import settings
 from src.characters.character import Character
 from src.characters.reply import Replier
@@ -10,7 +12,7 @@ from src.initiative.repository import get_last_initiative_run, save_initiative_r
 from src.logs import logger
 from src.memory.repository import get_last_memory
 from src.messages.repository import fetch_last_messages
-from src.messages.utils import get_chat_character
+from src.messages.utils import get_chat_character, send_chat_action
 from src.models import Message
 from src.running_app import get_bot
 
@@ -76,6 +78,7 @@ async def _run_initiative_reply(
     chat_id: int, character: Character, evaluation: InitiativeVerdict,
 ):
     logger.info(f'Initiative run triggered for chat {chat_id}')
+    await send_chat_action(chat_id, ChatAction.TYPING)
     character.memory = await get_last_memory(chat_id)
     bot = get_bot()
     replier = Replier(
