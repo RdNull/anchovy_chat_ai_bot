@@ -17,6 +17,7 @@ from src.running_app import get_bot
 
 
 async def run_initiative_checks(chat_id: int):
+    logger.info(f'Running initiative checks for chat {chat_id}')
     last_initiative_run = await get_last_initiative_run(chat_id)
 
     messages_count = await _get_message_count_since_last_run(chat_id, last_initiative_run)
@@ -24,13 +25,13 @@ async def run_initiative_checks(chat_id: int):
         return
 
     messages = await _get_messages(chat_id, last_initiative_run)
-    if not await pre_check(chat_id):
+    if not await pre_check(chat_id, messages):
+        logger.info(f'Initiative run pre-checks failed for chat {chat_id}')
         return
 
+    logger.info(f'Triggering initiative run for chat {chat_id}')
+
     character: Character = await get_chat_character(chat_id=chat_id)
-    logger.info(
-        f'Triggering initiative run for chat {chat_id} (count since last: {messages_count})'
-    )
     evaluation = await evaluate_initiative(character, messages)
     if not await decide(evaluation):
         logger.info(f'Initiative run skipped for chat {chat_id}; {evaluation.score=}')
