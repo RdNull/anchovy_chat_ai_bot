@@ -11,6 +11,7 @@ __all__ = (
     'chats',
     'media_descriptions',
     'embedding_tasks',
+    'initiative_runs',
     'facts',
     'chat_settings',
 )
@@ -25,5 +26,6 @@ memory: AsyncCollection = db.memory
 chats: AsyncCollection = db.chats
 media_descriptions: AsyncCollection = db.media_descriptions
 embedding_tasks: AsyncCollection = db.embedding_tasks
+initiative_runs: AsyncCollection = db.initiative_runs
 facts: AsyncCollection = db.facts
 chat_settings: AsyncCollection = db.chat_settings
