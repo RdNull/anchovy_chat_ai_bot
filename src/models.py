@@ -104,6 +104,9 @@ class Message(BaseModel):
     created_at: datetime | None = None
     reactions: dict[str, list[str]] = Field(default_factory=dict)
 
+    def __str__(self) -> str:
+        return self.embedding_text
+
     @property
     def embedding_text(self) -> str:
         message_part = self.text or ''
