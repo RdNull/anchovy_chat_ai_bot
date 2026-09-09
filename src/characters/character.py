@@ -27,9 +27,11 @@ _MAX_LOOP_DEPTH = 8
 def _format_previous_messages(
     replier: Replier, last_messages: list[Message]
 ) -> Generator[HumanMessage | AIMessage, None, None]:
+    # A `Message` built in memory rather than read from Mongo has `id=None`, and
+    # comparing those as strings made every such message the target.
+    target_id = replier.target_message.id if replier.target_message else None
     for message in last_messages:
-        is_target = replier.target_message and str(message.id) == str(replier.target_message.id)
-        prefix = '[TARGET] ' if is_target else ''
+        prefix = '[TARGET] ' if target_id and message.id == target_id else ''
         if message.role == UserRole.USER:
             yield HumanMessage(f'{prefix}{message.ai_format}')
         else:
@@ -37,8 +39,8 @@ def _format_previous_messages(
 
 
 def _get_tools_registry(replier: Replier) -> ToolRegistry:
-    context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web, ]
-    direct_tools = [tools.answer_text, ]
+    context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web]
+    direct_tools = [tools.answer_text]
 
     if replier.target_message:
         # reactions only possible when replying to a message
