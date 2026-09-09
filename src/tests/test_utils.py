@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
+
+from telegram.constants import ChatAction
 
 from src import settings
 from src.characters.repository import CHARACTERS
@@ -7,6 +9,7 @@ from src.messages.utils import (
     ReplyToBotFilter,
     escape_markdown_v2,
     get_chat_character,
+    send_chat_action,
     set_chat_character,
 )
 from src.models import (
@@ -93,6 +96,19 @@ async def test_set_get_chat_character():
 async def test_get_chat_character_no_code_returns_valid():
     character = await get_chat_character(54321)
     assert character.code in CHARACTERS
+
+
+# --- send_chat_action ---
+
+async def test_send_chat_action_calls_bot(mocker):
+    bot = MagicMock()
+    bot.send_chat_action = AsyncMock()
+    mocker.patch('src.messages.utils.get_bot', return_value=bot)
+
+    await send_chat_action(222, ChatAction.TYPING)
+
+    assert bot.send_chat_action.call_count == 1
+    assert bot.send_chat_action.call_args == call(chat_id=222, action=ChatAction.TYPING)
 
 
 # --- MessageMedia.ai_format ---
