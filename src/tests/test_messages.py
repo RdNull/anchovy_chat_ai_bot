@@ -122,6 +122,18 @@ async def test_get_messages_to_date():
     assert [m.text for m in history] == ['old']
 
 
+async def test_get_messages_role_and_nickname_filters():
+    await save_message(make_message(text='from alice', nickname='alice'))
+    await save_message(make_message(text='from bob', nickname='bob'))
+    await save_message(make_message(text='from bot', nickname='bot', role=UserRole.AI))
+
+    bot_only = await get_messages(1, role=UserRole.AI)
+    bob_only = await get_messages(1, nickname='bob')
+
+    assert [m.text for m in bot_only] == ['from bot']
+    assert [m.text for m in bob_only] == ['from bob']
+
+
 async def test_get_messages_between_dates():
     await save_message(make_message(text='before'))
     start = datetime.now(timezone.utc)

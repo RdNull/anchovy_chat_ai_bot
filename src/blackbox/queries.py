@@ -45,6 +45,10 @@ _COVERED_SHARE = 0.5
 STATE_FIELDS = ('active_topics', 'open_questions', 'running_jokes')
 
 WindowFormat = Literal['answer', 'memory']
+Role = Literal['user', 'bot']
+FromEnd = Literal['newest', 'oldest']
+
+_ROLES = {'user': UserRole.USER, 'bot': UserRole.AI}
 
 
 def _chat(chat_id: int | None) -> int:
@@ -137,6 +141,43 @@ async def find_windows(
             'the message index is stale for this chat'
         )
     return windows
+
+
+async def list_messages(
+    chat_id: int | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    role: Role | None = None,
+    nick: str | None = None,
+    limit: int = 20,
+    from_end: FromEnd = 'newest',
+) -> list[dict[str, Any]]:
+    """Reads messages in time order, filtered by time range, role and author.
+
+    The chronological counterpart to `find_windows`: "the last N bot replies" or "what was
+    asked yesterday" is a time question, not a similarity one. Rows are always oldest
+    first; `from_end` only picks which end of the matching range `limit` keeps.
+    """
+    chat_id = _chat(chat_id)
+    messages = await get_messages(
+        chat_id,
+        size=_clamp(limit, MAX_MESSAGES),
+        from_date=_utc(since) if since else None,
+        to_date=_utc(until) if until else None,
+        sort_order=-1 if from_end == 'newest' else 1,
+        role=_ROLES[role] if role else None,
+        # Stored bare, the same as facts; memory is where the `@nick` form comes from.
+        nickname=nick.replace('@', '') if nick else None,
+    )
+    return [
+        {
+            'message_id': m.id,
+            'ts': m.created_at.isoformat() if m.created_at else None,
+            'role': 'user' if m.role == UserRole.USER else 'bot',
+            'line': m.ai_format,
+        }
+        for m in messages
+    ]
 
 
 def _render(messages: list[Message], window_format: WindowFormat) -> str | list[dict[str, str]]:

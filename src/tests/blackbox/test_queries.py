@@ -209,6 +209,59 @@ async def test_get_window_unknown_message_raises():
         await queries.get_window(str(ObjectId()), 'memory')
 
 
+# --- list_messages ---
+
+async def _say(text: str, role: UserRole = UserRole.USER, nickname: str = 'alice'):
+    await save_message(make_message(chat_id=CHAT_ID, role=role, text=text, nickname=nickname))
+
+
+async def test_list_messages_keeps_the_newest_bot_replies_in_time_order():
+    await _say('q1')
+    await _say('a1', UserRole.AI, 'bot')
+    await _say('q2')
+    await _say('a2', UserRole.AI, 'bot')
+    await _say('a3', UserRole.AI, 'bot')
+
+    rows = await queries.list_messages(CHAT_ID, role='bot', limit=2)
+
+    assert [r['role'] for r in rows] == ['bot', 'bot']
+    assert _bodies('\n'.join(r['line'] for r in rows)) == ['bot: a2', 'bot: a3']
+
+
+async def test_list_messages_oldest_end_by_nick_in_memory_form():
+    await _say('first', nickname='alice')
+    await _say('other', nickname='bob')
+    await _say('second', nickname='alice')
+
+    rows = await queries.list_messages(CHAT_ID, nick='@alice', limit=1, from_end='oldest')
+
+    assert _bodies(rows[0]['line']) == ['alice: first']
+    assert rows[0]['role'] == 'user'
+
+
+async def test_list_messages_time_range():
+    await _say('before')
+    start = datetime.now(timezone.utc)
+    await _say('inside')
+    end = datetime.now(timezone.utc)
+    await _say('after')
+
+    rows = await queries.list_messages(CHAT_ID, since=start, until=end)
+
+    assert _bodies(rows[0]['line']) == ['alice: inside']
+    assert len(rows) == 1
+
+
+async def test_list_messages_clamps_the_limit(mocker):
+    mocker.patch.object(queries, 'MAX_MESSAGES', 2)
+    for i in range(4):
+        await _say(f'm{i}')
+
+    rows = await queries.list_messages(CHAT_ID, limit=50)
+
+    assert _bodies('\n'.join(r['line'] for r in rows)) == ['alice: m2', 'alice: m3']
+
+
 # --- list_snapshots / get_memory ---
 
 async def test_list_snapshots_newest_first_with_counts():

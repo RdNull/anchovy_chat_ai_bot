@@ -83,6 +83,8 @@ async def get_messages(
     from_date: datetime | None = None,
     sort_order: int = -1,
     to_date: datetime | None = None,
+    role: UserRole | None = None,
+    nickname: str | None = None,
 ) -> list[Message]:
     """Reads a chat's messages, always oldest first.
 
@@ -91,6 +93,8 @@ async def get_messages(
         size: Most messages to return.
         from_date: Keep only messages strictly newer than this.
         to_date: Keep only messages strictly older than this.
+        role: Keep only messages from this role.
+        nickname: Keep only messages by this exact nickname.
         sort_order: Which end of the matching range `size` takes — `-1` keeps the
             newest, `1` keeps the oldest. It does not affect the order of the
             returned list, which is chronological either way. Callers rely on
@@ -112,6 +116,10 @@ async def get_messages(
         created_at['$lt'] = to_date.timestamp()
     if created_at:
         search_query['created_at'] = created_at
+    if role:
+        search_query['role'] = role.value
+    if nickname:
+        search_query['nickname'] = nickname
 
     cursor = mongo.messages.find(search_query).sort('created_at', sort_order).limit(size)
     records = await cursor.to_list(length=size)

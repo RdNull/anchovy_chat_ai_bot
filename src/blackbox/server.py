@@ -1,4 +1,4 @@
-"""The blackbox MCP server: six read-only tools over the bot's own data.
+"""The blackbox MCP server: seven read-only tools over the bot's own data.
 
 Tool registration only. The logic lives in `queries.py`, and the transport is chosen
 in `__main__.py`, so each concern has one place to change.
@@ -83,6 +83,35 @@ async def get_window(
     byte — use it for eval fixtures. `messages` holds the raw records.
     """
     return await _run(queries.get_window(message_id, format, before, after))
+
+
+@mcp.tool(annotations=_READ_ONLY)
+async def list_messages(
+    chat_id: ChatId = None,
+    since: Moment = None,
+    until: Moment = None,
+    role: Annotated[queries.Role | None, Field(
+        description='`user` for chat members only, `bot` for the bot\'s own replies only.',
+    )] = None,
+    nick: Annotated[str | None, Field(description=(
+        'Only this author, with or without the leading @. The bot\'s nickname carries its '
+        'current character, so select the bot with `role` instead.'
+    ))] = None,
+    limit: Annotated[int, Field(ge=1, le=queries.MAX_MESSAGES)] = 20,
+    from_end: Annotated[queries.FromEnd, Field(
+        description='Which end of the matching range `limit` keeps: the newest or the oldest.',
+    )] = 'newest',
+) -> list[dict[str, Any]]:
+    """Messages in time order, filtered by time range, role and author — the plain "what was
+    said recently / yesterday / around then" read. Use this, not `find_windows`, for any question
+    about when rather than about what.
+
+    Rows are chronological whichever end `from_end` keeps. `line` is the message as memory
+    extraction renders it; its `[ГГ-ММ-ДД ЧЧ:ММ]` stamp is the chat's local time (Asia/Almaty),
+    while `ts`, `since` and `until` are UTC. Pass a row's `message_id` to `get_window` with
+    `format='answer'` to see exactly what the bot saw around it.
+    """
+    return await _run(queries.list_messages(chat_id, since, until, role, nick, limit, from_end))
 
 
 @mcp.tool(annotations=_READ_ONLY)
