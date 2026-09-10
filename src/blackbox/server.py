@@ -61,7 +61,8 @@ async def find_windows(
 
     Each hit's `message_id` is the window's middle message; pass it to `get_window` for the
     exact text. Stored chunks overlap, so near-identical neighbouring hits are expected —
-    the number of hits is not a frequency signal.
+    the number of hits is not a frequency signal. A "stale" error means the index still holds
+    chunks whose messages were deleted from Mongo, not that nothing matched.
     """
     return await _run(queries.find_windows(query, chat_id, limit, since, until))
 

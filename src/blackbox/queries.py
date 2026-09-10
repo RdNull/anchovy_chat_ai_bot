@@ -105,6 +105,7 @@ async def find_windows(
 
     covered: set[str] = set()
     windows = []
+    stale = 0
     for point in sorted(response.points, key=lambda p: p.score, reverse=True):
         ids = (point.payload or {}).get('message_ids') or []
         if not ids or len(covered.intersection(ids)) > len(ids) * _COVERED_SHARE:
@@ -113,6 +114,7 @@ async def find_windows(
 
         messages = _chronological(await get_messages_by_ids(ids, size=len(ids)))
         if not messages:
+            stale += 1
             continue
 
         anchor = messages[len(messages) // 2]
@@ -126,6 +128,14 @@ async def find_windows(
         if len(windows) == limit:
             break
 
+    # Qdrant is not cleaned when Mongo loses messages, so a hit can outlive every message
+    # it points at. A few among good hits are noise; all of them means the index is stale,
+    # and an empty list would read as "nothing matched" instead.
+    if stale and not windows:
+        raise ValueError(
+            f'{stale} matching chunk(s) found, but none of their messages exist in Mongo: '
+            'the message index is stale for this chat'
+        )
     return windows
 
 

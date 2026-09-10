@@ -136,6 +136,29 @@ async def test_find_windows_stops_at_limit_and_never_creates_a_collection(messag
     assert messages_qdrant.create_collection.call_count == 0
 
 
+async def test_find_windows_with_only_stale_hits_raises(messages_qdrant):
+    """Hits whose messages are all gone must not read as an empty search."""
+    messages_qdrant.query_points.return_value = _points(
+        (0.9, {'message_ids': [str(ObjectId()), str(ObjectId())]}),
+        (0.8, {'message_ids': [str(ObjectId())]}),
+    )
+
+    with pytest.raises(ValueError, match='2 matching chunk'):
+        await queries.find_windows('query', chat_id=CHAT_ID)
+
+
+async def test_find_windows_skips_stale_hits_among_good_ones(messages_qdrant):
+    ids = [m.id for m in await _seed_chat(3)]
+    messages_qdrant.query_points.return_value = _points(
+        (0.9, {'message_ids': [str(ObjectId())]}),
+        (0.8, {'message_ids': ids}),
+    )
+
+    windows = await queries.find_windows('query', chat_id=CHAT_ID)
+
+    assert [w['message_id'] for w in windows] == [ids[1]]
+
+
 # --- get_window ---
 
 async def test_get_window_memory_format_matches_extraction():
