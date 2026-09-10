@@ -63,8 +63,14 @@ class _Settings(BaseSettings):
     OPENROUTER_API_KEY: str | None = None
     QDRANT_URL: str = 'http://qdrant:6333'
 
+    # The chat the blackbox MCP server reads when a tool is called without one.
+    # Only that process sets it; the bot never reads it.
+    BLACKBOX_CHAT_ID: int | None = None
+
     ENABLE_MEMORY_PROCESSING: bool = True
-    MEMORY_RETENTION_DAYS: int = 7
+    # Snapshots are a few KB at roughly ten a day; 90 days is what gives
+    # `blackbox.diff_memory` a horizon long enough to watch a trait or a joke age.
+    MEMORY_RETENTION_DAYS: int = 90
 
     # Decay ships off: phase 1 logs what the policy would evict without evicting it.
     ENABLE_MEMORY_DECAY: bool = False
@@ -143,6 +149,7 @@ RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT = _s.RESPOND_MEDIA_PROCESSING_POLLING_T
 OPENROUTER_API_URL = _s.OPENROUTER_API_URL
 OPENROUTER_API_KEY = _s.OPENROUTER_API_KEY
 QDRANT_URL = _s.QDRANT_URL
+BLACKBOX_CHAT_ID = _s.BLACKBOX_CHAT_ID
 ENABLE_MEMORY_PROCESSING = _s.ENABLE_MEMORY_PROCESSING
 MEMORY_RETENTION_DAYS = _s.MEMORY_RETENTION_DAYS
 ENABLE_MEMORY_DECAY = _s.ENABLE_MEMORY_DECAY
