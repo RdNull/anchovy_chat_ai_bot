@@ -270,17 +270,45 @@ def _passthrough(doc: dict) -> dict[str, Any]:
     return {**doc, '_id': str(doc['_id']), 'created_at': _iso(doc.get('created_at'))}
 
 
-async def get_memory(chat_id: int | None = None, at: datetime | None = None) -> dict[str, Any]:
+def _for_nick(doc: dict, nick: str) -> dict[str, Any]:
+    """Narrows a passed-through snapshot to one participant and their age records.
+
+    Matched without the `@` and case-insensitively: memory keys participants as `@nick`,
+    while messages and facts — where a caller usually copies a nick from — store it bare.
+    """
+    wanted = nick.lstrip('@').casefold()
+    participants = (doc.get('content') or {}).get('participants') or {}
+    key = next((k for k in participants if k.lstrip('@').casefold() == wanted), None)
+    if key is None:
+        raise ValueError(
+            f'no participant {nick!r} in the snapshot at {doc["created_at"]}; participants: '
+            + ', '.join(repr(k) for k in sorted(participants))
+        )
+    return {
+        '_id': doc['_id'],
+        'chat_id': doc.get('chat_id'),
+        'created_at': doc['created_at'],
+        'nick': key,
+        'participant': participants[key],
+        'decay': (doc.get('decay') or {}).get(key, {}),
+    }
+
+
+async def get_memory(
+    chat_id: int | None = None, at: datetime | None = None, nick: str | None = None,
+) -> dict[str, Any]:
     """Returns the snapshot in force at `at` (the newest one by default).
 
-    The Mongo document is passed through rather than re-modelled into `MemoryData`,
-    so a change to the memory schema breaks `diff_memory` alone, not this.
+    The Mongo document is passed through rather than re-modelled into `MemoryData`.
+    Without `nick` that assumes nothing about the memory schema; with one, `_for_nick`
+    assumes participants and the decay sidecar are both keyed by nick.
     """
     chat_id = _chat(chat_id)
     doc = await _snapshot_at(chat_id, at)
     if not doc:
         raise ValueError(f'no memory snapshot for chat {chat_id} at or before {at or "now"}')
-    return _passthrough(doc)
+    doc = _passthrough(doc)
+    return _for_nick(doc, nick) if nick else doc
 
 
 def _participant_keys(content: dict) -> dict[str, dict[str, tuple[str, str]]]:
@@ -318,8 +346,9 @@ def _entry(nick: str, key: str, field: str, text: str, decay: dict) -> dict[str,
 def diff_snapshots(older: dict, newer: dict) -> dict[str, Any]:
     """Counts what moved between two snapshots.
 
-    The one shape-aware function in the module: the `traits` / `recent` split and the
-    decay sidecar layout are assumed here and nowhere else.
+    Where the module leans on the memory schema: the `traits` / `recent` split and the
+    decay sidecar layout are assumed here. `_for_nick` is the only other place, and it
+    assumes only that participants and the sidecar are keyed by nick.
 
     `promote_candidates` mirrors `decay.summarize_churn`: every trait born on a nick
     that also lost a `recent` entry. It is a coincidence count, not a pairing — the
@@ -395,7 +424,22 @@ async def diff_memory(
     if not older:
         raise ValueError(f'no memory snapshot for chat {chat_id} at or before {from_at}')
     newer = await _snapshot_at(chat_id, to_at)
-    return diff_snapshots(older, newer)
+    if not newer:
+        raise ValueError(f'no memory snapshot for chat {chat_id} at or before {to_at}')
+    if newer['created_at'] < older['created_at']:
+        raise ValueError(
+            f'from_at resolves to a later snapshot ({_iso(older["created_at"])}) '
+            f'than to_at ({_iso(newer["created_at"])})'
+        )
+
+    diff = diff_snapshots(older, newer)
+    # "Newest" moves between calls — this chat writes a snapshot every few minutes — so a
+    # pair a caller believed adjacent may not be. The count makes a skipped one visible.
+    diff['snapshots_between'] = await mongo.memory.count_documents({
+        'chat_id': chat_id,
+        'created_at': {'$gt': older['created_at'], '$lt': newer['created_at']},
+    })
+    return diff
 
 
 async def get_user_facts(

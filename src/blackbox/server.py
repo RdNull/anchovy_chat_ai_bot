@@ -130,12 +130,21 @@ async def list_snapshots(
 
 
 @mcp.tool(annotations=_READ_ONLY)
-async def get_memory(chat_id: ChatId = None, at: Moment = None) -> dict[str, Any]:
+async def get_memory(
+    chat_id: ChatId = None,
+    at: Moment = None,
+    nick: Annotated[str | None, Field(description=(
+        'Only this participant and their age records, with or without the leading @.'
+    ))] = None,
+) -> dict[str, Any]:
     """The memory snapshot in force at `at` (the newest when omitted): the model-emitted
     `content` and the code-owned `decay` sidecar (nick -> normalized entry -> born/cycles/field),
     passed through as stored.
+
+    With `nick`, returns only that participant's `participant` entry (traits, recent) and their
+    `decay` records. An unknown nick errors with the list of participants in the snapshot.
     """
-    return await _run(queries.get_memory(chat_id, at))
+    return await _run(queries.get_memory(chat_id, at, nick))
 
 
 @mcp.tool(annotations=_READ_ONLY)
@@ -148,6 +157,10 @@ async def diff_memory(
     (the newest when omitted): births, vanishes, exact recent->traits promotions, reworded
     promotion candidates, per-nick counts, and state items added and removed. Entries are
     compared in production's normalized keyspace.
+
+    `snapshots_between` counts the snapshots skipped between the two compared; 0 means they
+    were adjacent. A new snapshot lands every few minutes, so "the newest" moves between calls:
+    when you mean two adjacent snapshots, check that it is 0 rather than trusting an older listing.
     """
     return await _run(queries.diff_memory(from_at, to_at, chat_id))
 

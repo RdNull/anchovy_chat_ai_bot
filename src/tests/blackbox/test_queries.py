@@ -314,6 +314,31 @@ async def test_get_memory_defaults_to_the_newest():
     assert snapshot['content'] == {'day': 1}
 
 
+async def test_get_memory_for_one_nick_accepts_either_form():
+    record = {'born': '26-09-01 12:00', 'cycles': 2, 'field': 'traits'}
+    await _save_snapshot(
+        T0,
+        {'participants': {'@alice': {'traits': ['a'], 'recent': ['r']}, '@bob': {'traits': ['b']}}},
+        decay={'@alice': {'a': record}, '@bob': {}},
+    )
+
+    bare = await queries.get_memory(CHAT_ID, nick='alice')
+    cased = await queries.get_memory(CHAT_ID, nick='@Alice')
+
+    assert bare == cased
+    assert bare['nick'] == '@alice'
+    assert bare['participant'] == {'traits': ['a'], 'recent': ['r']}
+    assert bare['decay'] == {'a': record}
+    assert bare['created_at'] == T0.isoformat()
+
+
+async def test_get_memory_unknown_nick_lists_the_participants():
+    await _save_snapshot(T0, {'participants': {'@alice': {}, '@bob': {}}})
+
+    with pytest.raises(ValueError, match="'@alice', '@bob'"):
+        await queries.get_memory(CHAT_ID, nick='carol')
+
+
 async def test_get_memory_before_any_snapshot_raises():
     await _save_snapshot(T0, {})
 
@@ -426,6 +451,24 @@ async def test_diff_memory_defaults_to_the_newest():
     diff = await queries.diff_memory(T0, chat_id=CHAT_ID)
 
     assert [b['text'] for b in diff['births']] == ['c']
+
+
+async def test_diff_memory_counts_the_snapshots_it_skipped():
+    for day in range(3):
+        await _save_snapshot(T0 + timedelta(days=day), {'participants': {}})
+
+    spanning = await queries.diff_memory(T0, chat_id=CHAT_ID)
+    adjacent = await queries.diff_memory(T0 + timedelta(days=1), chat_id=CHAT_ID)
+
+    assert (spanning['snapshots_between'], adjacent['snapshots_between']) == (1, 0)
+
+
+async def test_diff_memory_reversed_bounds_raise():
+    await _save_snapshot(T0, {})
+    await _save_snapshot(T0 + timedelta(days=1), {})
+
+    with pytest.raises(ValueError, match='later snapshot'):
+        await queries.diff_memory(T0 + timedelta(days=1), T0, CHAT_ID)
 
 
 async def test_diff_memory_before_any_snapshot_raises():
