@@ -90,9 +90,9 @@ async def get_messages(
         sort_order: Which end of the matching range `size` takes — `-1` keeps the
             newest, `1` keeps the oldest. It does not affect the order of the
             returned list, which is chronological either way. Callers rely on
-            that: `src/messages/response.py` trims the current message with
-            `[:-1]`, and `src/processors/context/embeddings.py` reads its next
-            watermark off `messages[-1]`.
+            that: `src/processors/context/embeddings.py` and
+            `src/initiative/handlers.py` read their next watermark off
+            `messages[-1]`.
 
     Returns:
         The selected messages, oldest first.
