@@ -6,6 +6,18 @@ from langchain_core.messages import AIMessage
 from src import mongo
 
 
+def pytest_sessionstart(session):
+    """Refuses to run against anything but a test database.
+
+    `clean_collections` drops six collections after every test, unconditionally, and
+    the only thing pointing it at `test_data` is `[pytest_env]` in `pytest.toml`. A run
+    that loses that — another config file, the env plugin disabled — would bind
+    `src.mongo` to the real database and empty it one test at a time.
+    """
+    if not mongo.db.name.startswith('test'):
+        pytest.exit(f'refusing to run: tests would drop collections in {mongo.db.name!r}', returncode=2)
+
+
 @pytest.fixture(autouse=True)
 async def clean_collections():
     yield
