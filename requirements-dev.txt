@@ -4,3 +4,4 @@ pytest-cov
 pytest-env
 pytest-mock
 freezegun
+mcp>=2,<3  # blackbox MCP server; dev image only, never the prod one

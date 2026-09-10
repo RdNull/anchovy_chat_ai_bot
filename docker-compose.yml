@@ -23,6 +23,29 @@ services:
     stdin_open: true
     tty: true
 
+  # Read-only MCP server over the bot's data, spawned by Claude Code through
+  # `.mcp.json` and spoken to over stdio. Profile-gated, so `up` never starts it.
+  # No `tty`: a pseudo-terminal would rewrite the JSON-RPC stream. No `depends_on`:
+  # it reads prod through a port-forward (see README), not the local stores.
+  blackbox:
+    image: anchovy-blackbox:latest
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    profiles:
+      - blackbox
+    env_file:
+      - path: .env.blackbox
+        required: false
+    volumes:
+      - .:/proj
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    command: python -m src.blackbox
+    stdin_open: true
+
   mongo:
     image: mongo
     restart: always
