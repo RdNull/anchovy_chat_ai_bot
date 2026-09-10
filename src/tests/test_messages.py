@@ -114,6 +114,24 @@ async def test_get_messages_from_date():
     assert history[0].text == 'new'
 
 
+async def test_get_messages_to_date():
+    await save_message(make_message(text='old'))
+    cutoff = datetime.now(timezone.utc)
+    await save_message(make_message(text='new'))
+    history = await get_messages(1, to_date=cutoff)
+    assert [m.text for m in history] == ['old']
+
+
+async def test_get_messages_between_dates():
+    await save_message(make_message(text='before'))
+    start = datetime.now(timezone.utc)
+    await save_message(make_message(text='inside'))
+    end = datetime.now(timezone.utc)
+    await save_message(make_message(text='after'))
+    history = await get_messages(1, from_date=start, to_date=end)
+    assert [m.text for m in history] == ['inside']
+
+
 async def test_get_messages_size_limit():
     for i in range(3):
         await save_message(make_message(text=f'msg{i}'))
