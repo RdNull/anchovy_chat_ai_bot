@@ -36,7 +36,7 @@ Each chat accumulates a `StructuredMemory` snapshot in MongoDB — per-participa
 - **Churn accounting** — each cycle reports what was born, carried, promoted from `recent` to a generalized trait, evicted, or silently lost, so memory quality is measurable rather than anecdotal. The decay policy currently ships in log-only mode: it computes what it *would* evict and records the gap against the live baseline before being switched on.
 - **Lossless intake** — each window is read oldest-first and the snapshot is stamped with the newest message it actually processed, rather than the clock at write time. Both halves are needed: reading newest-first drops the front of a backlog behind an advancing bookmark, and a wall-clock stamp swallows whatever arrives while the model is still thinking. Together they turn a window that overflows into ordinary backpressure — the surplus is simply the next cycle's work — instead of messages the bot never sees. The same pairing guards the embedding pass.
 
-A daily job prunes old snapshots, always preserving the most recent one per chat.
+A daily job prunes snapshots older than 90 days, always preserving the most recent one per chat. The window is long on purpose: snapshots are a few kilobytes each, and 90 days of them is enough history to tell how long a trait survives, how long a running joke lasts, and whether an open question ever closes.
 
 **User Fact Tracking with Confidence Scoring**
 Facts about individual users are extracted automatically in the same pass as each memory update: a dedicated LLM pass reads new messages and emits a list of stable facts per `@username`, each scored with a confidence value (0.5–1.0). Facts are upserted into MongoDB — if a semantically similar fact already exists (Qdrant cosine search), its confidence is reinforced or updated; otherwise a new record is created. A weekly background job decays the confidence of facts not updated in the past week; facts that reach zero confidence are deleted. The `get_user_facts` tool lets the character LLM retrieve the top facts about a user at inference time.
@@ -62,6 +62,15 @@ Everything a sticker reply needs was already being collected and then thrown awa
 
 **LLM Prompt Evaluation**
 Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suites covering memory extraction, fact extraction, recap generation, image description, and character reply quality, with good/bad sample fixtures for each task. Where a property is mechanically checkable it is asserted in JavaScript rather than left to an LLM rubric: the memory suite re-implements the production key normalization so an attribution or timestamp-leak failure in evals predicts a real drop in production. The reply suite goes further and replays the whole agentic loop — a custom provider re-implements the production tool loop and hands the model the same tool definitions, verbatim down to their descriptions, so what is graded is the loop's final answer under real tool pressure rather than a single completion. Swapping the chat model is then a two-file change: the model config the bot loads, and the provider file the suite runs. Where the re-implementation deliberately diverges from production — it does not model the loop's failure recovery, and its sticker search returns nothing, matching the cold start the feature ships in — that is recorded in the code, so the next reader does not mistake it for drift.
+
+**A Read-Only Window Into the Bot's Own Data**
+Building eval fixtures and auditing memory both meant querying MongoDB by hand and reformatting the result, and that is how fixtures quietly drifted out of the format the bot actually produces. A small MCP server now exposes the bot's data to a Claude Code session in this repository: semantic search over chat history, the exact window around any message, memory snapshots with their age records, a diff between any two snapshots, and user facts. It is a tool boundary rather than a script because the useful work is a loop — which window to pull next depends on what the last one contained — and a script needs a person between every step.
+
+- **Fixtures are rendered by the production code, not a template.** The bot formats the same messages two different ways: one for the model writing the reply, and one for the models that extract memory and facts. A fixture in the wrong format tests a bot that does not exist, so the tool takes exactly those two formats and nothing custom.
+- **Memory diffs use production's keyspace.** Entries are compared through the same normalization the attribution guard and the decay records use, so a reworded or re-punctuated entry counts as carried rather than as a loss plus a birth — the numbers are the ones the memory pipeline would report itself.
+- **Read-only by credential, not by discipline.** It connects with a database user that cannot write. The vector store has no credential to lean on, so the server also avoids two production helpers that quietly create a missing collection on first use.
+- **Outside the bot entirely.** It is a separate, locally-run process with a dev-only dependency; nothing about it ships in the bot's image or touches the reply path.
+- **Its output is untrusted.** Everything it returns was written by chat members, some of it deliberately adversarial, and it is handed back as data to analyse, never as instructions.
 
 **Dual Local/Cloud Mode**
 A single `IS_LOCAL` flag switches the entire model stack between OpenRouter (cloud) and Ollama (local). Model configs are versioned JSON files per task, supporting environment variable interpolation.
@@ -95,6 +104,7 @@ Two constraints in the manifests are load-bearing and read like frugality: the b
 | Media Processing     | Pillow, OpenCV, Lottie, CairoSVG                | Image resizing, GIF/sticker frame extraction    |
 | Scheduling           | scheduler                                       | Weekly fact-confidence decay, daily memory cleanup |
 | Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks         |
+| Developer Tooling    | MCP Python SDK v2                               | Read-only data access for Claude Code sessions  |
 | Observability        | LangSmith                                       | LLM call tracing and span visualization         |
 | Containerization     | Docker (multi-stage build)                      | Bot, MongoDB, and Qdrant services               |
 | Deployment           | Kubernetes, GitHub Actions                      | CI build/push to GHCR, `kubectl`-based deploy   |
@@ -183,3 +193,62 @@ Tests live in `src/tests/` and run inside Docker against a real MongoDB instance
 ```bash
 docker compose exec bot pytest
 ```
+
+---
+
+## Blackbox: Data Access for Claude Code
+
+The read-only MCP server always runs locally, as a Docker container that Claude Code starts from `.mcp.json`. What it reads is set by `.env.blackbox` (gitignored, in the repository root): either the stores of the local `docker compose` stack, or production through `kubectl port-forward`. Switching between them means rewriting that file; nothing else changes.
+
+Common to both:
+
+- Build the image once, and again after a requirements change: `docker compose --profile blackbox build blackbox`.
+- Every `.env.blackbox` also carries these three lines:
+  ```ini
+  OPENROUTER_API_KEY=<key>     # search queries are embedded through OpenRouter
+  TELEGRAM_TOKEN=unused        # required by settings, never used
+  BLACKBOX_CHAT_ID=<chat id>   # default chat for every tool
+  ```
+- To start a session, open Claude Code in the repository and approve the `blackbox` server in `/mcp`.
+
+### Option A: local Docker stores
+
+This reads the MongoDB and Qdrant containers from `docker-compose.yml`. The server container joins the compose network, so it reaches them by service name, with no port-forward.
+
+1. Start the local stack: `docker compose up -d`. The server is launched with `--no-deps`, so it never starts the stores itself.
+2. Create a read-only MongoDB user, authenticating as the local root user from `.env` (`MONGO_INITDB_ROOT_USERNAME`):
+   ```bash
+   docker compose exec mongo mongosh -u <root user> -p --authenticationDatabase admin \
+     --eval 'db.getSiblingDB("admin").createUser({user: "blackbox", pwd: passwordPrompt(), roles: [{role: "read", db: "<DATABASE_NAME>"}]})'
+   ```
+   For a throwaway local dataset you can reuse the bot's own `DATABASE_URL` from `.env` instead. That credential can write, though, so the read-only guarantee does not hold.
+3. Write `.env.blackbox`, using the `DATABASE_NAME` from `.env`:
+   ```ini
+   DATABASE_URL=mongodb://blackbox:<password>@mongo:27017/?authSource=admin
+   DATABASE_NAME=<DATABASE_NAME>
+   QDRANT_URL=http://qdrant:6333
+   ```
+
+### Option B: production (Kubernetes)
+
+This reads the cluster's MongoDB and Qdrant through `kubectl port-forward`. The server container reaches your machine's forwarded ports through `host.docker.internal`.
+
+1. Create a read-only MongoDB user in the cluster. The root user comes from `manifests/deployment-mongo.yaml`:
+   ```bash
+   kubectl --context anchovy-prod exec -it mongo-0 -- mongosh -u anchovy -p --authenticationDatabase admin \
+     --eval 'db.getSiblingDB("admin").createUser({user: "blackbox", pwd: passwordPrompt(), roles: [{role: "read", db: "<DATABASE_NAME>"}]})'
+   ```
+2. Write `.env.blackbox`, using the production `DATABASE_NAME`:
+   ```ini
+   DATABASE_URL=mongodb://blackbox:<password>@host.docker.internal:27018/?authSource=admin&directConnection=true
+   DATABASE_NAME=<DATABASE_NAME>
+   QDRANT_URL=http://host.docker.internal:6335
+   ```
+3. For each session, start both port-forwards before opening Claude Code:
+   ```bash
+   kubectl --context anchovy-prod port-forward svc/mongo 27018:27017
+   kubectl --context anchovy-prod port-forward svc/qdrant 6335:6333
+   ```
+   If the server reports the stores unreachable while the forwards are up, add `--address 0.0.0.0` to both commands.
+
+In either option, check that the credential really is read-only: a write as `blackbox`, for example `db.memory.insertOne({})`, must fail with "not authorized".
