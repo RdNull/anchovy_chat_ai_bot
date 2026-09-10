@@ -56,6 +56,10 @@ async def find_windows(
     limit: Annotated[int, Field(ge=1, le=queries.MAX_HITS)] = 10,
     since: Moment = None,
     until: Moment = None,
+    min_score: Annotated[float, Field(ge=0, le=1, description=(
+        'Similarity floor; weaker hits are dropped. Real matches here score around 0.45. '
+        'An empty result means nothing reached it, so lower it to see weaker matches.'
+    ))] = queries.DEFAULT_MIN_SCORE,
 ) -> list[dict[str, Any]]:
     """Semantic search over chat history. Returns one row per distinct conversation window.
 
@@ -64,7 +68,7 @@ async def find_windows(
     the number of hits is not a frequency signal. A "stale" error means the index still holds
     chunks whose messages were deleted from Mongo, not that nothing matched.
     """
-    return await _run(queries.find_windows(query, chat_id, limit, since, until))
+    return await _run(queries.find_windows(query, chat_id, limit, since, until, min_score))
 
 
 @mcp.tool(annotations=_READ_ONLY)

@@ -121,6 +121,17 @@ async def test_find_windows_filters_by_chat_and_time_range(messages_qdrant):
     assert must[1].range.lte == (T0 + timedelta(days=1)).timestamp()
 
 
+async def test_find_windows_applies_the_score_floor(messages_qdrant):
+    messages_qdrant.query_points.return_value = _points()
+
+    await queries.find_windows('query', chat_id=CHAT_ID)
+    default = messages_qdrant.query_points.call_args.kwargs['score_threshold']
+    await queries.find_windows('query', chat_id=CHAT_ID, min_score=0.6)
+    custom = messages_qdrant.query_points.call_args.kwargs['score_threshold']
+
+    assert (default, custom) == (queries.DEFAULT_MIN_SCORE, 0.6)
+
+
 async def test_find_windows_stops_at_limit_and_never_creates_a_collection(messages_qdrant):
     ids = [m.id for m in await _seed_chat(10)]
     messages_qdrant.query_points.return_value = _points(

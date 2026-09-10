@@ -42,6 +42,10 @@ PREVIEW_CHARS = 400
 _OVERFETCH = 3
 _COVERED_SHARE = 0.5
 
+# Real matches in this corpus score around 0.45; an absent topic still returns its nearest
+# neighbours at 0.2-0.3. Production's `search_messages` runs at the client's 0.2 default.
+DEFAULT_MIN_SCORE = 0.4
+
 STATE_FIELDS = ('active_topics', 'open_questions', 'running_jokes')
 
 WindowFormat = Literal['answer', 'memory']
@@ -82,6 +86,7 @@ async def find_windows(
     limit: int = 10,
     since: datetime | None = None,
     until: datetime | None = None,
+    min_score: float = DEFAULT_MIN_SCORE,
 ) -> list[dict[str, Any]]:
     """Semantic search over the stored message chunks, one row per distinct window.
 
@@ -105,6 +110,7 @@ async def find_windows(
         query=vector,
         limit=limit * _OVERFETCH,
         query_filter=Filter(must=must),
+        score_threshold=min_score,
     )
 
     covered: set[str] = set()
