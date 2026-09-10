@@ -172,11 +172,11 @@ async def test_get_messages_anchors_on_newest_when_no_prior_run(mocker):
     await handlers._get_messages(222, None)
 
     assert mock_fetch.call_args == call(
-        222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, sort_order=-1,
+        222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, from_date=None, sort_order=-1,
     )
 
 
-async def test_get_messages_resumes_from_watermark_oldest_first(mocker):
+async def test_get_messages_resumes_from_watermark_newest_first(mocker):
     mock_fetch = mocker.patch(
         'src.initiative.handlers.fetch_last_messages', new_callable=AsyncMock
     )
@@ -186,8 +186,22 @@ async def test_get_messages_resumes_from_watermark_oldest_first(mocker):
     await handlers._get_messages(222, last_run)
 
     assert mock_fetch.call_args == call(
-        222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, from_date=watermark, sort_order=1,
+        222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, from_date=watermark, sort_order=-1,
     )
+
+
+async def test_get_messages_takes_the_newest_of_a_backlog_past_the_cap(mocker):
+    # Regression: an oldest-first read after a cooldown-blocked stretch judged the
+    # conversation from an hour ago rather than the one happening now.
+    mocker.patch.object(settings, 'INITIATIVE_RUN_MESSAGES_MAX_SIZE', 3)
+    watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+    last_run = InitiativeRun(chat_id=222, last_message_time=watermark, created_at=watermark)
+    for i in range(1, 6):
+        await save_message(make_message(text=f'm{i}'))
+
+    messages = await handlers._get_messages(222, last_run)
+
+    assert [m.text for m in messages] == ['m3', 'm4', 'm5']
 
 
 # --- _run_initiative_reply ---

@@ -36,8 +36,9 @@ async def test_pre_check_fails_when_last_message_is_from_ai(mocker):
 
 
 async def test_pre_check_reads_the_chats_newest_rather_than_the_window_tail(mocker):
-    # Regression: this guard read `messages[-1]`, but on a backlog past the fetch cap
-    # the window ends mid-history — the bot's own last message would not block.
+    # Regression: this guard read `messages[-1]`. The window is fetched before the
+    # check runs, so a message can land in between — the bot's own reply included —
+    # and the window tail is then not what was said last.
     mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
     await save_message(make_message(text='старое'))
     await save_message(make_message(role=UserRole.AI, text='ответ', nickname='bot'))
@@ -47,7 +48,8 @@ async def test_pre_check_reads_the_chats_newest_rather_than_the_window_tail(mock
 
 
 async def test_pre_check_ignores_an_ai_message_at_the_window_tail(mocker):
-    # The mirror case: the window can end on a bot turn while the chat has moved on.
+    # The mirror case: a user message landing after the fetch leaves the window ending
+    # on a bot turn while the chat has moved on.
     mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
     mocker.patch.object(settings, 'INITIATIVE_COOLDOWN_MINUTES', 0)
     mocker.patch.object(settings, 'INITIATIVE_MIN_GAP_MESSAGES', 1)

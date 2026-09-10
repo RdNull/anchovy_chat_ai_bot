@@ -74,21 +74,16 @@ async def _claim_window(chat_id: int) -> list[Message]:
 
 
 async def _get_messages(chat_id: int, last_initiative_run: InitiativeRun | None) -> list[Message]:
-    if last_initiative_run:
-        # Resuming: oldest-first from the watermark, so a backlog past the cap is
-        # deferred to the next run rather than skipped.
-        return await fetch_last_messages(
-            chat_id,
-            size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE,
-            from_date=last_initiative_run.last_message_time,
-            sort_order=1,
-        )
-
-    # No prior run to resume from — anchor on the most recent messages rather than
-    # the chat's oldest history, which could be an arbitrarily old backlog.
+    # Newest-first against the cap, so the judge reads the conversation as it is now.
+    # A backlog past the cap is dropped, not deferred like the memory window: a moment
+    # that has passed is not worth answering, and after a blocked stretch (cooldown)
+    # an oldest-first read judged the conversation from an hour ago. With no prior
+    # run there is no lower bound, which anchors a first run on the latest messages
+    # rather than the chat's oldest history.
     return await fetch_last_messages(
         chat_id,
         size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE,
+        from_date=last_initiative_run.last_message_time if last_initiative_run else None,
         sort_order=-1,
     )
 
