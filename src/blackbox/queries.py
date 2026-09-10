@@ -345,6 +345,10 @@ async def get_user_facts(
     nick: str, query: str | None = None, limit: int = 5,
 ) -> list[dict[str, Any]]:
     """Returns a user's facts: the closest to `query`, or the most confident."""
+    # Facts are stored bare — `facts/handlers.py:upsert_fact` strips `@` on write and the
+    # character's own `get_user_facts` tool strips it on read — while memory keys
+    # participants as `@nick`, which is where a caller usually copies the nick from.
+    nick = nick.replace('@', '')
     limit = _clamp(limit, MAX_HITS)
     if not query:
         cursor = mongo.facts.find({'nickname': nick}).sort('confidence', -1).limit(limit)

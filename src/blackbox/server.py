@@ -120,7 +120,7 @@ async def diff_memory(
 
 @mcp.tool(annotations=_READ_ONLY)
 async def get_user_facts(
-    nick: str,
+    nick: Annotated[str, Field(description='Telegram nick, with or without the leading @.')],
     query: Annotated[str | None, Field(description='Omit for the most confident facts.')] = None,
     limit: Annotated[int, Field(ge=1, le=queries.MAX_HITS)] = 5,
 ) -> list[dict[str, Any]]:
