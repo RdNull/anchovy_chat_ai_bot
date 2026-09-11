@@ -12,11 +12,13 @@ async def test_main_initialization(mocker):
     mock_builder = mocker.patch('src.bot.ApplicationBuilder')
 
     mock_app = MagicMock()
-    mock_builder.return_value.token.return_value.http_version.return_value.build.return_value = mock_app
+    chain = mock_builder.return_value.token.return_value.http_version.return_value
+    chain.post_init.return_value.build.return_value = mock_app
 
     main()
 
     assert mock_builder.return_value.token.call_count == 1
+    assert chain.post_init.call_count == 1
     assert mock_app.add_handler.call_count >= 9
     assert mock_app.add_error_handler.call_count == 1
     assert mock_app.run_polling.call_count == 1

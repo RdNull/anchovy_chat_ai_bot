@@ -7,11 +7,11 @@ from telegram.ext import ContextTypes
 from src import settings
 from src.logs import logger
 from src.memory.repository import get_last_memory
-from src.models import Message
-from .media.pipeline import wait_for_media_ready
+from src.running_app import get_bot
 from .parsing import parse_user_message
-from .repository import get_messages, save_message
+from .repository import fetch_last_messages, save_message
 from .utils import get_chat_character, send_action
+from ..characters.character import Character
 from ..characters.reply import Replier
 from ..processors.context.handlers import run_context_checks
 
@@ -27,34 +27,15 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await save_message(user_message)
 
+    bot = get_bot()
     last_memory = await get_last_memory(chat_id)
-    character = await get_chat_character(
+    character: Character = await get_chat_character(
         chat_id=chat_id,
         memory=last_memory if last_memory else None,
     )
-    last_messages = await _get_last_messages(chat_id)
-    replier = Replier(character, update, user_message)
-    await character.respond(replier, user_message, last_messages)
+    replier = Replier(bot=bot, character=character, chat_id=chat_id, target=user_message)
+
+    last_messages = await fetch_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
+    await character.respond(replier, last_messages)
 
     asyncio.create_task(run_context_checks(chat_id))
-
-
-async def _get_last_messages(chat_id: int) -> list[Message]:
-    last_messages = await get_messages(
-        chat_id,
-        size=settings.LAST_MESSAGES_SIZE,
-    )
-    pending_media_ids = [
-        m.media.unique_id
-        for m in last_messages
-        if m.media and m.media.status.is_pending
-    ]
-    if not pending_media_ids:
-        return last_messages[:-1]  # to trim the current user message from history
-
-    await wait_for_media_ready(
-        pending_media_ids,
-        timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
-    )
-    last_messages = await get_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
-    return last_messages[:-1]

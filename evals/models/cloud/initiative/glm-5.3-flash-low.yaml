@@ -1,0 +1,25 @@
+id: openrouter:z-ai/glm-5.3-flash
+label: glm-5.3-flash-low
+config:
+  max_tokens: 4000
+  temperature: 0
+  # max/high/low - no `medium` on this model; reasoning is mandatory
+  reasoning:
+    effort: low
+  showThinking: false
+  response_format:
+    type: json_schema
+    json_schema:
+      name: initiative_decision
+      strict: true
+      schema:
+        type: object
+        additionalProperties: false
+        required: [ reason, target_index, score ]
+        properties:
+          reason:
+            type: string
+          target_index:
+            type: [ "integer", "null" ]
+          score:
+            type: number

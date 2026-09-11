@@ -26,6 +26,28 @@ def mock_embeddings_client(mocker):
     )
 
 
+# --- run_context_checks stage isolation ---
+
+async def test_run_context_checks_survives_an_initiative_failure(mocker):
+    # The initiative stage runs first, and the caller is a bare create_task — an
+    # unhandled failure there used to take the memory and embedding passes with it,
+    # surfacing only as a 'Task exception was never retrieved' at GC time.
+    mocker.patch.object(settings, 'MEMORY_TRIGGER_SIZE', 1)
+    mocker.patch.object(settings, 'EMBEDDINGS_TRIGGER_SIZE', 1)
+    mocker.patch(
+        'src.processors.context.handlers.run_initiative_checks',
+        AsyncMock(side_effect=RuntimeError('boom')),
+    )
+    mock_memory = mocker.patch('src.processors.context.handlers.update_chat_context')
+    mock_embed = mocker.patch('src.processors.context.handlers.update_chat_embeddings')
+
+    await save_message(make_message())
+    await run_context_checks(1)
+
+    assert mock_memory.call_count == 1
+    assert mock_embed.call_count == 1
+
+
 # --- run_context_checks threshold logic ---
 
 async def test_run_context_checks_below_threshold_no_update(mocker):

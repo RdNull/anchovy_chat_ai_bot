@@ -1,0 +1,12 @@
+{
+    "model_provider": "openrouter",
+    "model": "google/gemini-3.8-flash",
+    "api_key": "env:OPENROUTER_API_KEY",
+    "max_completion_tokens": 1000,
+    "temperature": 0,
+    "reasoning": {
+        "max_tokens": 256
+    },
+    "timeout": 60000,
+    "max_retries": 1
+}

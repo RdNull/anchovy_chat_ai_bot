@@ -118,8 +118,8 @@ async def extract_memory(
         new_messages=formatted_messages,
         # What the answering character already holds, so the prompt stops telling the
         # model to skip a window size no deployment actually uses. The «~» in the
-        # template absorbs the off-by-one from `response.py`'s `[:-1]` trim — passing
-        # the adjusted number would bake a `response.py` detail into a prompt.
+        # template absorbs the one extra message an initiative reply can carry, when
+        # `_with_target` prepends a target from outside the window.
         context_window=settings.LAST_MESSAGES_SIZE,
     )
 

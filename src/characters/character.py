@@ -24,14 +24,39 @@ from ..tools import ToolContext, ToolFailure, ToolRegistry
 _MAX_LOOP_DEPTH = 8
 
 
-def _format_previous_messages(last_messages: list[Message]) -> Generator[
-    HumanMessage | AIMessage, None, None]:
+def _format_previous_messages(
+    replier: Replier, last_messages: list[Message]
+) -> Generator[HumanMessage | AIMessage, None, None]:
+    # A `Message` built in memory rather than read from Mongo has `id=None`, and
+    # comparing those as strings made every such message the target.
+    target_id = replier.target_message.id if replier.target_message else None
     for message in last_messages:
+        prefix = '[TARGET] ' if target_id and message.id == target_id else ''
         if message.role == UserRole.USER:
-            yield HumanMessage(message.ai_format)
+            yield HumanMessage(f'{prefix}{message.ai_format}')
         else:
-            yield AIMessage(message.response_format)
+            yield AIMessage(f'{prefix}{message.response_format}')
 
+
+def _get_tools_registry(replier: Replier) -> ToolRegistry:
+    context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web]
+    direct_tools = [tools.answer_text]
+
+    if replier.target_message:
+        # reactions only possible when replying to a message
+        direct_tools.append(tools.set_reaction)
+
+    if settings.ENABLE_STICKER_REPLIES:
+        # Both or neither: `send_sticker` without `find_stickers` gives the model an id
+        # parameter it can only hallucinate.
+        context_tools.append(tools.find_stickers)
+        direct_tools.append(tools.send_sticker)
+
+    return ToolRegistry(
+        context_tools=context_tools,
+        direct_tools=direct_tools,
+        context=ToolContext(chat_id=replier.chat_id, replier=replier),
+    )
 
 
 class Character:
@@ -57,7 +82,7 @@ class Character:
     def system_message(self):
         setup_prompt = prompt_manager.get_prompt(
             'character_setup',
-            version='v8',
+            version='v9',
             character_description=self.style_prompt,
             memory=self.memory.prompt_format() if self.memory else None,
             related_messages=self.related_messages or None,
@@ -68,37 +93,19 @@ class Character:
     async def respond(
         self,
         replier: Replier,
-        user_message: Message,
         last_messages: list[Message] = None,
     ) -> None:
-        chat_id = user_message.chat_id
+        chat_id = replier.chat_id
         if self.rate_limiter.is_exceeded(chat_id):
             return None
 
         llm = self._get_llm(versions=('v8',))
         messages = [
             self.system_message,
-            *_format_previous_messages(last_messages),
-            HumanMessage(user_message.ai_format),
+            *_format_previous_messages(replier, last_messages or []),
         ]
 
-        context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web]
-        direct_tools = [tools.answer_text, tools.set_reaction]
-        # Both or neither: `send_sticker` without `find_stickers` gives the model an id
-        # parameter it can only hallucinate. There is no corpus-size gate — an empty
-        # result is a permanent condition, not a startup one (the index can hold
-        # hundreds of stickers and still have nothing on the topic at hand), so the
-        # empty case has to be handled on every call anyway.
-        if settings.ENABLE_STICKER_REPLIES:
-            context_tools.append(tools.find_stickers)
-            direct_tools.append(tools.send_sticker)
-
-        tools_registry = ToolRegistry(
-            context_tools=context_tools,
-            direct_tools=direct_tools,
-            context=ToolContext(chat_id=chat_id, replier=replier),
-        )
-
+        tools_registry = _get_tools_registry(replier)
         logger.debug(
             f'Invoking LLM for character {self.name} with {len(messages)} messages'
         )

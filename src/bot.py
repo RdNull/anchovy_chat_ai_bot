@@ -5,7 +5,7 @@ from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
+    Application, ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
     MessageReactionHandler, filters,
 )
 
@@ -14,6 +14,7 @@ from src.logs import logger
 from src.messages import handlers
 from src.messages.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
+from src.running_app import set_running_app
 
 
 async def log_sticker_corpus():
@@ -44,6 +45,10 @@ async def setup_scheduler():
         await asyncio.sleep(1)
 
 
+async def post_init(application: Application) -> None:
+    set_running_app(application)
+
+
 def main() -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)  # so that both tg app and scheduler run on a single loop
@@ -52,7 +57,7 @@ def main() -> None:
     loop.create_task(setup_scheduler())
     app = ApplicationBuilder().token(
         settings.TELEGRAM_TOKEN
-    ).http_version('2').build()
+    ).http_version('2').post_init(post_init).build()
 
     mention_handler = MessageHandler(
         filters.TEXT & (

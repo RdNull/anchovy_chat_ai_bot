@@ -2,6 +2,7 @@ import asyncio
 
 from src import settings
 from src.facts.processors import extract_facts
+from src.initiative.handlers import run_initiative_checks
 from src.logs import logger
 from src.memory.processors import extract_memory
 from src.memory.repository import get_last_memory
@@ -12,6 +13,14 @@ CHAT_CONTEXT_LOCK = asyncio.Lock()
 
 
 async def run_context_checks(chat_id: int):
+    # Guarded on its own: this stage runs first, so an unhandled failure here would
+    # take the memory and embedding passes down with it. The caller is a bare
+    # `create_task`, so the traceback would surface only at GC time.
+    try:
+        await run_initiative_checks(chat_id)
+    except Exception as e:
+        logger.error(f'Error running initiative checks for chat {chat_id}: {e}', exc_info=True)
+
     await run_memory_checks(chat_id)
     await run_embedding_checks(chat_id)
 

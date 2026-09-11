@@ -1,0 +1,127 @@
+from src import settings
+from src.initiative.models import InitiativeVerdict
+from src.initiative.policies import decide, pre_check
+from src.messages.repository import save_message
+from src.models import Message, UserRole
+
+
+def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1'):
+    return Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
+
+
+# --- pre_check: trigger size ---
+
+async def test_pre_check_fails_when_not_enough_messages(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 5)
+    messages = [make_message() for _ in range(4)]
+
+    assert await pre_check(222, messages) is False
+
+
+async def test_pre_check_passes_the_trigger_size_gate_at_exactly_the_threshold(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 3)
+    messages = [make_message() for _ in range(3)]
+
+    assert await pre_check(222, messages) is True
+
+
+# --- pre_check: other conditions ---
+
+async def test_pre_check_fails_when_last_message_is_from_ai(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    await save_message(make_message())
+    await save_message(make_message(role=UserRole.AI, text='ответ', nickname='bot'))
+
+    assert await pre_check(222, [make_message()]) is False
+
+
+async def test_pre_check_reads_the_chats_newest_rather_than_the_window_tail(mocker):
+    # Regression: this guard read `messages[-1]`. The window is fetched before the
+    # check runs, so a message can land in between — the bot's own reply included —
+    # and the window tail is then not what was said last.
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    await save_message(make_message(text='старое'))
+    await save_message(make_message(role=UserRole.AI, text='ответ', nickname='bot'))
+    window_ending_on_a_user_message = [make_message(text='старое')]
+
+    assert await pre_check(222, window_ending_on_a_user_message) is False
+
+
+async def test_pre_check_ignores_an_ai_message_at_the_window_tail(mocker):
+    # The mirror case: a user message landing after the fetch leaves the window ending
+    # on a bot turn while the chat has moved on.
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch.object(settings, 'INITIATIVE_COOLDOWN_MINUTES', 0)
+    mocker.patch.object(settings, 'INITIATIVE_MIN_GAP_MESSAGES', 1)
+    await save_message(make_message(role=UserRole.AI, text='ответ', nickname='bot'))
+    await save_message(make_message(text='и что'))
+    window_ending_on_a_bot_message = [make_message(role=UserRole.AI, nickname='bot')]
+
+    assert await pre_check(222, window_ending_on_a_bot_message) is True
+
+
+async def test_pre_check_passes_when_no_bot_message_ever(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    messages = [make_message()]
+
+    assert await pre_check(222, messages) is True
+
+
+async def test_pre_check_fails_within_cooldown(mocker):
+    # Pin the cooldown explicitly — a local .env override (e.g. while manually
+    # testing initiative live) can zero it out, which would make this pass for the
+    # wrong reason (falling through to the gap check instead).
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch.object(settings, 'INITIATIVE_COOLDOWN_MINUTES', 60)
+    await save_message(make_message(role=UserRole.AI, text='ok', nickname='bot'))
+    messages = [make_message()]
+
+    assert await pre_check(222, messages) is False
+
+
+async def test_pre_check_fails_when_user_gap_too_small(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch.object(settings, 'INITIATIVE_COOLDOWN_MINUTES', 0)
+    mocker.patch.object(settings, 'INITIATIVE_MIN_GAP_MESSAGES', 5)
+    await save_message(make_message(role=UserRole.AI, text='ok', nickname='bot'))
+    for _ in range(2):
+        await save_message(make_message())
+    messages = [make_message()]
+
+    assert await pre_check(222, messages) is False
+
+
+async def test_pre_check_passes_when_cooldown_and_gap_satisfied(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch.object(settings, 'INITIATIVE_COOLDOWN_MINUTES', 0)
+    mocker.patch.object(settings, 'INITIATIVE_MIN_GAP_MESSAGES', 2)
+    await save_message(make_message(role=UserRole.AI, text='ok', nickname='bot'))
+    for _ in range(3):
+        await save_message(make_message())
+    messages = [make_message()]
+
+    assert await pre_check(222, messages) is True
+
+
+# --- decide ---
+
+async def test_decide_true_when_score_meets_threshold(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_SCORE_THRESHOLD', 0.5)
+    evaluation = InitiativeVerdict(target_message=None, score=0.5, reason='x')
+
+    assert await decide(evaluation) is True
+
+
+async def test_decide_false_when_score_below_threshold(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_SCORE_THRESHOLD', 0.5)
+    evaluation = InitiativeVerdict(target_message=None, score=0.49, reason='x')
+
+    assert await decide(evaluation) is False
+
+
+async def test_decide_false_when_score_out_of_bounds():
+    # InitiativeVerdict.score carries no pydantic bound (unlike InitiativeDecision.score),
+    # so this guards a value built by a future caller rather than dead code today.
+    evaluation = InitiativeVerdict(target_message=None, score=1.5, reason='x')
+
+    assert await decide(evaluation) is False

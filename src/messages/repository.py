@@ -4,9 +4,10 @@ from typing import Iterable
 
 from bson import ObjectId
 
-from src import mongo
+from src import mongo, settings
 from src.logs import logger
 from src.messages.media import get_media_description_by_media_id
+from src.messages.media.pipeline import wait_for_media_ready
 from src.models import Message, MessageMedia, MessageReply, UpdateMessage, UserRole
 
 
@@ -98,9 +99,9 @@ async def get_messages(
         sort_order: Which end of the matching range `size` takes — `-1` keeps the
             newest, `1` keeps the oldest. It does not affect the order of the
             returned list, which is chronological either way. Callers rely on
-            that: `src/messages/response.py` trims the current message with
-            `[:-1]`, and `src/processors/context/embeddings.py` reads its next
-            watermark off `messages[-1]`.
+            that: `src/processors/context/embeddings.py` and
+            `src/initiative/handlers.py` read their next watermark off
+            `messages[-1]`.
 
     Returns:
         The selected messages, oldest first.
@@ -146,6 +147,23 @@ async def get_messages_by_ids(
     ]
 
 
+async def fetch_last_messages(chat_id: int, size: int, **kwargs) -> list[Message]:
+    last_messages = await get_messages(chat_id, size=size, **kwargs)
+    pending_media_ids = [
+        m.media.unique_id
+        for m in last_messages
+        if m.media and m.media.status.is_pending
+    ]
+    if not pending_media_ids:
+        return last_messages
+
+    await wait_for_media_ready(
+        pending_media_ids,
+        timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
+    )
+    return await get_messages(chat_id, size=size, **kwargs)
+
+
 async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None:
     logger.debug(f"Fetching message by telegram id {telegram_id}")
     message = await mongo.messages.find_one({
@@ -156,6 +174,7 @@ async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None
         return None
 
     return await _parse_message_record(message)
+
 
 async def get_last_message(chat_id: int, role: UserRole | None = None) -> Message | None:
     logger.debug(f"Fetching last message for chat {chat_id} (role={role})")
@@ -170,12 +189,14 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
     return await _parse_message_record(message)
 
 
-async def get_messages_count_since(chat_id: int, timestamp: float) -> int:
-    logger.debug(f"Counting messages for chat {chat_id} since {timestamp}")
-    return await mongo.messages.count_documents({
-        'chat_id': chat_id,
-        'created_at': {'$gt': timestamp}
-    })
+async def get_messages_count_since(
+    chat_id: int, timestamp: float, role: UserRole | None = None,
+) -> int:
+    logger.debug(f'Counting messages for chat {chat_id} since {timestamp}')
+    query = {'chat_id': chat_id, 'created_at': {'$gt': timestamp}}
+    if role:
+        query['role'] = role.value
+    return await mongo.messages.count_documents(query)
 
 
 async def get_messages_count(chat_id: int) -> int:

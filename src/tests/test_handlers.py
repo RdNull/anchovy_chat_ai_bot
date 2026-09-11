@@ -1,10 +1,9 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
 from telegram import Sticker
 
-from src import mongo, settings
+from src import settings
 from src.characters.repository import CHARACTERS
 from src.chat_settings import repository as chat_settings_repository
 from src.messages import handlers
@@ -13,7 +12,7 @@ from src.messages.parsing import _get_message_medium
 from src.messages.repository import (
     get_messages, save_message,
 )
-from src.messages.response import _get_last_messages
+from src.messages.response import fetch_last_messages
 from src.models import (
     Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UpdateMessage,
     UserRole,
@@ -215,7 +214,6 @@ async def test_parse_user_message_with_animation_is_not_a_sticker(make_update):
 # --- handle_conversation ---
 
 async def test_handle_conversation_pushes_to_history(make_update, make_context, mocker):
-    mocker.patch('src.messages.handlers.random.random', return_value=1.0)
     mocker.patch(
         'src.messages.handlers.run_context_checks', new_callable=AsyncMock
     )
@@ -228,32 +226,14 @@ async def test_handle_conversation_pushes_to_history(make_update, make_context, 
     assert history[0].text == 'hello'
 
 
-async def test_handle_conversation_skips_random_reply_if_last_was_ai(
-    make_update, make_context, mocker
-):
-    mocker.patch('src.messages.handlers.random.random', return_value=0.0)
-    mocker.patch(
-        'src.messages.handlers.run_context_checks', new_callable=AsyncMock
-    )
-    mock_generate = mocker.patch(
-        'src.messages.handlers.generate_answer', new_callable=AsyncMock
-    )
-    # Seed an AI message as the last in history
-    await save_message(
-        Message(chat_id=222, role=UserRole.AI, text='bot said', nickname='bot')
-    )
-
-    await handlers.handle_conversation(make_update(chat_id=222), make_context)
-
-    assert mock_generate.call_count == 0
-
-
 # --- generate_answer ---
 
-async def test_generate_answer_full_flow(make_update, make_context, mock_llm, mocker):
+async def test_generate_answer_full_flow(make_update, make_context, make_bot, mock_llm, mocker):
     mocker.patch(
         'src.messages.response.run_context_checks', new_callable=AsyncMock
     )
+    bot = make_bot()
+    mocker.patch('src.messages.response.get_bot', return_value=bot)
     update = make_update(text='question', chat_id=222)
 
     await handlers.generate_answer(update, make_context)
@@ -265,9 +245,9 @@ async def test_generate_answer_full_flow(make_update, make_context, mock_llm, mo
     assert history[0].text == 'question'
     assert history[1].role == UserRole.AI
     assert history[1].text == 'мок ответ'
-    # Telegram reply was sent
-    assert update.message.reply_text.call_count == 1
-    assert update.message.reply_text.call_args == call('мок ответ')
+    # Reply was sent via the Bot API, not update.message
+    assert bot.send_message.call_count == 1
+    assert bot.send_message.call_args.kwargs['text'] == 'мок ответ'
 
 
 async def test_error_handler(mocker):
@@ -331,7 +311,6 @@ async def test_handle_conversation_dispatches_pipeline_for_described_media(
     # A sticker the group has sent before comes back READY from the description row.
     # Gating dispatch on PENDING would skip the pipeline entirely and leave
     # `_backfill_sticker` unreachable on the path most stickers arrive by.
-    mocker.patch('src.messages.handlers.random.random', return_value=1.0)
     mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
     mock_handle_media = mocker.patch(
         'src.messages.handlers.handle_media_message', new_callable=AsyncMock
@@ -361,7 +340,6 @@ async def test_handle_conversation_no_message_returns_early(make_context, mocker
     update.effective_user.id = 111
     update.effective_chat.id = 222
     update.effective_message.reply_text = AsyncMock()
-    mocker.patch('src.messages.handlers.random.random', return_value=1.0)
     mock_push = mocker.patch('src.messages.handlers.save_message', new_callable=AsyncMock)
 
     await handlers.handle_conversation(update, make_context)
@@ -372,7 +350,6 @@ async def test_handle_conversation_no_message_returns_early(make_context, mocker
 # --- handle_conversation with pending media ---
 
 async def test_handle_conversation_creates_media_task(make_update, make_context, mocker):
-    mocker.patch('src.messages.handlers.random.random', return_value=1.0)
     mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
     mock_handle_media = mocker.patch(
         'src.messages.handlers.handle_media_message', new_callable=AsyncMock
@@ -404,66 +381,6 @@ async def test_generate_answer_no_message_returns_early(make_context, mocker):
     await handlers.generate_answer(update, make_context)
 
     assert mock_push.call_count == 0
-
-
-# --- random reply cooldown ---
-
-async def test_handle_conversation_random_reply_skipped_within_cooldown(
-    make_update, make_context, mocker
-):
-    mocker.patch('src.messages.handlers.random.random', return_value=0.0)
-    mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
-    mock_gen = mocker.patch('src.messages.handlers.generate_answer', new_callable=AsyncMock)
-
-    # Insert a recent AI message (1 min ago, well within the 30-min cooldown) directly
-    # so save_message doesn't overwrite created_at.
-    recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=1)).timestamp()
-    await mongo.messages.insert_one({
-        'chat_id': 222,
-        'role': UserRole.AI.value,
-        'text': 'bot said',
-        'nickname': 'bot',
-        'created_at': recent_ts,
-        'media_id': None,
-        'media_unique_id': None,
-    })
-    # Push a user message after so the last-any-message check sees a USER, not AI.
-    await save_message(
-        Message(chat_id=222, role=UserRole.USER, text='user msg', nickname='user')
-    )
-
-    await handlers.handle_conversation(make_update(chat_id=222), make_context)
-
-    assert mock_gen.call_count == 0
-
-
-async def test_handle_conversation_random_reply_fires_after_cooldown(
-    make_update, make_context, mocker
-):
-    mocker.patch('src.messages.handlers.random.random', return_value=0.0)
-    mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
-    mock_gen = mocker.patch('src.messages.handlers.generate_answer', new_callable=AsyncMock)
-
-    # Insert an AI message with an old timestamp (past cooldown) directly so save_message
-    # doesn't overwrite created_at with datetime.now().
-    old_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).timestamp()
-    await mongo.messages.insert_one({
-        'chat_id': 222,
-        'role': UserRole.AI.value,
-        'text': 'old bot said',
-        'nickname': 'bot',
-        'created_at': old_ts,
-        'media_id': None,
-        'media_unique_id': None,
-    })
-    # Push a user message so that get_last_message(chat_id) returns a USER, not AI.
-    await save_message(
-        Message(chat_id=222, role=UserRole.USER, text='user msg', nickname='user')
-    )
-
-    await handlers.handle_conversation(make_update(chat_id=222), make_context)
-
-    assert mock_gen.call_count == 1
 
 
 # --- parse_user_message reply with medium ---
@@ -531,21 +448,23 @@ async def test_handle_message_edit_no_message_found(mocker, make_update, make_co
     assert update_message_mock.call_count == 0
 
 
-# --- _get_last_messages ---
+# --- fetch_last_messages ---
 
-async def test_get_last_messages_no_pending_media_returns_without_wait(mocker):
+async def test_fetch_last_messages_no_pending_media_returns_without_wait(mocker):
+    # The triggering message is no longer trimmed off: it stays in the window so
+    # _format_previous_messages can mark it with [TARGET].
     msg1 = Message(chat_id=222, nickname='user', role=UserRole.USER, text='hi')
     msg2 = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
-    mocker.patch('src.messages.response.get_messages', return_value=[msg1, msg2])
-    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+    mocker.patch('src.messages.repository.get_messages', return_value=[msg1, msg2])
+    mock_wait = mocker.patch('src.messages.repository.wait_for_media_ready', new_callable=AsyncMock)
 
-    result = await _get_last_messages(222)
+    result = await fetch_last_messages(222, size=settings.LAST_MESSAGES_SIZE)
 
-    assert result == [msg1]
+    assert result == [msg1, msg2]
     assert mock_wait.call_count == 0
 
 
-async def test_get_last_messages_with_ready_media_no_wait(mocker):
+async def test_fetch_last_messages_with_ready_media_no_wait(mocker):
     msg_ready = Message(
         chat_id=222, nickname='user', role=UserRole.USER, text=None,
         media=MessageMedia(
@@ -554,16 +473,16 @@ async def test_get_last_messages_with_ready_media_no_wait(mocker):
         ),
     )
     msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
-    mocker.patch('src.messages.response.get_messages', return_value=[msg_ready, msg_current])
-    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+    mocker.patch('src.messages.repository.get_messages', return_value=[msg_ready, msg_current])
+    mock_wait = mocker.patch('src.messages.repository.wait_for_media_ready', new_callable=AsyncMock)
 
-    result = await _get_last_messages(222)
+    result = await fetch_last_messages(222, size=settings.LAST_MESSAGES_SIZE)
 
     assert mock_wait.call_count == 0
-    assert result == [msg_ready]
+    assert result == [msg_ready, msg_current]
 
 
-async def test_get_last_messages_pending_media_waits_and_refetches(mocker):
+async def test_fetch_last_messages_pending_media_waits_and_refetches(mocker):
     msg_pending = Message(
         chat_id=222, nickname='user', role=UserRole.USER, text=None,
         media=MessageMedia(
@@ -573,22 +492,22 @@ async def test_get_last_messages_pending_media_waits_and_refetches(mocker):
     )
     msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
     mock_get = mocker.patch(
-        'src.messages.response.get_messages',
+        'src.messages.repository.get_messages',
         side_effect=[[msg_pending, msg_current], [msg_pending, msg_current]],
     )
-    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+    mock_wait = mocker.patch('src.messages.repository.wait_for_media_ready', new_callable=AsyncMock)
 
-    result = await _get_last_messages(222)
+    result = await fetch_last_messages(222, size=settings.LAST_MESSAGES_SIZE)
 
     assert mock_wait.call_count == 1
     assert mock_wait.call_args == call(
         ['uid1'], timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
     )
     assert mock_get.call_count == 2
-    assert result == [msg_pending]
+    assert result == [msg_pending, msg_current]
 
 
-async def test_get_last_messages_processing_media_waits(mocker):
+async def test_fetch_last_messages_processing_media_waits(mocker):
     msg_processing = Message(
         chat_id=222, nickname='user', role=UserRole.USER, text=None,
         media=MessageMedia(
@@ -598,12 +517,12 @@ async def test_get_last_messages_processing_media_waits(mocker):
     )
     msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
     mocker.patch(
-        'src.messages.response.get_messages',
+        'src.messages.repository.get_messages',
         side_effect=[[msg_processing, msg_current], [msg_processing, msg_current]],
     )
-    mock_wait = mocker.patch('src.messages.response.wait_for_media_ready', new_callable=AsyncMock)
+    mock_wait = mocker.patch('src.messages.repository.wait_for_media_ready', new_callable=AsyncMock)
 
-    await _get_last_messages(222)
+    await fetch_last_messages(222, size=settings.LAST_MESSAGES_SIZE)
 
     assert mock_wait.call_count == 1
     assert mock_wait.call_args == call(

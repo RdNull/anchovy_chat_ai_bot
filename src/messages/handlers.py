@@ -1,6 +1,5 @@
 import asyncio
 import random
-from datetime import datetime, timedelta, timezone
 
 from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage,
@@ -9,14 +8,13 @@ from telegram import (
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
-from src import settings
 from src.characters.repository import CHARACTERS
 from src.logs import logger
-from src.models import UpdateMessage, UserRole
+from src.models import UpdateMessage
 from .media import handle_media_message
 from .parsing import parse_user_message
 from .repository import (
-    get_last_message, get_message_by_tg_id, save_message,
+    get_message_by_tg_id, save_message,
     update_message, update_message_reactions,
 )
 from .response import generate_answer
@@ -103,24 +101,6 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     logger.debug(f"Handling conversation in chat {chat_id} from {user_message.nickname}")
-
-    if random.random() < settings.RANDOM_REPLY_CHANCE:
-        last_any_message = await get_last_message(chat_id)
-        if last_any_message and last_any_message.role == UserRole.AI:
-            logger.info(f"Skipping random reply in chat {chat_id}: last message was from AI")
-            return
-
-        last_bot_message = await get_last_message(chat_id, role=UserRole.AI)
-        if last_bot_message and last_bot_message.created_at:
-            cooldown_threshold = datetime.now(timezone.utc) - timedelta(
-                minutes=settings.RANDOM_REPLY_COOLDOWN_MINUTES)
-            if last_bot_message.created_at > cooldown_threshold:
-                logger.info(f"Skipping random reply in chat {chat_id}: bot cooldown not passed")
-                return
-
-        logger.info(f"Triggering random reply in chat {chat_id}")
-        await generate_answer(update, context)
-        return
 
     await save_message(user_message)
     # Dispatched for any media, not just PENDING: the pipeline has its own skip checks,

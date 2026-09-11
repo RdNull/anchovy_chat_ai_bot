@@ -27,6 +27,7 @@ async def clean_collections():
     await mongo.embedding_tasks.drop()
     await mongo.media_descriptions.drop()
     await mongo.chat_settings.drop()
+    await mongo.initiative_runs.drop()
 
 
 @pytest.fixture
@@ -77,6 +78,18 @@ def make_context():
     ctx = MagicMock()
     ctx.bot.send_chat_action = AsyncMock()
     return ctx
+
+
+@pytest.fixture
+def make_bot():
+    def _factory():
+        bot = MagicMock()
+        bot.send_message = AsyncMock(return_value=MagicMock(message_id=999))
+        bot.send_sticker = AsyncMock(return_value=MagicMock(message_id=998))
+        bot.set_message_reaction = AsyncMock(return_value=True)
+        return bot
+
+    return _factory
 
 
 @pytest.fixture
