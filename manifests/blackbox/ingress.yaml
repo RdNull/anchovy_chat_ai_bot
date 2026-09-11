@@ -1,0 +1,58 @@
+# The only public surface: one HTTPS host, routed by Traefik, certificate by cert-manager.
+#
+# Rate limiting and the body-size cap are Traefik Middleware objects referenced by
+# annotation. `nginx.ingress.kubernetes.io/*` annotations would be silently ignored here, so a
+# missing limit would not announce itself — check the router in Traefik's log if in doubt.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: blackbox
+spec:
+  rateLimit:
+    # One user; a session opens with a few calls in quick succession.
+    average: 5
+    period: 1s
+    burst: 20
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: body-limit
+  namespace: blackbox
+spec:
+  buffering:
+    # Tool calls are small JSON-RPC requests; this is a cap, not a working size.
+    maxRequestBodyBytes: 1048576
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: blackbox
+  namespace: blackbox
+  annotations:
+    # Staging until the whole path works end to end — see manifests/cluster/cluster-issuers.yaml.
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    # HTTPS only: the bearer token is never accepted in cleartext. cert-manager's solver
+    # Ingress carries no such annotation, so the HTTP-01 challenge is still served on :80.
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: blackbox-rate-limit@kubernetescrd,blackbox-body-limit@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - mcp.anchovy-bot.rdnull.im
+      secretName: blackbox-tls
+  rules:
+    # One host per rule: the webhook will get its own subdomain on this same ingress.
+    - host: mcp.anchovy-bot.rdnull.im
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: blackbox
+                port:
+                  name: http

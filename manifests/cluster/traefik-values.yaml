@@ -1,0 +1,71 @@
+# Helm values for Traefik, installed by scripts/cluster-bootstrap.sh into namespace `traefik`.
+# Not rendered by deploy-k8s.sh: this directory holds cluster-wide infrastructure that is
+# installed once by hand, not on every push.
+#
+# Traefik routes; cert-manager issues. Traefik's own ACME resolver is deliberately unused: it
+# persists certificates to an acme.json that needs a volume, and a lost volume means
+# re-issuing on every restart until Let's Encrypt rate-limits the domain. cert-manager keeps
+# them in a Secret.
+#
+# Traefik gets its own namespace because its ServiceAccount can read Ingresses, Services,
+# Endpoints and Secrets cluster-wide. That privilege stays out of the internet-facing
+# `blackbox` namespace.
+
+# A DaemonSet on hostPort 80/443: the node's own public IP is the entrypoint. No
+# LoadBalancer Service anywhere, or the Linode CCM provisions a NodeBalancer (~$10/month)
+# to buy a stable IP that one node cannot make highly available anyway.
+deployment:
+  kind: DaemonSet
+
+# A hostPort cannot be held by two pods on one node, so a surge pod would sit Pending
+# forever. Replace in place, and accept the seconds of downtime.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 0
+
+ports:
+  web:
+    hostPort: 80
+  websecure:
+    hostPort: 443
+
+service:
+  spec:
+    type: ClusterIP
+
+# The dashboard is not served at all, rather than served on an entrypoint that happens not
+# to be exposed.
+api:
+  dashboard: false
+ingressRoute:
+  dashboard:
+    enabled: false
+
+providers:
+  # Middleware objects (rate limit, body size) are CRDs referenced from the Ingress.
+  kubernetesCRD:
+    enabled: true
+  kubernetesIngress:
+    enabled: true
+
+ingressClass:
+  enabled: true
+  isDefaultClass: false
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+# No access log: the application logs method, path, status and duration itself, and the
+# node has little memory to spare.
+accessLog:
+  enabled: false
+
+# Requests only, like every other container here: Burstable QoS without a limit that could
+# OOM-kill the edge proxy. The node's spare headroom is ~390Mi.
+resources:
+  requests:
+    cpu: 25m
+    memory: 48Mi

@@ -76,12 +76,13 @@ Everything a sticker reply needs was already being collected and then thrown awa
 Prompt quality is tracked with [promptfoo](https://promptfoo.dev) — test suites covering memory extraction, fact extraction, recap generation, image description, and character reply quality, with good/bad sample fixtures for each task. Where a property is mechanically checkable it is asserted in JavaScript rather than left to an LLM rubric: the memory suite re-implements the production key normalization so an attribution or timestamp-leak failure in evals predicts a real drop in production. The reply suite goes further and replays the whole agentic loop — a custom provider re-implements the production tool loop and hands the model the same tool definitions, verbatim down to their descriptions, so what is graded is the loop's final answer under real tool pressure rather than a single completion. Swapping the chat model is then a two-file change: the model config the bot loads, and the provider file the suite runs. Where the re-implementation deliberately diverges from production — it does not model the loop's failure recovery, and its sticker search returns nothing, matching the cold start the feature ships in — that is recorded in the code, so the next reader does not mistake it for drift.
 
 **A Read-Only Window Into the Bot's Own Data**
-Building eval fixtures and auditing memory both meant querying MongoDB by hand and reformatting the result, and that is how fixtures quietly drifted out of the format the bot actually produces. A small MCP server now exposes the bot's data to a Claude Code session in this repository: semantic search over chat history, a plain chronological read filtered by time, author and role, the exact window around any message, memory snapshots with their age records, a diff between any two snapshots, and user facts. It is a tool boundary rather than a script because the useful work is a loop — which window to pull next depends on what the last one contained — and a script needs a person between every step.
+Building eval fixtures and auditing memory both meant querying MongoDB by hand and reformatting the result, and that is how fixtures quietly drifted out of the format the bot actually produces. A small MCP server now exposes the bot's data to a Claude Code session: semantic search over chat history, a plain chronological read filtered by time, author and role, the exact window around any message, memory snapshots with their age records, a diff between any two snapshots, and user facts. It is a tool boundary rather than a script because the useful work is a loop — which window to pull next depends on what the last one contained — and a script needs a person between every step.
 
 - **Fixtures are rendered by the production code, not a template.** The bot formats the same messages two different ways: one for the model writing the reply, and one for the models that extract memory and facts. A fixture in the wrong format tests a bot that does not exist, so the tool takes exactly those two formats and nothing custom.
 - **Memory diffs use production's keyspace.** Entries are compared through the same normalization the attribution guard and the decay records use, so a reworded or re-punctuated entry counts as carried rather than as a loss plus a birth — the numbers are the ones the memory pipeline would report itself.
 - **Read-only by credential, not by discipline.** It connects with a database user that cannot write. The vector store has no credential to lean on, so the server also avoids two production helpers that quietly create a missing collection on first use.
-- **Outside the bot entirely.** It is a separate, locally-run process with a dev-only dependency; nothing about it ships in the bot's image or touches the reply path.
+- **Outside the reply path entirely.** It runs from the bot's image with a different command, as its own process in its own namespace; nothing it does can reach the loop that answers the chat.
+- **Reachable from anywhere, and nothing else is.** It answers at one HTTPS host behind a bearer token, checked before a request body is read, so a rejected caller never reaches the protocol layer. An empty token refuses to start the process rather than serving without auth — the same silent-blank failure the deploy tests guard against, where the outcome would be the chat published. The pod holds only the read-only database credential and a separate, spend-capped embedding key, never the bot's secrets. Its network policy admits traffic only from the ingress and lets it out only to the two stores, DNS, and public HTTPS for query embeddings, so read-only is a property of the cluster, not just of the code. There is one transport: the local copy is the same HTTP server with the same token check, so the auth path runs every day rather than only in production.
 - **Its output is untrusted.** Everything it returns was written by chat members, some of it deliberately adversarial, and it is handed back as data to analyse, never as instructions.
 
 **Dual Local/Cloud Mode**
@@ -94,6 +95,8 @@ LangSmith tracing is integrated via `@traceable` decorators across the LLM call 
 A GitHub Actions workflow builds and pushes a multi-stage Docker image to GHCR on every push to `main`, then deploys it to a Kubernetes cluster (bot, MongoDB, and Qdrant manifests under `manifests/`) via `kubectl`, with app config supplied through a ConfigMap/Secret pair populated from repo variables and secrets.
 
 Template substitution renders an unexported variable as an empty string rather than failing, which makes a missing config value a silent write of a blank into the cluster — and one that stays dormant until the next time a pod happens to be recreated. The test suite enforces the link instead: every value the deploy substitutes must be exported by the deploy job, and the deploy script itself refuses to run with a required value empty. A config gap fails in CI, where it is a red test rather than an outage months later.
+
+The one public endpoint — the data-access server below — costs nothing beyond the node. An edge proxy runs on the node's own ports instead of behind a cloud load balancer, which would have cost two thirds of current spend to buy a stable IP that a single node cannot make highly available anyway. Certificates come from Let's Encrypt, held in the cluster rather than on a volume the proxy owns. The price of skipping the load balancer is an IP that changes when the node is replaced, so a ten-minute job re-points the DNS record, selecting the node's public IPv4 explicitly and refusing to ever write a private one: pointing the record at the internal address resolves fine and fails silently.
 
 Two constraints in the manifests are load-bearing and read like frugality: the bot runs a single replica with a `Recreate` rollout, because Telegram permits exactly one long-polling caller per token and the default rolling update briefly ran two. Store images are pinned to the versions the cluster is actually running rather than `latest`, so a pod recreation cannot pull a new major over an existing volume. Both stores declare readiness probes and the deploy blocks on them before the bot rolls, and a nightly `mongodump` CronJob writes to a separate volume — the single-replica MongoDB previously had no backup of any kind.
 
@@ -116,10 +119,11 @@ Two constraints in the manifests are load-bearing and read like frugality: the b
 | Media Processing     | Pillow, OpenCV, Lottie, CairoSVG                | Image resizing, GIF/sticker frame extraction    |
 | Scheduling           | scheduler                                       | Weekly fact-confidence decay, daily memory cleanup |
 | Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks         |
-| Developer Tooling    | MCP Python SDK v2                               | Read-only data access for Claude Code sessions  |
+| Developer Tooling    | MCP Python SDK v2 (streamable HTTP)             | Read-only data access for Claude Code sessions  |
 | Observability        | LangSmith                                       | LLM call tracing and span visualization         |
 | Containerization     | Docker (multi-stage build)                      | Bot, MongoDB, and Qdrant services               |
 | Deployment           | Kubernetes, GitHub Actions                      | CI build/push to GHCR, `kubectl`-based deploy   |
+| Ingress & TLS        | Traefik, cert-manager, Let's Encrypt            | HTTPS on the node's own ports, no load balancer |
 | Testing              | pytest, pytest-asyncio, pytest-mock, pytest-cov | Async test suite against a real MongoDB         |
 
 ---
@@ -197,6 +201,12 @@ Message Handlers  (handlers.py)
 [CI/CD]
      +---> GitHub Actions: build multi-stage Docker image -> push to GHCR
                -> kubectl apply against manifests/ (bot, MongoDB, Qdrant)
+               -> blackbox namespace (MCP server, ingress, network policy)
+               -> DNS sync CronJob
+
+[blackbox]  (separate process and namespace; never on the reply path)
+     Claude Code --HTTPS + bearer token--> Traefik (node ports 80/443)
+               -> MCP server (read-only Mongo user) -> MongoDB, Qdrant
 ```
 
 **Configuration model:** Characters (YAML), prompts (Jinja2 templates), and model configs (versioned JSON) are all loaded from the filesystem at startup. This makes it straightforward to add new characters, tune prompts, or swap models without touching application code. Per-chat character selection and settings live in MongoDB instead, so they persist across deploys. Settings that constrain each other are checked at boot and refuse to start rather than being quietly clamped — a window cap silently smaller than the trigger that fills it is the kind of misconfiguration that costs data rather than announcing itself.
@@ -215,24 +225,77 @@ docker compose exec bot pytest
 
 ## Blackbox: Data Access for Claude Code
 
-The read-only MCP server always runs locally, as a Docker container that Claude Code starts from `.mcp.json`. What it reads is set by `.env.blackbox` (gitignored, in the repository root): either the stores of the local `docker compose` stack, or production through `kubectl port-forward`. Switching between them means rewriting that file; nothing else changes.
+The read-only MCP server runs in two places, both over streamable HTTP with the same bearer-token check. It is hosted in the cluster at `https://mcp.anchovy-bot.rdnull.im/`, and it runs locally as a Docker container. Nothing about the tools differs between the two.
+
+### Hosted (production)
+
+Add it to Claude Code once. The token is the `BLACKBOX_MCP_ACCESS_TOKEN` repository secret:
+
+```bash
+claude mcp add --transport http blackbox https://mcp.anchovy-bot.rdnull.im/ \
+  --header "Authorization: Bearer <token>"
+```
+
+The deploy workflow creates the server from these repository settings, and refuses to deploy with any secret empty:
+
+| name | kind | what |
+|---|---|---|
+| `BLACKBOX_MCP_ACCESS_TOKEN` | secret | the bearer token |
+| `BLACKBOX_DATABASE_URL` | secret | the read-only user's URI, host `mongo.default.svc.cluster.local:27017` (the user is created as in Option B below) |
+| `BLACKBOX_OPENROUTER_API_KEY` | secret | a separate OpenRouter key with a low spend cap, used only to embed search queries |
+| `LINODE_DNS_ACCESS_TOKEN` | secret | Linode API token scoped to Domains read/write, for the DNS sync job |
+| `BLACKBOX_CHAT_ID` | variable | the default chat for every tool |
+
+**Cluster bootstrap.** This is done once, and before the first deploy that includes `manifests/blackbox/`. It installs Traefik and cert-manager at pinned chart versions, plus the Let's Encrypt issuers. Re-running it is also how a version bump is applied. It needs `helm`:
+
+```bash
+KUBE_CONTEXT=anchovy-prod scripts/cluster-bootstrap.sh
+```
+
+**Certificates.** The Ingress starts on the Let's Encrypt staging issuer. Before testing the endpoint, check the certificate: a failed challenge and an unrouted request both look like a 404 from outside.
+
+```bash
+kubectl --context anchovy-prod -n blackbox get certificate    # READY must be True
+```
+
+To move to the production issuer, change the `cert-manager.io/cluster-issuer` annotation in `manifests/blackbox/ingress.yaml` to `letsencrypt-prod`, deploy, then delete the `blackbox-tls` secret so it re-issues.
+
+**Rotating the token.** This is deliberately manual. Between steps 2 and 3, calls fail.
+
+1. Generate a new token and update the `BLACKBOX_MCP_ACCESS_TOKEN` repository secret.
+2. Re-run the deploy workflow, then restart the server: `kubectl --context anchovy-prod -n blackbox rollout restart deployment/blackbox`.
+3. Update the header in your local Claude Code and Claude Desktop config.
+
+**After a node recycle.** A replacement node gets a new public IP.
+- Confirm the `dns-sync` CronJob in `default` updated the record. Its log line reads `action=updated`.
+- Confirm the Cloud Firewall is attached to the new node.
+- Confirm the block-storage volumes reattached (they are CSI-managed and normally do).
+
+### Local server
+
+The local server reads what `.env.blackbox` (gitignored, in the repository root) points it at: either the stores of the local `docker compose` stack, or production through `kubectl port-forward`. Switching between them means rewriting that file; nothing else changes.
 
 Common to both:
 
 - Build the image once, and again after a requirements change: `docker compose --profile blackbox build blackbox`.
-- Every `.env.blackbox` also carries these three lines:
+- Every `.env.blackbox` also carries these four lines:
   ```ini
+  BLACKBOX_MCP_ACCESS_TOKEN=<any local token>  # the server refuses to start without one
   OPENROUTER_API_KEY=<key>     # search queries are embedded through OpenRouter
   TELEGRAM_TOKEN=unused        # required by settings, never used
   BLACKBOX_CHAT_ID=<chat id>   # default chat for every tool
   ```
-- To start a session, open Claude Code in the repository and approve the `blackbox` server in `/mcp`.
+- Start the server: `docker compose --profile blackbox up -d blackbox`. It listens on `127.0.0.1:8765` only.
+- `.mcp.json` reads the token from your shell, so export the same value before launching Claude Code, then approve the `blackbox` server in `/mcp`:
+  ```bash
+  export BLACKBOX_MCP_ACCESS_TOKEN=<the value from .env.blackbox>
+  ```
 
 ### Option A: local Docker stores
 
 This reads the MongoDB and Qdrant containers from `docker-compose.yml`. The server container joins the compose network, so it reaches them by service name, with no port-forward.
 
-1. Start the local stack: `docker compose up -d`. The server is launched with `--no-deps`, so it never starts the stores itself.
+1. Start the local stack: `docker compose up -d`. The blackbox service declares no dependencies, so it never starts the stores itself.
 2. Create a read-only MongoDB user, authenticating as the local root user from `.env` (`MONGO_INITDB_ROOT_USERNAME`):
    ```bash
    docker compose exec mongo mongosh -u <root user> -p --authenticationDatabase admin \
@@ -246,11 +309,11 @@ This reads the MongoDB and Qdrant containers from `docker-compose.yml`. The serv
    QDRANT_URL=http://qdrant:6333
    ```
 
-### Option B: production (Kubernetes)
+### Option B: production stores through port-forwards
 
-This reads the cluster's MongoDB and Qdrant through `kubectl port-forward`. The server container reaches your machine's forwarded ports through `host.docker.internal`.
+This reads the cluster's MongoDB and Qdrant through `kubectl port-forward`. The server container reaches your machine's forwarded ports through `host.docker.internal`. The hosted server above covers the everyday case, so use this one when you need a local change against real data.
 
-1. Create a read-only MongoDB user in the cluster. The root user comes from `manifests/deployment-mongo.yaml`:
+1. Create a read-only MongoDB user in the cluster. The root user comes from `manifests/deployment-mongo.yaml`. The hosted server uses the same user:
    ```bash
    kubectl --context anchovy-prod exec -it mongo-0 -- mongosh -u anchovy -p --authenticationDatabase admin \
      --eval 'db.getSiblingDB("admin").createUser({user: "blackbox", pwd: passwordPrompt(), roles: [{role: "read", db: "<DATABASE_NAME>"}]})'
@@ -261,11 +324,11 @@ This reads the cluster's MongoDB and Qdrant through `kubectl port-forward`. The 
    DATABASE_NAME=<DATABASE_NAME>
    QDRANT_URL=http://host.docker.internal:6335
    ```
-3. For each session, start both port-forwards before opening Claude Code:
+3. For each session, start both port-forwards before using the tools:
    ```bash
    kubectl --context anchovy-prod port-forward svc/mongo 27018:27017
    kubectl --context anchovy-prod port-forward svc/qdrant 6335:6333
    ```
-   If the server reports the stores unreachable while the forwards are up, add `--address 0.0.0.0` to both commands.
+   If the server reports the stores unreachable while the forwards are up, add `--address 0.0.0.0` to both commands. `curl -s -o /dev/null -w '%{http_code}' localhost:8765/readyz` prints `200` once both stores answer.
 
 In either option, check that the credential really is read-only: a write as `blackbox`, for example `db.memory.insertOne({})`, must fail with "not authorized".
