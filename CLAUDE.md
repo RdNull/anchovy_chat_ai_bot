@@ -164,7 +164,7 @@ The Ingress:
 - `ingressClassName: traefik`, host `mcp.anchovy-bot.rdnull.im`, path `/` (Prefix).
 - `router.entrypoints: websecure`, so the token is never accepted over plain HTTP. The solver Ingress still gets `:80`.
 - Rate limit and body size are `traefik.io/v1alpha1` Middleware objects referenced by `router.middlewares` (`blackbox-rate-limit@kubernetescrd`). `nginx.ingress.kubernetes.io/*` annotations are silently ignored here.
-- The issuer annotation is `letsencrypt-staging` until the path works end to end.
+- The issuer annotation is `letsencrypt-prod`. Switch it back to `letsencrypt-staging` while iterating on the Ingress, since production issuance is rate-limited.
 
 `networkpolicy.yaml` selects `app: blackbox` only, not the namespace, because cert-manager's solver pods run there too. It allows:
 - Ingress: TCP 8000, only from `app.kubernetes.io/name: traefik` pods in the `traefik` namespace.
@@ -248,7 +248,7 @@ A read-only MCP server that gives a Claude Code session the bot's own data: chat
   - `/readyz` runs `mongo.db.command('ping')` plus Qdrant `get_collections()` under `_READY_TIMEOUT` (2s) and answers 200/503. The cause goes to a `BLACKBOX_NOT_READY` log line.
   - Everything else needs `Authorization: Bearer <token>`: the scheme is matched case-insensitively, the token compared with `hmac.compare_digest`. A miss gets a 401 with `WWW-Authenticate: Bearer` and an empty body, without `receive` ever being awaited, so a rejected body is never read.
   - Both probe paths are unauthenticated and return no body.
-- **Logging.** Never a header or a body; bodies are the chat. `BearerAuth` logs `BLACKBOX_HTTP method=… path=… status=… elapsed_ms=…` (probes at DEBUG), and `server.py:_run(name, …)` logs `BLACKBOX_TOOL name=… outcome=ok|error elapsed_ms=…` — the only place the tool name is visible without the body. `mcp.server.streamable_http` is raised to WARNING, since stateless mode logs `Terminating session: None` at INFO on every request.
+- **Logging.** Never a header or a body; bodies are the chat. `BearerAuth` logs `BLACKBOX_HTTP method=… path=… status=… elapsed_ms=…` (probes at DEBUG), and `server.py:_run(name, …)` logs `BLACKBOX_TOOL name=… outcome=ok|error elapsed_ms=…` — the only place the tool name is visible without the body. `mcp.server.streamable_http` is raised to WARNING, since stateless mode logs `Terminating session: None` at INFO on every request, and so is `httpx` — in this process only — since the readiness probe's Qdrant read would otherwise log a line every 15s.
 - **Local wiring.** `.mcp.json` (committed) is an `http` entry for `http://localhost:8765/` with `Authorization: Bearer ${BLACKBOX_MCP_ACCESS_TOKEN}`, expanded from the shell Claude Code runs in. The `blackbox` compose service:
   - is profile-gated, so a plain `up` never starts it: `docker compose --profile blackbox up -d blackbox`
   - publishes `127.0.0.1:8765:8000`
