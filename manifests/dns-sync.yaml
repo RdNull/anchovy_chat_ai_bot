@@ -1,5 +1,5 @@
 # Points the ingress host's A record at the node's public IPv4 after a node recycle.
-# See src/dns_sync/sync.py for the behaviour and its two guards.
+# See scripts/dns_sync.py for the behaviour and its two guards.
 #
 # Lives in `default`, not `blackbox`: the Linode token stays out of the internet-facing
 # namespace, and the record it maintains will front the webhook host too.
@@ -68,7 +68,7 @@ spec:
             - name: dns-sync
               image: ${IMAGE_TAG}
               imagePullPolicy: IfNotPresent
-              command: ["python", "-m", "src.dns_sync"]
+              command: ["python", "scripts/dns_sync.py"]
               securityContext:
                 allowPrivilegeEscalation: false
               resources:

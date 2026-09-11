@@ -4,13 +4,25 @@ The Kubernetes and Linode APIs are both served by one `httpx.MockTransport` that
 every request, so "no write" is asserted as the absence of a PUT rather than inferred.
 """
 
+import importlib.util
 import json
 import logging
+from pathlib import Path
 
 import httpx
 import pytest
 
-from src.dns_sync.sync import DnsSyncError, external_ipv4, is_private, sync
+# A standalone script, not a package module: loaded by path, since `pythonpath = ["src"]`
+# makes `scripts` resolve to `src/scripts` (the backfills), not the top-level directory.
+_SCRIPT = Path(__file__).resolve().parents[2] / 'scripts' / 'dns_sync.py'
+_spec = importlib.util.spec_from_file_location('dns_sync', _SCRIPT)
+dns_sync = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(dns_sync)
+
+DnsSyncError = dns_sync.DnsSyncError
+external_ipv4 = dns_sync.external_ipv4
+is_private = dns_sync.is_private
+sync = dns_sync.sync
 
 NODE_IP = '172.104.140.180'  # the real node: in 172.104/16, outside 172.16/12
 DOMAIN = 'rdnull.im'

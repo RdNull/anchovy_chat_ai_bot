@@ -5,8 +5,11 @@ resolve fine and point nowhere. This runs from a CronJob every ten minutes: read
 address, compare it with the record through the Linode API, and write only on a mismatch.
 It is insurance for the unattended case, not a load-bearing component.
 
-It has its own settings class rather than `src/settings.py`, which requires the Telegram
-token and the Mongo URL — credentials this job must not hold.
+A standalone script, not part of the bot: it imports nothing from `src`, so it has its own
+settings class rather than `src/settings.py` (which requires the Telegram token and the
+Mongo URL — credentials this job must not hold) and its own logging setup. It ships in the
+bot image only because that image is already on the node; the CronJob in
+manifests/dns-sync.yaml runs `python scripts/dns_sync.py`.
 
 Two guards, both from a real mistake. The address is selected by `type: ExternalIP` and
 IPv4 explicitly, because the first entry of `.status.addresses` is the internal one, and a
@@ -15,6 +18,7 @@ written, whatever its source.
 """
 
 import ipaddress
+import logging
 import ssl
 from pathlib import Path
 from typing import Any
@@ -22,7 +26,7 @@ from typing import Any
 import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.logs import logger
+logger = logging.getLogger('dns_sync')
 
 PRIVATE_NETWORKS = tuple(
     ipaddress.ip_network(cidr) for cidr in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')
@@ -156,3 +160,8 @@ def _a_record(linode: httpx.Client, domain_id: int, name: str) -> dict[str, Any]
     if len(matches) != 1:
         raise DnsSyncError(f'expected exactly one A record named {name}, found {len(matches)}')
     return matches[0]
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+    raise SystemExit(main())
