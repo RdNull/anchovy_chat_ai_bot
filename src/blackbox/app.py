@@ -36,6 +36,9 @@ _READY_TIMEOUT = 2
 # Stateless mode builds and tears down a transport per request, and the SDK logs
 # `Terminating session: None` at INFO for every one of them.
 logging.getLogger('mcp.server.streamable_http').setLevel(logging.WARNING)
+# httpx logs every request at INFO, and the readiness probe's Qdrant read alone is one
+# line every 15s. `BLACKBOX_HTTP` / `BLACKBOX_TOOL` and `BLACKBOX_NOT_READY` carry what matters.
+logging.getLogger('httpx').setLevel(logging.WARNING)
 
 
 def build_app(token: str | None) -> ASGIApp:
