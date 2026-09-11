@@ -16,7 +16,7 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
         for i, m in enumerate(messages, start=1)
     ])
 
-    llm = ai.get_initiative_model(version='v1')
+    llm = ai.get_initiative_model(version='gemini-3.8-flash-low')
     model_with_structure = llm.with_structured_output(InitiativeDecision)
 
     system_prompt = prompt_manager.get_prompt(

@@ -1,0 +1,12 @@
+{
+    "model_provider": "openrouter",
+    "model": "z-ai/glm-5.3-flash",
+    "api_key": "env:OPENROUTER_API_KEY",
+    "max_completion_tokens": 4000,
+    "temperature": 0,
+    "reasoning": {
+        "effort": "low"
+    },
+    "timeout": 60000,
+    "max_retries": 1
+}
