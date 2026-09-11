@@ -1,0 +1,236 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+
+description: "Initiative judge - stage 1 model selection"
+
+prompts:
+  - id: file://../../src/prompts/initiative/v1.j2
+    label: "initiative v1"
+
+providers:
+  - file://../models/cloud/initiative/glm-5.3-flash-low.yaml
+  - file://../models/cloud/initiative/gemini-3.8-flash-low.yaml
+
+defaultTest:
+  vars:
+    character_description: file://_shared/character.js
+    current_memory: file://_shared/memory.txt
+
+  assert:
+    # Production uses with_structured_output; this eval sends a plain call, so a
+    # failure here means "needs response_format", not "cannot judge".
+    - type: is-json
+      metric: schema_ok
+    - type: javascript
+      metric: schema_ok
+      value: |
+        if (!output) return false;
+        const r = typeof output === 'string' ? JSON.parse(output) : output;
+        return typeof r.score === 'number' && r.score >= 0 && r.score <= 1
+          && (r.target_index === null || Number.isInteger(r.target_index))
+          && typeof r.reason === 'string' && r.reason.length > 0;
+    - type: javascript
+      metric: reason_terse
+      value: |
+        if (!output) return false;
+        const r = typeof output === 'string' ? JSON.parse(output) : output;
+        return r.reason.length <= 120;
+
+# The metric that decides stage 1. good 0.9 / bad 0.7 is usable (threshold 0.8);
+# good 0.65 / bad 0.60 is not. Do not rank on score_good alone.
+derivedMetrics:
+  - name: separation
+    value: score_good - score_bad
+
+tests:
+  # ---------- should speak ----------
+  # Two unanswered questions in this window: #1 (stale by 8 messages) and #9.
+  # Every model prefers #9 and that is defensible - accept either.
+  - description: "open_question - question to the room, unanswered"
+    vars:
+      messages: file://open_question/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          [1, 9].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)
+
+  - description: "dodged_question - answered with a sticker, slot still open"
+    vars:
+      messages: file://dodged_question/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          (typeof output === 'string' ? JSON.parse(output) : output).target_index === 4
+
+  - description: "unpunched_setup - absurd claim, chat moved on (target is NOT last)"
+    vars:
+      messages: file://unpunched_setup/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          (typeof output === 'string' ? JSON.parse(output) : output).target_index === 3
+
+  - description: "brag_to_puncture - boast with a hole in it"
+    vars:
+      messages: file://brag_to_puncture/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: "[4, 5].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)"
+
+
+  # ---------- should stay quiet ----------
+  # Was labelled "should speak"; relabelled 26-09-10. Generic Monday grumbling with no
+  # hook - the models reject it near-unanimously and they are right.
+  - description: "no_single_hook - general grumbling, nothing to grab"
+    vars:
+      messages: file://no_single_hook/messages.txt
+    assert:
+      - type: javascript
+        metric: score_bad
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s <= 0.4, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          (typeof output === 'string' ? JSON.parse(output) : output).target_index === null
+
+  - description: "coordination - time, place, money"
+    vars:
+      messages: file://coordination/messages.txt
+    assert:
+      - type: javascript
+        metric: score_bad
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s <= 0.4, score: s, reason: `score=${s}` };
+
+  - description: "two_people_settling - they need a result, not a third voice"
+    vars:
+      messages: file://two_people_settling/messages.txt
+    assert:
+      - type: javascript
+        metric: score_bad
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s <= 0.4, score: s, reason: `score=${s}` };
+
+  - description: "joke_landed - reaction moment, not a reply moment"
+    vars:
+      messages: file://joke_landed/messages.txt
+    assert:
+      - type: javascript
+        metric: score_bad
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s <= 0.4, score: s, reason: `score=${s}` };
+
+  - description: "thread_closing - ok, dogovorilis"
+    vars:
+      messages: file://thread_closing/messages.txt
+    assert:
+      - type: javascript
+        metric: score_bad
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s <= 0.4, score: s, reason: `score=${s}` };
+
+  - description: "bot_spoke_last - its own message is newest"
+    vars:
+      messages: file://bot_spoke_last/messages.txt
+    assert:
+      - type: javascript
+        metric: score_bad
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s <= 0.3, score: s, reason: `score=${s}` };
+
+  # ---------- real windows (blackbox, ground truth = reactions on the bot's reply) ----------
+
+  # 26-09-04. The bot answered #10 and drew 🤣 ×6, its best-reacted message on record.
+  - description: "real_weight_brag - boast with a hole, bot reply got 6 reactions"
+    vars:
+      messages: file://real_weight_brag/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          [8, 9, 10].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)
+
+  # 26-08-31, minimal pair with real_question_pending below. Here the question HAS been
+  # dodged with a sticker, the slot only looks filled. Bot answered #10, drew 🤣 ×4.
+  - description: "real_sticker_dodge - question dodged with a sticker"
+    vars:
+      messages: file://real_sticker_dodge/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          [9, 10].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)
+
+  # Same conversation, one message earlier. Originally labelled "quiet" on the reading that
+  # #9 was addressed to kostya; it is not - misha is asking the room, which is the
+  # «вопрос в воздух» criterion. Both models scored it ~0.69 across five repeats and were
+  # right. Kept as a target test: the pair's hook moves from the question (#9) to the
+  # sticker that dodges it (#10 in real_sticker_dodge).
+  - description: "real_question_pending - unanswered question to the room"
+    vars:
+      messages: file://real_question_pending/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          if (!output) return false;
+          const r = typeof output === 'string' ? JSON.parse(output) : output;
+          return r.target_index === 9;

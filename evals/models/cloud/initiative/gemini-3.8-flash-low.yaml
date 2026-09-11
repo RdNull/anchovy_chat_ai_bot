@@ -1,0 +1,24 @@
+id: openrouter:google/gemini-3.8-flash
+label: gemini-3.8-flash-low
+config:
+  max_tokens: 4000
+  temperature: 0
+  reasoning:
+    max_tokens: 256
+  showThinking: false
+  response_format:
+    type: json_schema
+    json_schema:
+      name: initiative_decision
+      strict: true
+      schema:
+        type: object
+        additionalProperties: false
+        required: [ reason, target_index, score ]
+        properties:
+          reason:
+            type: string
+          target_index:
+            type: [ "integer", "null" ]
+          score:
+            type: number
