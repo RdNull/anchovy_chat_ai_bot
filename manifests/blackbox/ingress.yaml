@@ -31,8 +31,10 @@ metadata:
   name: blackbox
   namespace: blackbox
   annotations:
-    # Staging until the whole path works end to end — see manifests/cluster/cluster-issuers.yaml.
-    cert-manager.io/cluster-issuer: letsencrypt-staging
+    # Production issuer. Staging was used until the whole path worked end to end (2026-09-11);
+    # go back to `letsencrypt-staging` when iterating on this Ingress — see
+    # manifests/cluster/cluster-issuers.yaml for why.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
     # HTTPS only: the bearer token is never accepted in cleartext. cert-manager's solver
     # Ingress carries no such annotation, so the HTTP-01 challenge is still served on :80.
     traefik.ingress.kubernetes.io/router.entrypoints: websecure

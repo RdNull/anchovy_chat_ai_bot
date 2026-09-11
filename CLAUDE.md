@@ -164,7 +164,7 @@ The Ingress:
 - `ingressClassName: traefik`, host `mcp.anchovy-bot.rdnull.im`, path `/` (Prefix).
 - `router.entrypoints: websecure`, so the token is never accepted over plain HTTP. The solver Ingress still gets `:80`.
 - Rate limit and body size are `traefik.io/v1alpha1` Middleware objects referenced by `router.middlewares` (`blackbox-rate-limit@kubernetescrd`). `nginx.ingress.kubernetes.io/*` annotations are silently ignored here.
-- The issuer annotation is `letsencrypt-staging` until the path works end to end.
+- The issuer annotation is `letsencrypt-prod`. Switch it back to `letsencrypt-staging` while iterating on the Ingress, since production issuance is rate-limited.
 
 `networkpolicy.yaml` selects `app: blackbox` only, not the namespace, because cert-manager's solver pods run there too. It allows:
 - Ingress: TCP 8000, only from `app.kubernetes.io/name: traefik` pods in the `traefik` namespace.
