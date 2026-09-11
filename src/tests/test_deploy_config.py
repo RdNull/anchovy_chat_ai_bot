@@ -30,21 +30,31 @@ _STEP_LEVEL = frozenset({'IMAGE_TAG'})
 
 
 def required_vars() -> dict[str, set[str]]:
-    """Every `${VAR}` envsubst will substitute, keyed by manifest file name."""
+    """Every `${VAR}` envsubst will substitute, keyed by path relative to `manifests/`.
+
+    Recursive: `manifests/blackbox/` is rendered by the same script, and a blank there is
+    the same bug in a different namespace.
+    """
     return {
-        path.name: names
-        for path in sorted(_MANIFESTS.glob('*.yaml'))
+        str(path.relative_to(_MANIFESTS)): names
+        for path in sorted(_MANIFESTS.rglob('*.yaml'))
         if (names := set(_PLACEHOLDER.findall(path.read_text())))
     }
 
 
 def secret_keys() -> set[str]:
-    """The keys the deploy writes into `bot-secrets`.
+    """Every placeholder the deploy renders into a Secret, in any manifest.
 
-    `manifests/secrets.yaml` is the source of truth: every kube object stays in one
-    directory, and the script does not grow a line per secret.
+    The Secret manifests are the source of truth: every kube object stays in `manifests/`,
+    and the script does not grow a line per secret. Read per document, so a file holding a
+    Secret beside a CronJob contributes only the Secret's values, not the image tag.
     """
-    return required_vars()['secrets.yaml']
+    names = set()
+    for path in _MANIFESTS.rglob('*.yaml'):
+        for document in yaml.safe_load_all(path.read_text()):
+            if document and document.get('kind') == 'Secret':
+                names |= set(_PLACEHOLDER.findall(str(document.get('stringData', {}))))
+    return names
 
 
 def deploy_job_env() -> set[str]:
@@ -75,7 +85,7 @@ def test_the_shell_guard_covers_every_secret_the_deploy_writes():
     """A secret outside the guard is this same bug one file over, and just as quiet."""
     unguarded = sorted(secret_keys() - guarded_vars())
 
-    assert not unguarded, f'written to bot-secrets but not guarded: {unguarded}'
+    assert not unguarded, f'written to a Secret but not guarded: {unguarded}'
 
 
 def test_the_shell_guard_only_requires_what_the_job_exports():
@@ -89,7 +99,13 @@ def test_the_invariant_is_not_vacuous():
     """A moved manifest or a renamed job would turn the assertions above green forever."""
     sources = required_vars()
 
-    assert set(sources) >= {'configmap.yaml', 'deployment.yaml', 'secrets.yaml'}
+    assert set(sources) >= {
+        'configmap.yaml', 'deployment.yaml', 'secrets.yaml',
+        'blackbox/secrets.yaml', 'blackbox/deployment.yaml', 'dns-sync.yaml',
+    }
     assert 'MONGO_INITDB_ROOT_PASSWORD' in sources['secrets.yaml']
+    assert secret_keys() >= {
+        'MONGO_INITDB_ROOT_PASSWORD', 'BLACKBOX_MCP_ACCESS_TOKEN', 'LINODE_DNS_ACCESS_TOKEN',
+    }
     assert len(deploy_job_env()) > 1
     assert guarded_vars()

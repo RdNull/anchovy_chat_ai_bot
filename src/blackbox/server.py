@@ -1,9 +1,10 @@
 """The blackbox MCP server: seven read-only tools over the bot's own data.
 
-Tool registration only. The logic lives in `queries.py`, and the transport is chosen
-in `__main__.py`, so each concern has one place to change.
+Tool registration only. The logic lives in `queries.py`, auth and the HTTP transport in
+`app.py`, and serving in `__main__.py`, so each concern has one place to change.
 """
 
+import time
 from collections.abc import Awaitable
 from datetime import datetime
 from typing import Annotated, Any, TypeVar
@@ -14,6 +15,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from src.blackbox import queries
+from src.logs import logger
 
 T = TypeVar('T')
 
@@ -34,19 +36,31 @@ ChatId = Annotated[
 Moment = Annotated[datetime | None, Field(description='ISO 8601. A naive value is read as UTC.')]
 
 
-async def _run(query: Awaitable[T]) -> T:
-    """Awaits a query and hands any failure's text to the model.
+async def _run(name: str, query: Awaitable[T]) -> T:
+    """Awaits a query, logs one line for it, and hands any failure's text to the model.
 
     The SDK withholds the message of every exception but `ToolError` and returns a bare
     `Error executing tool <name>`, which is the right default for a shared server and
     the wrong one here: the only client is the repo owner's own session, and the text
     is the diagnosis — an unset `BLACKBOX_CHAT_ID`, an unknown message id, or a store
-    that is unreachable because the port-forward is down.
+    that is unreachable.
+
+    The log line is the only place the tool name is visible without logging the
+    request body, which is the chat. It carries no arguments and no result.
     """
+    started = time.monotonic()
+    outcome = 'error'
     try:
-        return await query
+        result = await query
+        outcome = 'ok'
+        return result
     except Exception as exc:
         raise ToolError(f'{type(exc).__name__}: {exc}') from exc
+    finally:
+        logger.info(
+            'BLACKBOX_TOOL name=%s outcome=%s elapsed_ms=%d',
+            name, outcome, (time.monotonic() - started) * 1000,
+        )
 
 
 @mcp.tool(annotations=_READ_ONLY)
@@ -68,7 +82,9 @@ async def find_windows(
     the number of hits is not a frequency signal. A "stale" error means the index still holds
     chunks whose messages were deleted from Mongo, not that nothing matched.
     """
-    return await _run(queries.find_windows(query, chat_id, limit, since, until, min_score))
+    return await _run(
+        'find_windows', queries.find_windows(query, chat_id, limit, since, until, min_score),
+    )
 
 
 @mcp.tool(annotations=_READ_ONLY)
@@ -86,7 +102,7 @@ async def get_window(
     `rendered` is the string (or turn list) the chosen production path builds, byte for
     byte — use it for eval fixtures. `messages` holds the raw records.
     """
-    return await _run(queries.get_window(message_id, format, before, after))
+    return await _run('get_window', queries.get_window(message_id, format, before, after))
 
 
 @mcp.tool(annotations=_READ_ONLY)
@@ -115,7 +131,10 @@ async def list_messages(
     while `ts`, `since` and `until` are UTC. Pass a row's `message_id` to `get_window` with
     `format='answer'` to see exactly what the bot saw around it.
     """
-    return await _run(queries.list_messages(chat_id, since, until, role, nick, limit, from_end))
+    return await _run(
+        'list_messages',
+        queries.list_messages(chat_id, since, until, role, nick, limit, from_end),
+    )
 
 
 @mcp.tool(annotations=_READ_ONLY)
@@ -126,7 +145,7 @@ async def list_snapshots(
     """Memory snapshots, newest first: when each was taken, whose memory it held, and how many
     entries. `created_at` is the newest message the snapshot processed, not when it was saved.
     """
-    return await _run(queries.list_snapshots(chat_id, limit))
+    return await _run('list_snapshots', queries.list_snapshots(chat_id, limit))
 
 
 @mcp.tool(annotations=_READ_ONLY)
@@ -144,7 +163,7 @@ async def get_memory(
     With `nick`, returns only that participant's `participant` entry (traits, recent) and their
     `decay` records. An unknown nick errors with the list of participants in the snapshot.
     """
-    return await _run(queries.get_memory(chat_id, at, nick))
+    return await _run('get_memory', queries.get_memory(chat_id, at, nick))
 
 
 @mcp.tool(annotations=_READ_ONLY)
@@ -162,7 +181,7 @@ async def diff_memory(
     were adjacent. A new snapshot lands every few minutes, so "the newest" moves between calls:
     when you mean two adjacent snapshots, check that it is 0 rather than trusting an older listing.
     """
-    return await _run(queries.diff_memory(from_at, to_at, chat_id))
+    return await _run('diff_memory', queries.diff_memory(from_at, to_at, chat_id))
 
 
 @mcp.tool(annotations=_READ_ONLY)
@@ -172,4 +191,4 @@ async def get_user_facts(
     limit: Annotated[int, Field(ge=1, le=queries.MAX_HITS)] = 5,
 ) -> list[dict[str, Any]]:
     """Facts extracted about one user: those closest to `query`, or the most confident."""
-    return await _run(queries.get_user_facts(nick, query, limit))
+    return await _run('get_user_facts', queries.get_user_facts(nick, query, limit))

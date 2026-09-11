@@ -66,6 +66,15 @@ class _Settings(BaseSettings):
     # The chat the blackbox MCP server reads when a tool is called without one.
     # Only that process sets it; the bot never reads it.
     BLACKBOX_CHAT_ID: int | None = None
+    # Where the blackbox HTTP server listens. It only ever runs in a container, so the
+    # bind is all interfaces; what is actually reachable is decided by the compose port
+    # mapping or the k8s Service in front of it.
+    BLACKBOX_HOST: str = '0.0.0.0'
+    BLACKBOX_PORT: int = 8000
+    # Optional here only because the bot shares this class. The blackbox refuses to start
+    # without it (`src/blackbox/http.py:build_app`): with `env_ignore_empty=True` a blanked
+    # value arrives as None, and a server that fell back to "no auth" would publish the chat.
+    BLACKBOX_MCP_ACCESS_TOKEN: str | None = None
 
     ENABLE_MEMORY_PROCESSING: bool = True
     # Snapshots are a few KB at roughly ten a day; 90 days is what gives
@@ -150,6 +159,9 @@ OPENROUTER_API_URL = _s.OPENROUTER_API_URL
 OPENROUTER_API_KEY = _s.OPENROUTER_API_KEY
 QDRANT_URL = _s.QDRANT_URL
 BLACKBOX_CHAT_ID = _s.BLACKBOX_CHAT_ID
+BLACKBOX_HOST = _s.BLACKBOX_HOST
+BLACKBOX_PORT = _s.BLACKBOX_PORT
+BLACKBOX_MCP_ACCESS_TOKEN = _s.BLACKBOX_MCP_ACCESS_TOKEN
 ENABLE_MEMORY_PROCESSING = _s.ENABLE_MEMORY_PROCESSING
 MEMORY_RETENTION_DAYS = _s.MEMORY_RETENTION_DAYS
 ENABLE_MEMORY_DECAY = _s.ENABLE_MEMORY_DECAY
