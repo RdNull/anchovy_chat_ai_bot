@@ -1,7 +1,7 @@
 from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
-from src import ai
+from src import ai, settings
 from src.characters.character import Character
 from src.initiative.models import InitiativeDecision, InitiativeVerdict
 from src.logs import logger
@@ -23,6 +23,7 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
         'initiative',
         version='v1',
         messages=rendered_messages,
+        bot_nickname=settings.BOT_NICKNAME,
         current_memory=character.memory.initiative_format() if character.memory else None,
         character_description=character.style_prompt,
     )
