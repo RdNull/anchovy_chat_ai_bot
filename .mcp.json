@@ -1,8 +1,11 @@
 {
   "mcpServers": {
     "blackbox": {
-      "command": "docker",
-      "args": ["compose", "run", "--rm", "-T", "--no-deps", "blackbox"]
+      "type": "http",
+      "url": "http://localhost:8765/",
+      "headers": {
+        "Authorization": "Bearer ${BLACKBOX_MCP_ACCESS_TOKEN}"
+      }
     }
   }
 }

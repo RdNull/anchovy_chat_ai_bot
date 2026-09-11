@@ -5,7 +5,7 @@ set -euo pipefail
 # name missing from the job's env: block writes a blank into the cluster. A blank is
 # invisible until a pod is recreated, which is how an empty mongo password sat in
 # bot-secrets for three months. No `set -x` — it would print these into the CI log.
-for v in MONGO_INITDB_ROOT_PASSWORD DATABASE_URL TELEGRAM_TOKEN OPENROUTER_API_KEY QDRANT_URL LANGSMITH_API_KEY IMAGE_TAG; do
+for v in MONGO_INITDB_ROOT_PASSWORD DATABASE_URL TELEGRAM_TOKEN OPENROUTER_API_KEY QDRANT_URL LANGSMITH_API_KEY BLACKBOX_MCP_ACCESS_TOKEN BLACKBOX_DATABASE_URL BLACKBOX_OPENROUTER_API_KEY LINODE_DNS_ACCESS_TOKEN IMAGE_TAG; do
   [[ -n "${!v:-}" ]] || { echo "missing required env: $v" >&2; exit 1; }
 done
 
@@ -34,3 +34,18 @@ kubectl rollout status statefulset/qdrant --timeout=5m
 echo "apply bot deployment"
 envsubst < manifests/deployment.yaml | kubectl apply -f -
 kubectl rollout status deployment/anchovy-bot-deployment --timeout=5m
+
+# The blackbox MCP server, in its own namespace. Needs Traefik and cert-manager, installed
+# once by scripts/cluster-bootstrap.sh: the Ingress references their CRDs, so without them
+# this apply fails loudly rather than deploying an unrouted server. Its readiness probe
+# pings both stores, so the rollout wait is also the check that the read-only URI and the
+# NetworkPolicy work.
+echo "apply blackbox"
+kubectl apply -f manifests/blackbox/namespace.yaml
+for f in manifests/blackbox/*.yaml; do
+  envsubst < "$f" | kubectl apply -n blackbox -f -
+done
+kubectl -n blackbox rollout status deployment/blackbox --timeout=5m
+
+echo "apply dns sync"
+envsubst < manifests/dns-sync.yaml | kubectl apply -f -
