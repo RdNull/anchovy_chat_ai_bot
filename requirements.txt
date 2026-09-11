@@ -18,3 +18,5 @@ lottie
 cairosvg # for lottie gif export
 qdrant-client
 async-cache
+mcp>=2,<3  # blackbox MCP server; the prod image runs it too (manifests/blackbox/)
+uvicorn  # serves the blackbox app; also an mcp dependency, listed because it is imported
