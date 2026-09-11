@@ -8,5 +8,5 @@
         "effort": "low"
     },
     "timeout": 60000,
-    "max_retries": 1
+    "max_retries": 0
 }
