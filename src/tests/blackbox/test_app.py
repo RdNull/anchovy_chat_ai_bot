@@ -194,3 +194,20 @@ def test_logs_carry_neither_the_token_nor_the_body(client, caplog):
     assert len(http_lines) == 2
     assert not [line for line in lines if TOKEN in line or 'wrong-token' in line]
     assert not [line for line in lines if body_marker in line]
+
+
+def test_a_rejection_without_a_token_is_quiet_but_a_wrong_token_is_not(client, caplog):
+    """Scanners send no `Authorization` header; a stale or guessed token does."""
+    with caplog.at_level(logging.DEBUG):
+        client.get('/.env')
+        client.post('/', json=_INITIALIZE, headers=_authorized('wrong-token'))
+
+    logged = [
+        (record.levelno, record.getMessage().rsplit(' elapsed_ms=', 1)[0])
+        for record in caplog.records
+        if record.getMessage().startswith('BLACKBOX_HTTP ')
+    ]
+    assert logged == [
+        (logging.DEBUG, 'BLACKBOX_HTTP method=GET path=/.env status=401'),
+        (logging.INFO, 'BLACKBOX_HTTP method=POST path=/ status=401'),
+    ]

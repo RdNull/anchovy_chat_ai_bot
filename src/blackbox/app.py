@@ -74,6 +74,12 @@ class BearerAuth:
     Rejects with a bare 401 and `WWW-Authenticate: Bearer` without awaiting `receive`,
     so the body of a rejected request is never read. Logs method, path, status and
     duration, and never a header or a body: bodies are the chat.
+
+    The host is public in Certificate Transparency logs, and scanners probing it for
+    `/.env` and `/.git/config` arrived within minutes of the first certificate — a
+    couple of hundred requests an hour, none carrying an `Authorization` header. Those,
+    like the probes, log at DEBUG. A request that does carry a token and fails stays at
+    INFO: that is the client with a stale token after a rotation, or someone guessing.
     """
 
     def __init__(self, app: ASGIApp, token: str):
@@ -99,29 +105,36 @@ class BearerAuth:
             await send(message)
 
         path = scope['path']
+        header = _authorization(scope)
         if path == HEALTH_PATH:
             await _empty(send_with_status, 200)
         elif path == READY_PATH:
             await _empty(send_with_status, 200 if await _stores_ready() else 503)
-        elif self._authorized(scope):
+        elif header is not None and self._authorized(header):
             await self.app(scope, receive, send_with_status)
         else:
             await _empty(send_with_status, 401, [(b'www-authenticate', b'Bearer')])
 
+        quiet = path in _PROBE_PATHS or (status == 401 and header is None)
         logger.log(
-            logging.DEBUG if path in _PROBE_PATHS else logging.INFO,
+            logging.DEBUG if quiet else logging.INFO,
             'BLACKBOX_HTTP method=%s path=%s status=%s elapsed_ms=%d',
             scope['method'], path, status, (time.monotonic() - started) * 1000,
         )
 
-    def _authorized(self, scope: Scope) -> bool:
-        for name, value in scope['headers']:
-            if name == b'authorization':
-                scheme, _, credentials = value.partition(b' ')
-                return scheme.lower() == b'bearer' and hmac.compare_digest(
-                    credentials.strip(), self._token,
-                )
-        return False
+    def _authorized(self, header: bytes) -> bool:
+        scheme, _, credentials = header.partition(b' ')
+        return scheme.lower() == b'bearer' and hmac.compare_digest(
+            credentials.strip(), self._token,
+        )
+
+
+def _authorization(scope: Scope) -> bytes | None:
+    """The raw `Authorization` header, or None when the request carries none."""
+    for name, value in scope['headers']:
+        if name == b'authorization':
+            return value
+    return None
 
 
 async def _empty(send: Send, status: int, headers: list[tuple[bytes, bytes]] | None = None):
