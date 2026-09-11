@@ -1,0 +1,82 @@
+# Makes the read-only story structural rather than a property of the code: the server pod
+# can be reached only through Traefik, and can reach only Mongo, Qdrant, DNS and HTTPS on
+# the public internet.
+#
+# Selects the server pod alone, not the namespace: cert-manager runs its HTTP-01 solver pods
+# in this namespace, and they must stay reachable from Traefik on their own port.
+#
+# The public-HTTPS rule is the one hole, and a deliberate one: `find_windows` and
+# `get_user_facts(query=…)` embed the query through OpenRouter, and plain NetworkPolicy
+# cannot filter by domain. It excludes every private range, so it cannot be used to reach
+# anything inside the cluster or the VPC.
+#
+# NetworkPolicy is namespaced: a policy later added to restrict ingress to Mongo or Qdrant
+# must name the `blackbox` namespace explicitly, or this pod loses its stores.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: blackbox
+  namespace: blackbox
+spec:
+  podSelector:
+    matchLabels:
+      app: blackbox
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    # DNS first: it is the rule a first egress policy forgets, and forgetting it breaks
+    # every other rule below while looking like a connectivity problem.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+          podSelector:
+            matchLabels:
+              app: mongo
+      ports:
+        - protocol: TCP
+          port: 27017
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+          podSelector:
+            matchLabels:
+              app: qdrant
+      ports:
+        - protocol: TCP
+          port: 6333
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

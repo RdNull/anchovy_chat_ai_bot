@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox
+  namespace: blackbox
+  labels:
+    app: blackbox
+spec:
+  type: ClusterIP
+  selector:
+    app: blackbox
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

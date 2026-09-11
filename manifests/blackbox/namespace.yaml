@@ -1,0 +1,7 @@
+# The one namespace reachable from the internet. Secrets are namespaced and cannot be
+# mounted across namespaces, so the pod here structurally cannot reach the Telegram token,
+# the bot's OpenRouter key or the read-write Mongo URI in `default`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blackbox

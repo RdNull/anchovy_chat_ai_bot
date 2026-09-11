@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox
+  namespace: blackbox
+  labels:
+    app: blackbox
+spec:
+  replicas: 1
+  # Unlike the bot there is no single-poller constraint, so RollingUpdate is fine in
+  # principle. But a surge pod would need a second memory request the node does not have
+  # spare (~390Mi headroom), so the old pod goes first and the one user absorbs the gap.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: blackbox
+  template:
+    metadata:
+      labels:
+        app: blackbox
+    spec:
+      # Never calls the Kubernetes API, and it is the one pod reachable from the internet:
+      # a mounted API credential here would be pure downside.
+      automountServiceAccountToken: false
+      containers:
+        - name: blackbox
+          # The bot image with a different command: the server imports `src.*`, so a
+          # second build pipeline would buy nothing.
+          image: ${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "src.blackbox"]
+          ports:
+            - name: http
+              containerPort: 8000
+          securityContext:
+            allowPrivilegeEscalation: false
+          # Requests only — see deployment-mongo.yaml.
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
+          # Liveness touches nothing, so a Mongo hiccup cannot restart the pod. Readiness
+          # pings both stores, which is what makes `rollout status` fail on a wrong
+          # read-only URI or a NetworkPolicy that blocks them.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 5
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            # Cross-namespace: this pod's resolver searches `blackbox` first.
+            - name: QDRANT_URL
+              value: http://qdrant.default.svc.cluster.local:6333
+            - name: DATABASE_NAME
+              value: "${DATABASE_NAME}"
+            - name: BLACKBOX_CHAT_ID
+              value: "${BLACKBOX_CHAT_ID}"
+            # Required by `_Settings`, which the bot shares, and never read by blackbox.
+            # The one fake value in the tree: the real token must not enter this namespace.
+            - name: TELEGRAM_TOKEN
+              value: unused-by-blackbox
+          envFrom:
+            - secretRef:
+                name: blackbox-secrets

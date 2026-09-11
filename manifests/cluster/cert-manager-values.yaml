@@ -1,0 +1,26 @@
+# Helm values for cert-manager, installed by scripts/cluster-bootstrap.sh into namespace
+# `cert-manager`. It issues the TLS certificates Traefik serves; see traefik-values.yaml for
+# why issuance is not Traefik's job.
+
+crds:
+  enabled: true
+  # Keep the CRDs, and with them every Certificate, if the release is ever uninstalled.
+  keep: true
+
+# Requests only, sized for a node with ~390Mi of spare headroom.
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+
+cainjector:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi

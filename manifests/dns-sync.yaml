@@ -1,0 +1,83 @@
+# Points the ingress host's A record at the node's public IPv4 after a node recycle.
+# See src/dns_sync/sync.py for the behaviour and its two guards.
+#
+# Lives in `default`, not `blackbox`: the Linode token stays out of the internet-facing
+# namespace, and the record it maintains will front the webhook host too.
+#
+# Nodes are cluster-scoped, so read access to them can only be granted by a ClusterRole; a
+# namespaced Role cannot name them. The ClusterRole grants `get`/`list` on nodes and nothing
+# else.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dns-sync
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dns-sync-read-nodes
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dns-sync-read-nodes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dns-sync-read-nodes
+subjects:
+  - kind: ServiceAccount
+    name: dns-sync
+    namespace: default
+---
+# Rendered by `envsubst` — see manifests/secrets.yaml for what a value may contain. The token
+# is scoped to Domains read/write only.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dns-sync-secrets
+  namespace: default
+stringData:
+  LINODE_DNS_ACCESS_TOKEN: "${LINODE_DNS_ACCESS_TOKEN}"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dns-sync
+  namespace: default
+spec:
+  # A replacement node takes minutes to come up and reschedule pods anyway, so a tighter
+  # poll would not shorten the outage.
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: dns-sync
+          restartPolicy: OnFailure
+          containers:
+            - name: dns-sync
+              image: ${IMAGE_TAG}
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "src.dns_sync"]
+              securityContext:
+                allowPrivilegeEscalation: false
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 48Mi
+              env:
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+              envFrom:
+                - secretRef:
+                    name: dns-sync-secrets
