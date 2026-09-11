@@ -109,3 +109,70 @@ def test_the_invariant_is_not_vacuous():
     }
     assert len(deploy_job_env()) > 1
     assert guarded_vars()
+
+
+def _documents():
+    for path in sorted(_MANIFESTS.rglob('*.yaml')):
+        for document in yaml.safe_load_all(path.read_text()):
+            if document:
+                yield document
+
+
+def _namespace(document: dict) -> str:
+    return document['metadata'].get('namespace', 'default')
+
+
+def _pod_spec(document: dict) -> dict | None:
+    kind = document.get('kind')
+    if kind in ('Deployment', 'StatefulSet'):
+        return document['spec']['template']['spec']
+    if kind == 'CronJob':
+        return document['spec']['jobTemplate']['spec']['template']['spec']
+    return None
+
+
+def service_link_vars(service: dict) -> set[str]:
+    """The env names the kubelet injects into every pod in the Service's namespace.
+
+    Docker-links compatibility, on by default: `<NAME>_SERVICE_HOST`, `<NAME>_PORT`
+    and a family of per-port names, with the Service name upper-cased and `-` → `_`.
+    """
+    name = service['metadata']['name'].upper().replace('-', '_')
+    names = {f'{name}_SERVICE_HOST', f'{name}_SERVICE_PORT', f'{name}_PORT'}
+    for port in service['spec'].get('ports', []):
+        if 'name' in port:
+            names.add(f'{name}_SERVICE_PORT_{port["name"].upper().replace("-", "_")}')
+        base = f'{name}_PORT_{port["port"]}_{port.get("protocol", "TCP")}'
+        names |= {base, f'{base}_PROTO', f'{base}_PORT', f'{base}_ADDR'}
+    return names
+
+
+def test_no_injected_service_variable_shadows_a_setting():
+    """A Service named like a settings prefix overwrites that setting in every pod beside it.
+
+    The first blackbox rollout crashed on exactly this: the `blackbox` Service injected
+    `BLACKBOX_PORT=tcp://<ip>:80`, and settings validation refused it as a port. A pod
+    running our image must either see no colliding Service or set `enableServiceLinks: false`.
+    """
+    from src.settings import _Settings
+
+    fields = set(_Settings.model_fields)
+    documents = list(_documents())
+    injected: dict[str, set[str]] = {}
+    for document in documents:
+        if document.get('kind') == 'Service':
+            injected.setdefault(_namespace(document), set()).update(service_link_vars(document))
+
+    collisions = {}
+    for document in documents:
+        spec = _pod_spec(document)
+        if not spec or spec.get('enableServiceLinks') is False:
+            continue
+        if not any(c.get('image') == '${IMAGE_TAG}' for c in spec['containers']):
+            continue
+        clash = injected.get(_namespace(document), set()) & fields
+        if clash:
+            collisions[document['metadata']['name']] = sorted(clash)
+
+    assert 'BLACKBOX_PORT' in injected['blackbox']  # the check sees the real collision
+    assert not collisions, f'injected Service env shadows settings — set enableServiceLinks: false: {collisions}'

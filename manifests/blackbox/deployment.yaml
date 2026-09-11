@@ -26,6 +26,11 @@ spec:
       # Never calls the Kubernetes API, and it is the one pod reachable from the internet:
       # a mounted API credential here would be pure downside.
       automountServiceAccountToken: false
+      # Kubernetes injects Docker-links-style env vars for every Service in the namespace,
+      # and for the `blackbox` Service one of them is `BLACKBOX_PORT=tcp://<ip>:80` — the
+      # exact name of a setting, which crashed the first rollout at settings validation.
+      # Stores are found by DNS name; nothing here reads the injected vars.
+      enableServiceLinks: false
       containers:
         - name: blackbox
           # The bot image with a different command: the server imports `src.*`, so a
