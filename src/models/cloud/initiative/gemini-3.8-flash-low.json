@@ -2,7 +2,13 @@
     "model_provider": "openrouter",
     "model": "google/gemini-3.8-flash",
     "api_key": "env:OPENROUTER_API_KEY",
-    "max_completion_tokens": 1000,
+    "max_tokens": 1000,
+    "provider": {
+        "order": [
+            "google-ai-studio/flex",
+            "google-ai-studio"
+        ]
+    },
     "temperature": 0,
     "reasoning": {
         "max_tokens": 256
