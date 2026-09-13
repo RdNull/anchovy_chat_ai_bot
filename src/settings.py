@@ -45,11 +45,18 @@ class _Settings(BaseSettings):
     # logged, nothing actually sent) while it's off.
     INITIATIVE_CHECKS_ENABLED: bool = True
     INITIATIVE_ENABLED: bool = False
-    INITIATIVE_TRIGGER_SIZE: int = 10
+    INITIATIVE_TRIGGER_SIZE: int = 5
+    # Bounds the candidate half only. The total fetch is this plus
+    # INITIATIVE_CONTEXT_SIZE, which is read-only context the judge cannot target.
     INITIATIVE_RUN_MESSAGES_MAX_SIZE: int = 50
+    # Messages fetched from before the watermark, as read-only context for the judge.
+    INITIATIVE_CONTEXT_SIZE: int = 10
+    # The window is cut at any inter-message gap larger than this, so a quiet stretch
+    # never concatenates unrelated conversations into one judged window.
+    INITIATIVE_GAP_MINUTES: float = 15
     INITIATIVE_SCORE_THRESHOLD: float = 0.6
-    INITIATIVE_COOLDOWN_MINUTES: float = 60
-    INITIATIVE_MIN_GAP_MESSAGES: int = 10
+    INITIATIVE_COOLDOWN_MINUTES: float = 0
+    INITIATIVE_MIN_GAP_MESSAGES: int = 1
 
     # The answering character's context window, and nothing else. It used to double
     # as both triggers above, which made every memory cycle fire at the reply
@@ -124,6 +131,10 @@ class _Settings(BaseSettings):
             raise ValueError('MESSAGES_MEMORY_MAX_SIZE must be >= MEMORY_TRIGGER_SIZE')
         if self.MESSAGES_EMBEDDINGS_MAX_SIZE < self.EMBEDDINGS_TRIGGER_SIZE:
             raise ValueError('MESSAGES_EMBEDDINGS_MAX_SIZE must be >= EMBEDDINGS_TRIGGER_SIZE')
+        if self.INITIATIVE_RUN_MESSAGES_MAX_SIZE < self.INITIATIVE_TRIGGER_SIZE:
+            raise ValueError(
+                'INITIATIVE_RUN_MESSAGES_MAX_SIZE must be >= INITIATIVE_TRIGGER_SIZE'
+            )
         return self
 
 
@@ -149,6 +160,8 @@ INITIATIVE_ENABLED = _s.INITIATIVE_ENABLED
 EMBEDDINGS_TRIGGER_SIZE = _s.EMBEDDINGS_TRIGGER_SIZE
 INITIATIVE_TRIGGER_SIZE = _s.INITIATIVE_TRIGGER_SIZE
 INITIATIVE_RUN_MESSAGES_MAX_SIZE = _s.INITIATIVE_RUN_MESSAGES_MAX_SIZE
+INITIATIVE_CONTEXT_SIZE = _s.INITIATIVE_CONTEXT_SIZE
+INITIATIVE_GAP_MINUTES = _s.INITIATIVE_GAP_MINUTES
 INITIATIVE_SCORE_THRESHOLD = _s.INITIATIVE_SCORE_THRESHOLD
 INITIATIVE_COOLDOWN_MINUTES = _s.INITIATIVE_COOLDOWN_MINUTES
 INITIATIVE_MIN_GAP_MESSAGES = _s.INITIATIVE_MIN_GAP_MESSAGES
