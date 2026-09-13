@@ -1,12 +1,62 @@
+from datetime import datetime, timedelta, timezone
+
 from src import settings
 from src.initiative.models import InitiativeVerdict
-from src.initiative.policies import decide, pre_check
+from src.initiative.policies import decide, pre_check, split_at_gap
 from src.messages.repository import save_message
 from src.models import Message, UserRole
 
 
-def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1'):
-    return Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
+def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1', created_at=None):
+    return Message(chat_id=chat_id, role=role, text=text, nickname=nickname, created_at=created_at)
+
+
+BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def at(minutes: float, text='hi') -> Message:
+    return make_message(text=text, created_at=BASE + timedelta(minutes=minutes))
+
+
+# --- split_at_gap ---
+
+def test_split_at_gap_empty_input_returns_empty():
+    assert split_at_gap([], 15) == []
+
+
+def test_split_at_gap_single_message_is_unchanged():
+    message = at(0)
+
+    assert split_at_gap([message], 15) == [message]
+
+
+def test_split_at_gap_all_gaps_below_threshold_is_unchanged():
+    messages = [at(0), at(5), at(10)]
+
+    assert split_at_gap(messages, 15) == messages
+
+
+def test_split_at_gap_one_large_gap_in_the_middle_returns_the_suffix():
+    before = [at(0), at(5)]
+    after = [at(30), at(35)]
+
+    assert split_at_gap(before + after, 15) == after
+
+
+def test_split_at_gap_several_large_gaps_returns_the_suffix_after_the_newest():
+    first_thread = [at(0), at(5)]
+    second_thread = [at(30), at(35)]
+    third_thread = [at(60), at(65)]
+
+    result = split_at_gap(first_thread + second_thread + third_thread, 15)
+
+    assert result == third_thread
+
+
+def test_split_at_gap_exactly_equal_to_threshold_is_not_cut():
+    messages = [at(0), at(15)]
+
+    assert split_at_gap(messages, 15) == messages
 
 
 # --- pre_check: trigger size ---

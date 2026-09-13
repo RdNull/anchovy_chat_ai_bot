@@ -24,18 +24,25 @@ def test_triggers_and_caps_ship_with_headroom():
     assert default_of('MESSAGES_EMBEDDINGS_MAX_SIZE') == 60
     assert default_of('MESSAGES_MEMORY_MAX_SIZE') > default_of('MEMORY_TRIGGER_SIZE')
     assert default_of('MESSAGES_EMBEDDINGS_MAX_SIZE') > default_of('EMBEDDINGS_TRIGGER_SIZE')
+    assert default_of('INITIATIVE_RUN_MESSAGES_MAX_SIZE') == 50
+    assert default_of('INITIATIVE_TRIGGER_SIZE') == 5
+    assert default_of('INITIATIVE_RUN_MESSAGES_MAX_SIZE') >= default_of('INITIATIVE_TRIGGER_SIZE')
 
 
 def test_the_deployment_always_satisfies_the_validator():
     """Whatever this environment holds, the running config is self-consistent."""
     assert settings.MESSAGES_MEMORY_MAX_SIZE >= settings.MEMORY_TRIGGER_SIZE
     assert settings.MESSAGES_EMBEDDINGS_MAX_SIZE >= settings.EMBEDDINGS_TRIGGER_SIZE
+    assert settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE >= settings.INITIATIVE_TRIGGER_SIZE
 
 
 def test_triggers_are_re_exported_at_module_level():
     """The codebase reads `settings.NAME`, and the tests patch it there."""
     assert settings.MEMORY_TRIGGER_SIZE == settings._s.MEMORY_TRIGGER_SIZE
     assert settings.EMBEDDINGS_TRIGGER_SIZE == settings._s.EMBEDDINGS_TRIGGER_SIZE
+    assert settings.INITIATIVE_TRIGGER_SIZE == settings._s.INITIATIVE_TRIGGER_SIZE
+    assert settings.INITIATIVE_CONTEXT_SIZE == settings._s.INITIATIVE_CONTEXT_SIZE
+    assert settings.INITIATIVE_GAP_MINUTES == settings._s.INITIATIVE_GAP_MINUTES
 
 
 # --- _fetch_caps_exceed_triggers ---
@@ -71,3 +78,14 @@ def test_the_validator_raises_rather_than_clamping():
     """Clamping would restore the silent misconfiguration this pair exists to remove."""
     with pytest.raises(ValidationError):
         _Settings(MESSAGES_MEMORY_MAX_SIZE=39, MEMORY_TRIGGER_SIZE=40)
+
+
+def test_initiative_cap_below_its_trigger_refuses_to_boot():
+    # Known gap closed: nothing used to tie INITIATIVE_RUN_MESSAGES_MAX_SIZE to
+    # INITIATIVE_TRIGGER_SIZE, so a bad pair made pre_check fail forever, silently.
+    with pytest.raises(ValidationError) as excinfo:
+        _Settings(INITIATIVE_RUN_MESSAGES_MAX_SIZE=1, INITIATIVE_TRIGGER_SIZE=40)
+
+    assert 'INITIATIVE_RUN_MESSAGES_MAX_SIZE must be >= INITIATIVE_TRIGGER_SIZE' in str(
+        excinfo.value
+    )
