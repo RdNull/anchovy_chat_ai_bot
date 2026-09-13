@@ -7,6 +7,23 @@ from src.messages.repository import get_last_message, get_messages_count_since
 from src.models import Message, UserRole
 
 
+def split_at_gap(messages: list[Message], gap_minutes: float) -> list[Message]:
+    """Keeps only the messages after the newest gap larger than gap_minutes.
+
+    messages must be chronological. Returns a suffix of the input (possibly the
+    whole thing, never empty if the input is non-empty).
+    """
+    gap = timedelta(minutes=gap_minutes)
+    for i in range(len(messages) - 1, 0, -1):
+        previous, current = messages[i - 1], messages[i]
+        if not previous.created_at or not current.created_at:
+            continue
+        if current.created_at - previous.created_at > gap:
+            return messages[i:]
+
+    return messages
+
+
 async def pre_check(chat_id: int, messages: list[Message]) -> bool:
     if len(messages) < settings.INITIATIVE_TRIGGER_SIZE:
         logger.info(f'Skipping initiative reply in chat {chat_id}: messages count too low')

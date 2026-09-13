@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
@@ -5,16 +7,19 @@ from src import ai, settings
 from src.characters.character import Character
 from src.initiative.models import InitiativeDecision, InitiativeVerdict
 from src.logs import logger
-from src.models import Message
+from src.models import Message, format_ts
 from src.prompt_manager import prompt_manager
 
 
 @traceable
-async def evaluate_initiative(character: Character, messages: list[Message]) -> InitiativeVerdict:
-    rendered_messages = '\n'.join([
+async def evaluate_initiative(
+    character: Character, context: list[Message], candidates: list[Message],
+) -> InitiativeVerdict:
+    rendered_context = '\n'.join(f'▸ {m.ai_format}' for m in context)
+    rendered_candidates = '\n'.join(
         f'#{i} ▸ {m.ai_format}'
-        for i, m in enumerate(messages, start=1)
-    ])
+        for i, m in enumerate(candidates, start=1)
+    )
 
     llm = ai.get_initiative_model(version='gemini-3.8-flash-low')
     model_with_structure = llm.with_structured_output(InitiativeDecision)
@@ -22,7 +27,9 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
     system_prompt = prompt_manager.get_prompt(
         'initiative',
         version='v1',
-        messages=rendered_messages,
+        current_time=format_ts(datetime.now(timezone.utc)),
+        context=rendered_context,
+        messages=rendered_candidates,
         bot_nickname=settings.BOT_NICKNAME,
         current_memory=character.memory.initiative_format() if character.memory else None,
         character_description=character.style_prompt,
@@ -47,11 +54,19 @@ async def evaluate_initiative(character: Character, messages: list[Message]) -> 
             reason='Initiative evaluation empty response'
         )
 
-    # target_index is 1-based, matching the `#N` labels the model was shown above.
-    # Anything outside that range — `0` included — means 'no target', not a failed
-    # run: a stray index must not throw away an otherwise good score.
+    # target_index is 1-based, matching the `#N` labels the candidates were shown
+    # with above; it never addresses a context line. Anything outside that range —
+    # `0` included — means 'no target', not a failed run: a stray index must not
+    # throw away an otherwise good score.
     target_index = evaluation_result.target_index or 0
-    target_message = messages[target_index - 1] if 0 < target_index <= len(messages) else None
+    target_message = (
+        candidates[target_index - 1] if 0 < target_index <= len(candidates) else None
+    )
+    if evaluation_result.target_index and target_message is None:
+        logger.warning(
+            f'Initiative evaluation target_index out of range: '
+            f'{evaluation_result.target_index=}, {len(candidates)=}'
+        )
 
     logger.info(
         f'Initiative evaluation result: '
