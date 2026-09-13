@@ -89,3 +89,32 @@ def test_initiative_cap_below_its_trigger_refuses_to_boot():
     assert 'INITIATIVE_RUN_MESSAGES_MAX_SIZE must be >= INITIATIVE_TRIGGER_SIZE' in str(
         excinfo.value
     )
+
+
+# --- initiative numeric bounds ---
+# A zero trigger clears `pre_check`'s len() gate for an empty candidate list too,
+# which would then crash `candidates[-1]` in `_claim_window`. A zero-or-negative
+# gap collapses every window to its single newest message. Field bounds refuse
+# both at boot rather than at the first affected run.
+
+def test_initiative_trigger_size_must_be_at_least_one():
+    with pytest.raises(ValidationError):
+        _Settings(INITIATIVE_TRIGGER_SIZE=0)
+
+
+def test_initiative_run_messages_max_size_must_be_at_least_one():
+    with pytest.raises(ValidationError):
+        _Settings(INITIATIVE_RUN_MESSAGES_MAX_SIZE=0)
+
+
+def test_initiative_context_size_allows_zero_but_not_negative():
+    assert _Settings(INITIATIVE_CONTEXT_SIZE=0).INITIATIVE_CONTEXT_SIZE == 0
+    with pytest.raises(ValidationError):
+        _Settings(INITIATIVE_CONTEXT_SIZE=-1)
+
+
+def test_initiative_gap_minutes_must_be_positive():
+    with pytest.raises(ValidationError):
+        _Settings(INITIATIVE_GAP_MINUTES=0)
+    with pytest.raises(ValidationError):
+        _Settings(INITIATIVE_GAP_MINUTES=-5)

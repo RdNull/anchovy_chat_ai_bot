@@ -84,9 +84,9 @@ async def get_messages(
     from_date: datetime | None = None,
     sort_order: int = -1,
     to_date: datetime | None = None,
-    to_date_inclusive: bool = False,
     role: UserRole | None = None,
     nickname: str | None = None,
+    to_date_inclusive: bool = False,
 ) -> list[Message]:
     """Reads a chat's messages, always oldest first.
 
@@ -96,11 +96,6 @@ async def get_messages(
         from_date: Keep only messages strictly newer than this.
         to_date: Keep only messages older than this — strictly, unless
             `to_date_inclusive`.
-        to_date_inclusive: When true, `to_date` also keeps a message exactly at that
-            timestamp. Off by default because `src/blackbox/queries.py` relies on
-            exclusivity to omit its anchor message; the initiative context fetch
-            needs the watermark message itself, which is the newest message the
-            previous run judged.
         role: Keep only messages from this role.
         nickname: Keep only messages by this exact nickname.
         sort_order: Which end of the matching range `size` takes — `-1` keeps the
@@ -109,6 +104,13 @@ async def get_messages(
             that: `src/processors/context/embeddings.py` and
             `src/initiative/handlers.py` read their next watermark off
             `messages[-1]`.
+        to_date_inclusive: When true, `to_date` also keeps a message exactly at that
+            timestamp. Off by default because `src/blackbox/queries.py` relies on
+            exclusivity to omit its anchor message; the initiative context fetch
+            needs the watermark message itself, which is the newest message the
+            previous run judged. Kept last and keyword-only in spirit (every call
+            site already uses keywords) so inserting it never shifts an existing
+            positional argument.
 
     Returns:
         The selected messages, oldest first.

@@ -1,4 +1,4 @@
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = 'anchovy_chat_ai_bot'
@@ -45,15 +45,21 @@ class _Settings(BaseSettings):
     # logged, nothing actually sent) while it's off.
     INITIATIVE_CHECKS_ENABLED: bool = True
     INITIATIVE_ENABLED: bool = False
-    INITIATIVE_TRIGGER_SIZE: int = 5
+    # >= 1: at 0 every candidate count clears `pre_check`'s trigger-size gate,
+    # including an empty one, which would then crash `candidates[-1]` in
+    # `_claim_window` on the very first watermark save.
+    INITIATIVE_TRIGGER_SIZE: int = Field(default=5, ge=1)
     # Bounds the candidate half only. The total fetch is this plus
     # INITIATIVE_CONTEXT_SIZE, which is read-only context the judge cannot target.
-    INITIATIVE_RUN_MESSAGES_MAX_SIZE: int = 50
+    INITIATIVE_RUN_MESSAGES_MAX_SIZE: int = Field(default=50, ge=1)
     # Messages fetched from before the watermark, as read-only context for the judge.
-    INITIATIVE_CONTEXT_SIZE: int = 10
+    # 0 is a valid choice — it just means the context block never renders.
+    INITIATIVE_CONTEXT_SIZE: int = Field(default=10, ge=0)
     # The window is cut at any inter-message gap larger than this, so a quiet stretch
-    # never concatenates unrelated conversations into one judged window.
-    INITIATIVE_GAP_MINUTES: float = 15
+    # never concatenates unrelated conversations into one judged window. Must stay
+    # positive: zero or negative would cut at every message pair, collapsing every
+    # window down to the single newest message.
+    INITIATIVE_GAP_MINUTES: float = Field(default=15, gt=0)
     INITIATIVE_SCORE_THRESHOLD: float = 0.6
     INITIATIVE_COOLDOWN_MINUTES: float = 0
     INITIATIVE_MIN_GAP_MESSAGES: int = 1
