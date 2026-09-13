@@ -6,14 +6,14 @@ from telegram.constants import ChatAction
 
 from src import settings
 from src.initiative import handlers
-from src.initiative.models import InitiativeRun, InitiativeVerdict
+from src.initiative.models import InitiativeVerdict
 from src.messages.repository import save_message
 from src.models import Message, UserRole
 
 
-def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1'):
+def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1', created_at=None):
     message = Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
-    message.created_at = datetime.now(timezone.utc)
+    message.created_at = created_at or datetime.now(timezone.utc)
     return message
 
 
@@ -171,23 +171,27 @@ async def test_get_messages_anchors_on_newest_when_no_prior_run(mocker):
 
     await handlers._get_messages(222, None)
 
-    assert mock_fetch.call_args == call(
-        222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, from_date=None, sort_order=-1,
-    )
+    # With no watermark there is nothing to fetch context from, so only one call.
+    assert mock_fetch.call_args_list == [
+        call(222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, from_date=None, sort_order=-1),
+    ]
 
 
-async def test_get_messages_resumes_from_watermark_newest_first(mocker):
+async def test_get_messages_resumes_from_watermark_and_also_reads_context(mocker):
     mock_fetch = mocker.patch(
-        'src.initiative.handlers.fetch_last_messages', new_callable=AsyncMock
+        'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[])
     )
     watermark = datetime.now(timezone.utc) - timedelta(hours=1)
-    last_run = InitiativeRun(chat_id=222, last_message_time=watermark, created_at=watermark)
 
-    await handlers._get_messages(222, last_run)
+    await handlers._get_messages(222, watermark)
 
-    assert mock_fetch.call_args == call(
-        222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, from_date=watermark, sort_order=-1,
-    )
+    assert mock_fetch.call_args_list == [
+        call(222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, from_date=watermark, sort_order=-1),
+        call(
+            222, size=settings.INITIATIVE_CONTEXT_SIZE,
+            to_date=watermark, to_date_inclusive=True, sort_order=-1,
+        ),
+    ]
 
 
 async def test_get_messages_takes_the_newest_of_a_backlog_past_the_cap(mocker):
@@ -195,13 +199,99 @@ async def test_get_messages_takes_the_newest_of_a_backlog_past_the_cap(mocker):
     # conversation from an hour ago rather than the one happening now.
     mocker.patch.object(settings, 'INITIATIVE_RUN_MESSAGES_MAX_SIZE', 3)
     watermark = datetime.now(timezone.utc) - timedelta(hours=1)
-    last_run = InitiativeRun(chat_id=222, last_message_time=watermark, created_at=watermark)
     for i in range(1, 6):
         await save_message(make_message(text=f'm{i}'))
 
-    messages = await handlers._get_messages(222, last_run)
+    messages = await handlers._get_messages(222, watermark)
 
     assert [m.text for m in messages] == ['m3', 'm4', 'm5']
+
+
+# --- _split_window: the gap cut, then re-partitioned around the watermark ---
+
+BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def at(minutes: float, text='hi') -> Message:
+    return make_message(text=text, created_at=BASE + timedelta(minutes=minutes))
+
+
+def test_split_window_cut_inside_candidate_region_empties_context():
+    watermark = BASE
+    old_context = at(-5, 'old')
+    early_candidate = at(1, 'c1')
+    late_candidate = at(1 + 30, 'c2')  # 30min gap past the default 15min threshold
+
+    context, candidates = handlers._split_window(
+        222, [old_context, early_candidate, late_candidate], watermark,
+    )
+
+    assert context == []
+    assert candidates == [late_candidate]
+
+
+def test_split_window_cut_inside_context_region_trims_context_only():
+    watermark = BASE
+    ancient_context = at(-120, 'ancient')
+    recent_context = at(-2, 'recent')
+    candidate = at(1, 'c1')
+
+    context, candidates = handlers._split_window(
+        222, [ancient_context, recent_context, candidate], watermark,
+    )
+
+    assert context == [recent_context]
+    assert candidates == [candidate]
+
+
+def test_split_window_cold_start_has_no_context_but_still_splits():
+    old = at(0, 'old')
+    new = at(30, 'new')
+
+    context, candidates = handlers._split_window(222, [old, new], None)
+
+    assert context == []
+    assert candidates == [new]
+
+
+def test_split_window_no_cut_keeps_everything_partitioned_by_watermark():
+    watermark = BASE
+    context_message = at(-2, 'ctx')
+    candidate = at(1, 'c1')
+
+    context, candidates = handlers._split_window(222, [context_message, candidate], watermark)
+
+    assert context == [context_message]
+    assert candidates == [candidate]
+
+
+# --- _claim_window: the split runs before pre_check ---
+
+async def test_claim_window_does_not_advance_watermark_when_pre_check_fails_after_the_cut(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
+    watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+    mocker.patch(
+        'src.initiative.handlers.get_last_initiative_run',
+        AsyncMock(return_value=MagicMock(last_message_time=watermark)),
+    )
+    old_candidate = make_message(text='old', created_at=watermark + timedelta(minutes=1))
+    new_candidate = make_message(
+        text='new', created_at=watermark + timedelta(minutes=1) + timedelta(minutes=30),
+    )
+    mocker.patch(
+        'src.initiative.handlers.fetch_last_messages',
+        AsyncMock(side_effect=[[old_candidate, new_candidate], []]),
+    )
+    mocker.patch('src.initiative.handlers.pre_check', AsyncMock(return_value=False))
+    mock_save_run = mocker.patch(
+        'src.initiative.handlers.save_initiative_run', new_callable=AsyncMock
+    )
+
+    context, candidates = await handlers._claim_window(222)
+
+    assert context == []
+    assert candidates == []
+    assert mock_save_run.call_count == 0
 
 
 # --- _run_initiative_reply ---

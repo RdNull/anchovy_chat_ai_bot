@@ -122,6 +122,16 @@ async def test_get_messages_to_date():
     assert [m.text for m in history] == ['old']
 
 
+async def test_get_messages_to_date_inclusive():
+    await save_message(make_message(text='old'))
+    anchor = (await get_messages(1))[-1].created_at
+    await save_message(make_message(text='new'))
+
+    history = await get_messages(1, to_date=anchor, to_date_inclusive=True)
+
+    assert [m.text for m in history] == ['old']
+
+
 async def test_get_messages_role_and_nickname_filters():
     await save_message(make_message(text='from alice', nickname='alice'))
     await save_message(make_message(text='from bob', nickname='bob'))
