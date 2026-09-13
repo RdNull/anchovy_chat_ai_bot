@@ -34,6 +34,40 @@ computes two survivor sets and applies one, baseline while `ENABLE_MEMORY_DECAY`
 is off"*, `README.md` gets *"the decay policy ships in log-only mode, recording
 the gap against the live baseline before being switched on"*.
 
+### Root `CLAUDE.md` is a thin index, not the whole reference
+
+The root file was split (2026-09) because its size was degrading adherence — a
+long resident file is a file the model follows less reliably, not just a
+warning to silence. It now holds only: commands, the message flow, one line per
+subsystem with a `Full notes:` pointer, and cross-cutting invariants (settings
+access, the window-size table, the `test_data` guard). Everything else moved to
+files that load lazily, only when Claude touches the code they describe:
+
+| detail lives in | loads when Claude reads |
+|---|---|
+| `src/memory/CLAUDE.md` | a file under `src/memory/` |
+| `src/initiative/CLAUDE.md` | a file under `src/initiative/` |
+| `src/blackbox/CLAUDE.md` | a file under `src/blackbox/` |
+| `src/embeddings/CLAUDE.md` | a file under `src/embeddings/` (RAG + sticker replies) |
+| `src/tests/CLAUDE.md` | a file under `src/tests/` |
+| `.claude/rules/deployment.md` | `manifests/**`, `.github/workflows/**`, or `deploy-k8s.sh` |
+| `.claude/rules/models.md` | `src/models/**`, `src/ai.py`, `src/model_manager.py`, or `evals/**` |
+
+**A subsystem change goes to that subsystem's own file, not to root.** Only
+these touch root: a change to the message flow itself, a new/changed command, a
+new settings constant (Configuration access), a Code Style rule, or an
+invariant that belongs in the always-resident set (destructive-action guards,
+the window-size table). If you are tempted to grow a bullet in root past ~5
+sentences, that is the signal the detail belongs in the module file instead —
+shrink the root bullet to a one-line pointer and put the growth there.
+
+The nested `CLAUDE.md` files and `.claude/rules/*.md` files are plain markdown
+with the same voice as root (the rules files also carry a `paths:` frontmatter
+block — copy it, do not touch it unless the set of relevant files changed).
+There is no size pressure on them the way there is on root: `/context` warns
+only on the root-level file's char count, and path-scoped rules do not count
+toward that warning at all.
+
 ---
 
 ## Steps
@@ -78,19 +112,33 @@ after the model shrank to `traits`/`recent` plus chat state.
 
 ### 4. Find every touched section
 
-One subsystem change lands in more places than expected. Grep first:
+One subsystem change lands in more places than expected. Grep first — across
+root, every module file, and the rules directory, since the detail you need to
+update is probably not in root any more:
 
 ```bash
-grep -n -i '<subsystem>' CLAUDE.md README.md
+grep -rn -i '<subsystem>' CLAUDE.md README.md src/*/CLAUDE.md .claude/rules/
 ```
 
-`CLAUDE.md` — check each of:
+`CLAUDE.md` (root) — check each of:
 - the numbered **Core flow** list (steps 1–4), including the scheduler line if a job changed
-- the subsystem's own bullet under **Key subsystems** — keep it short and point at a deeper section rather than growing it
-- a dedicated `### <Subsystem> pipeline` section when the flow has more than ~3 stages
+- the **"Where the detail lives"** table under **Architecture** — add a row if the change introduces a new module-level `CLAUDE.md` or rules file; otherwise leave it
+- the subsystem's own bullet under **Key subsystems** — keep it short and point at its detail file rather than growing it
 - **Configuration access** — new settings constants belong in that sentence
-- **Testing notes** — new test files or directories
+- the destructive-action guard under **Testing notes** — only if the guard itself changed, not for new test files
 - the **Commands** block — new or split eval suites, scripts, backfills
+
+The detail file for the subsystem — check the table above for which one:
+- update the deep, ordered walkthrough there (the numbered stages, the exact
+  flags, the observability lines) — this is where nearly all of a subsystem
+  change's doc burden lands
+- if the subsystem has no detail file yet (a genuinely new module), decide
+  whether it needs one now or is still small enough for a root bullet; a
+  bullet past ~5 sentences is the signal it needs its own file — see "Root
+  `CLAUDE.md` is a thin index" above for the two file shapes (nested
+  `CLAUDE.md` for a `src/` subtree, `.claude/rules/*.md` with `paths:`
+  frontmatter for anything spanning non-`src/` locations like manifests or
+  workflows)
 
 `README.md` — check each of:
 - the feature bullet under **Key Features**
