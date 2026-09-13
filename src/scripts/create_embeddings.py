@@ -1,3 +1,4 @@
+"""Backfill message embeddings for a chat, with optional start date filter."""
 import argparse
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -6,14 +7,20 @@ from src.embeddings.messages import messages_embeddings_client
 from src.messages.repository import get_messages
 from src.processors.context.embeddings import save_embedding_task
 
-parser = argparse.ArgumentParser(description='Script so useful.')
-parser.add_argument("--date-from", type=str)
-parser.add_argument("--chat", type=int)
+parser = argparse.ArgumentParser(description='Backfill message embeddings for a chat.')
+parser.add_argument('--date-from', type=str)
+parser.add_argument('--chat', type=int, required=True)
 
 
-async def create_embeddings(chat_id: int, _from: datetime):
+async def create_embeddings(chat_id: int, date_from: datetime):
+    """Generate embeddings for messages in a chat.
+
+    Args:
+        chat_id: The chat ID to process.
+        date_from: Start date for the backfill (inclusive). Messages before this date are skipped.
+    """
     overlap_messages = []
-    current_from = _from
+    current_from = date_from
 
     while True:
         messages = await get_messages(
@@ -54,7 +61,4 @@ if __name__ == '__main__':  # pragma: no cover
         date_from = datetime.now(timezone.utc) - timedelta(days=1)
 
     chat = args.chat
-    if not chat:
-        raise ValueError("Chat ID must be provided")
-
-    asyncio.run(create_embeddings(chat_id=chat, _from=date_from))
+    asyncio.run(create_embeddings(chat_id=chat, date_from=date_from))

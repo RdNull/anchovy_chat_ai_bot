@@ -25,8 +25,9 @@ cd evals/memory && promptfoo eval       # one suite (memory, facts, reply, recap
 
 ### Backfill embeddings
 ```bash
-python -m src.scripts.create_embeddings
-python -m src.scripts.create_sticker_embeddings   # re-index path; not needed at launch
+python -m src.scripts.create_embeddings          # backfill message embeddings
+python -m src.scripts.create_fact_embeddings     # backfill fact embeddings
+python -m src.scripts.create_sticker_embeddings  # re-index path; not needed at launch
 ```
 
 ### Blackbox MCP server

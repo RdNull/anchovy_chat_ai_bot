@@ -1,11 +1,11 @@
 import argparse
 import asyncio
 
-from src import mongo
 from src.embeddings.stickers import stickers_embedding_client
 from src.logs import logger
 from src.messages.media.repository import _parse_media_description
 from src.models import MessageMediaStatus, MessageMediaTypes
+from src import mongo
 
 parser = argparse.ArgumentParser(description='Generate embeddings for stickers in DB.')
 parser.add_argument('--batch-size', type=int, default=100)
@@ -22,7 +22,7 @@ async def create_sticker_embeddings(batch_size: int):
     """
     query = {'type': MessageMediaTypes.STICKER.value, 'status': MessageMediaStatus.READY.value}
     total = await mongo.media_descriptions.count_documents(query)
-    logger.info(f"Found {total} stickers to embed")
+    logger.info(f'Found {total} stickers to embed')
 
     cursor = mongo.media_descriptions.find(query).batch_size(batch_size)
     processed = 0
@@ -30,9 +30,9 @@ async def create_sticker_embeddings(batch_size: int):
         await stickers_embedding_client.save_sticker(_parse_media_description(raw))
         processed += 1
         if processed % batch_size == 0:
-            logger.info(f"Embedded {processed}/{total} stickers")
+            logger.info(f'Embedded {processed}/{total} stickers')
 
-    logger.info(f"Done. Embedded {processed} stickers")
+    logger.info(f'Done. Embedded {processed} stickers')
 
 
 if __name__ == '__main__':  # pragma: no cover
