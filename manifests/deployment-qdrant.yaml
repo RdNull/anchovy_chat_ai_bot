@@ -46,10 +46,13 @@ spec:
               name: http
             - containerPort: 6334
               name: grpc
+          # Memory request trimmed from the original 128Mi to what qdrant actually uses
+          # (measured ~38Mi) to free headroom for manifests/otel-collector.yaml on this
+          # 1-CPU/2Gi node, where memory requests were already at 92% of allocatable.
           resources:
             requests:
               cpu: 25m
-              memory: 128Mi
+              memory: 64Mi
           # httpGet costs nothing in the container — kubelet makes the request. `/readyz`
           # reports shard readiness, which is stricter than a listening socket and is what
           # the rollout wait in deploy-k8s.sh should block on.

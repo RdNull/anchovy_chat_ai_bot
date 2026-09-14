@@ -91,6 +91,8 @@ A single `IS_LOCAL` flag switches the entire model stack between OpenRouter (clo
 **Observability**
 LangSmith tracing is integrated via `@traceable` decorators across the LLM call graph, including A/B model-version tags on chat completions. Full span trees are captured for each agentic loop execution.
 
+A deploy recreates the bot pod, and kubelet deletes a pod's log directory on cleanup — so before this, the outgoing pod's plain log lines went with it, and the only thing LangSmith couldn't cover (output written before the application logger even starts, such as a crashlooping container's entrypoint stderr) was gone for good. A node-level OpenTelemetry Collector DaemonSet now tails every pod's log files directly off the node's disk and ships them to Axiom, independent of and in addition to LangSmith's tracing — covering the bot, MongoDB, and Qdrant alike without any application code involved.
+
 **Kubernetes Deployment & CI/CD**
 A GitHub Actions workflow builds and pushes a multi-stage Docker image to GHCR on every push to `main`, then deploys it to a Kubernetes cluster (bot, MongoDB, and Qdrant manifests under `manifests/`) via `kubectl`, with app config supplied through a ConfigMap/Secret pair populated from repo variables and secrets.
 
@@ -120,7 +122,7 @@ Two constraints in the manifests are load-bearing and read like frugality: the b
 | Scheduling           | scheduler                                       | Weekly fact-confidence decay, daily memory cleanup |
 | Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks         |
 | Developer Tooling    | MCP Python SDK v2 (streamable HTTP)             | Read-only data access for Claude Code sessions  |
-| Observability        | LangSmith                                       | LLM call tracing and span visualization         |
+| Observability        | LangSmith, OpenTelemetry Collector, Axiom       | LLM call tracing; node-level pod log shipping   |
 | Containerization     | Docker (multi-stage build)                      | Bot, MongoDB, and Qdrant services               |
 | Deployment           | Kubernetes, GitHub Actions                      | CI build/push to GHCR, `kubectl`-based deploy   |
 | Ingress & TLS        | Traefik, cert-manager, Let's Encrypt            | HTTPS on the node's own ports, no load balancer |
@@ -201,6 +203,7 @@ Message Handlers  (handlers.py)
 [CI/CD]
      +---> GitHub Actions: build multi-stage Docker image -> push to GHCR
                -> kubectl apply against manifests/ (bot, MongoDB, Qdrant)
+               -> OpenTelemetry Collector DaemonSet -> Axiom (pod logs)
                -> blackbox namespace (MCP server, ingress, network policy)
                -> DNS sync CronJob
 

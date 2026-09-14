@@ -5,7 +5,7 @@ set -euo pipefail
 # name missing from the job's env: block writes a blank into the cluster. A blank is
 # invisible until a pod is recreated, which is how an empty mongo password sat in
 # bot-secrets for three months. No `set -x` — it would print these into the CI log.
-for v in MONGO_INITDB_ROOT_PASSWORD DATABASE_URL TELEGRAM_TOKEN OPENROUTER_API_KEY QDRANT_URL LANGSMITH_API_KEY BLACKBOX_MCP_ACCESS_TOKEN BLACKBOX_DATABASE_URL BLACKBOX_OPENROUTER_API_KEY LINODE_DNS_ACCESS_TOKEN IMAGE_TAG; do
+for v in MONGO_INITDB_ROOT_PASSWORD DATABASE_URL TELEGRAM_TOKEN OPENROUTER_API_KEY QDRANT_URL LANGSMITH_API_KEY BLACKBOX_MCP_ACCESS_TOKEN BLACKBOX_DATABASE_URL BLACKBOX_OPENROUTER_API_KEY LINODE_DNS_ACCESS_TOKEN AXIOM_TOKEN IMAGE_TAG; do
   [[ -n "${!v:-}" ]] || { echo "missing required env: $v" >&2; exit 1; }
 done
 
@@ -16,6 +16,22 @@ envsubst < manifests/secrets.yaml | kubectl apply -f -
 
 echo "apply configmaps"
 envsubst < manifests/configmap.yaml | kubectl apply -f -
+
+# Applied before the stores, and specifically before the bot: the bot Deployment is
+# strategy: Recreate, so its old pod is gone within seconds of the new one starting. The
+# collector must already be Ready to catch that pod's final log lines, which is the whole
+# point of this task. A wedged collector now blocks the rest of the deploy — accepted, on the
+# same reasoning the stores are waited on below: a loudly failed deploy beats silently missing
+# logs.
+echo "apply otel collector"
+envsubst < manifests/otel-collector.yaml | kubectl apply -f -
+# The image tag is pinned, not ${IMAGE_TAG}, so a ConfigMap-only edit to the collector's config
+# changes no field of the DaemonSet's pod template — nothing here computes the Helm-style
+# checksum annotation that would force one. An unconditional restart on every deploy is what
+# stands in for that: cheap, since file_storage checkpointing (verified below) is exactly what
+# makes a restart lose nothing.
+kubectl rollout restart daemonset/otel-collector
+kubectl rollout status daemonset/otel-collector --timeout=5m
 
 echo "apply mongo"
 kubectl apply -f manifests/deployment-mongo.yaml

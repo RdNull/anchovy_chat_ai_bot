@@ -131,10 +131,12 @@ def test_the_invariant_is_not_vacuous():
     assert set(sources) >= {
         'configmap.yaml', 'deployment.yaml', 'secrets.yaml',
         'blackbox/secrets.yaml', 'blackbox/deployment.yaml', 'dns-sync.yaml',
+        'otel-collector.yaml',
     }
     assert 'MONGO_INITDB_ROOT_PASSWORD' in sources['secrets.yaml']
     assert secret_keys() >= {
         'MONGO_INITDB_ROOT_PASSWORD', 'BLACKBOX_MCP_ACCESS_TOKEN', 'LINODE_DNS_ACCESS_TOKEN',
+        'AXIOM_TOKEN',
     }
     assert len(deploy_job_env()) > 1
     assert guarded_vars()
@@ -153,7 +155,7 @@ def _namespace(document: dict) -> str:
 
 def _pod_spec(document: dict) -> dict | None:
     kind = document.get('kind')
-    if kind in ('Deployment', 'StatefulSet'):
+    if kind in ('Deployment', 'StatefulSet', 'DaemonSet'):
         return document['spec']['template']['spec']
     if kind == 'CronJob':
         return document['spec']['jobTemplate']['spec']['template']['spec']
