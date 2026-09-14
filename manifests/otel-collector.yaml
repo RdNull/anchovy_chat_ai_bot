@@ -65,7 +65,17 @@ data:
 
     receivers:
       file_log:
-        include: [/var/log/pods/*/*/*.log]
+        # Scoped to the two namespaces deploy-k8s.sh actually applies into, not to a list of
+        # service names: every project workload lands in `default` or `blackbox`, and cluster
+        # infrastructure (calico, coredns, csi-linode, konnectivity-agent, kube-proxy,
+        # metrics-server, traefik, cert-manager) does not. A pod glob would need editing every
+        # time a service is added; this glob needs editing only if a third project namespace
+        # is introduced, which is already documented as a deliberate move (see
+        # .claude/rules/deployment.md on blackbox's own namespace). Unscoped, kube-system
+        # chatter alone was measured at ~80% of ingested volume, mostly konnectivity-agent.
+        include:
+          - /var/log/pods/default_*/*/*.log
+          - /var/log/pods/blackbox_*/*/*.log
         # Without this the collector reads its own log file, and any export error it logs
         # becomes a new line to export. Must match this DaemonSet's pod-name prefix exactly.
         exclude: [/var/log/pods/default_otel-collector-*/*/*.log]
