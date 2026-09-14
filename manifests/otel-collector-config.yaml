@@ -66,6 +66,17 @@ processors:
         - k8s.container.name
         - k8s.deployment.name
         - k8s.statefulset.name
+        # Unlike k8s.deployment.name (Pod -> ReplicaSet -> Deployment, resolved by reading the
+        # ReplicaSet object), this is a name-only heuristic on the owning Job's own name string
+        # — matching the `<cronjob-name>-<8-digit-timestamp>` pattern the CronJob controller
+        # gives its Jobs. No Job/CronJob API read, so no RBAC beyond pods/namespaces/replicasets
+        # is needed; verified live by creating a Job named to match that pattern and confirming
+        # k8s.cronjob.name resolved with no batch/jobs/cronjobs grant present. The corollary: a
+        # manually-triggered run whose Job name doesn't match the pattern — e.g. the documented
+        # `kubectl create job --from=cronjob/dns-sync dns-sync-manual` in the root CLAUDE.md —
+        # resolves to nothing, and the dashboard's service grouping falls back to k8s.pod.name
+        # for that one run. Scheduled runs are unaffected.
+        - k8s.cronjob.name
         - k8s.node.name
     pod_association:
       - sources:
