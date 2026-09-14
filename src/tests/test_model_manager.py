@@ -133,10 +133,11 @@ def test_web_search_settings_keep_plugins():
 def test_web_search_model_declares_plugins():
     """`plugins` must stay a declared field on the chat model, not `model_kwargs`.
 
-    `requirements.txt` pins no `langchain-openrouter` version. If the field stops
-    being declared, `build_extra` shunts it into `model_kwargs` and the call still
-    succeeds — answering from training data instead of the web. This turns that
-    silent regression into a red build. No network: construction only.
+    `uv.lock` pins `langchain-openrouter`'s exact version, so this can only regress
+    on a deliberate `uv lock --upgrade` refresh. If the field stops being declared,
+    `build_extra` shunts it into `model_kwargs` and the call still succeeds —
+    answering from training data instead of the web. This turns that silent
+    regression into a red build. No network: construction only.
     """
     manager = ModelManager()
     with patch.object(settings, 'IS_LOCAL', False):

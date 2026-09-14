@@ -25,10 +25,18 @@ cd evals/memory && promptfoo eval       # one suite (memory, facts, reply, recap
 
 ### Backfill embeddings
 ```bash
-python -m src.scripts.create_embeddings          # backfill message embeddings
-python -m src.scripts.create_fact_embeddings     # backfill fact embeddings
-python -m src.scripts.create_sticker_embeddings  # re-index path; not needed at launch
+uv run python -m src.scripts.create_embeddings          # backfill message embeddings
+uv run python -m src.scripts.create_fact_embeddings     # backfill fact embeddings
+uv run python -m src.scripts.create_sticker_embeddings  # re-index path; not needed at launch
 ```
+
+### Refresh dependencies
+```bash
+uv lock --upgrade        # re-resolve every pinned version against current PyPI
+docker compose up -d --build   # rebuild the image against the refreshed lock
+docker compose exec bot pytest # confirm nothing broke, in particular test_model_manager.py
+```
+`uv.lock` pins every dependency, including `langchain-openrouter` — deliberately left unpinned in the old `requirements.txt` so a plain `pip install` would surface an upstream change immediately (see `src/tests/CLAUDE.md`). A locked version doesn't drift on its own, so do this by hand roughly weekly; otherwise the exact regression the unpinned version used to catch (the OpenRouter `plugins` key silently dropping into `model_kwargs`) can sit unnoticed for months.
 
 ### Blackbox MCP server
 ```bash
