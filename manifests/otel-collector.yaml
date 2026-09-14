@@ -1,0 +1,141 @@
+# Ships node-level pod logs (bot, mongo, qdrant) to Axiom, so a deploy's `Recreate` no longer
+# takes the outgoing pod's log with it — kubelet deletes /var/log/pods/<ns>_<pod>_<uid>/ on pod
+# cleanup, and the last real incident (the blanked mongo secret) was diagnosed from a container
+# entrypoint stderr line that exists before any application logger runs, which no in-app
+# exporter could ever have captured. Node-level via `filelog` is what covers that; a DaemonSet is
+# what survives node replacement without thought, even though this cluster has one node today.
+#
+# Lives in `default`, like everything except blackbox. `k8s_attributes` needs cluster-wide read on
+# pods/namespaces (core) and replicasets (apps, to resolve a pod back to its Deployment name), so
+# the ClusterRole below mirrors dns-sync's — a namespaced Role cannot grant either.
+#
+# The collector's own pipeline config is NOT declared here — it lives as plain YAML in
+# manifests/otel-collector-config.yaml (not a Kubernetes manifest, no apiVersion/kind) and
+# deploy-k8s.sh turns it into the `otel-collector-config` ConfigMap the DaemonSet references
+# below, via `kubectl create configmap --from-file`. Keeping it out of a `data: |` block scalar
+# means it reads and diffs as normal YAML instead of doubly-indented text.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: otel-secrets
+stringData:
+  # Rendered by `envsubst` — see manifests/secrets.yaml for what a value may safely contain. An
+  # `xaat-`-prefixed hex token carries none of that round-trip hazard.
+  AXIOM_TOKEN: "${AXIOM_TOKEN}"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: default
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-collector
+  labels:
+    app: otel-collector
+spec:
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      serviceAccountName: otel-collector
+      containers:
+        - name: otel-collector
+          # Pin an explicit version — :latest on this cluster is the exact failure shape the
+          # deploy review flagged as P0 elsewhere (image pins on mongo/qdrant).
+          image: otel/opentelemetry-collector-contrib:0.160.0
+          imagePullPolicy: IfNotPresent
+          args: ["--config=/etc/otelcol/config.yaml"]
+          # The image's default UID (10001) cannot read root-owned /var/log/pods. The failure
+          # mode without this is silent — no logs, no crash — which is why it is called out here
+          # rather than left to be discovered.
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          envFrom:
+            - secretRef:
+                name: otel-secrets
+          # Requests and a limit, unlike every other container in this cluster (which is
+          # requests-only — see manifests/deployment-mongo.yaml). That rule exists because
+          # WiredTiger sizes its cache from the cgroup limit, so a mongo limit tight enough to
+          # matter OOM-kills mongod; nothing of the sort applies here. A log shipper is the one
+          # workload that scales with log volume rather than with traffic this cluster controls,
+          # so it is exactly the thing worth capping, with memory_limiter above sitting below
+          # the limit so the collector sheds load before the kernel does.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 192Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 5
+          volumeMounts:
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: otel-storage
+              mountPath: /var/lib/otelcol/storage
+            - name: config
+              mountPath: /etc/otelcol
+      volumes:
+        # containerd writes here; /var/log/containers is only symlinks into it, so mounting
+        # that instead would buy nothing.
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+            type: Directory
+        - name: otel-storage
+          hostPath:
+            path: /var/lib/otelcol/storage
+            type: DirectoryOrCreate
+        - name: config
+          configMap:
+            name: otel-collector-config
