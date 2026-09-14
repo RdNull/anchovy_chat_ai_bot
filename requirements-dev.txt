@@ -1,6 +1,0 @@
-pytest
-pytest-asyncio
-pytest-cov
-pytest-env
-pytest-mock
-freezegun

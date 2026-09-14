@@ -1,0 +1,41 @@
+[project]
+name = "anchovy_chat_ai_bot"
+version = "0.1.0"
+requires-python = "==3.14.*"
+dependencies = [
+    "hupper",
+    "pymongo",
+    "pyyaml",
+    "python-telegram-bot[http2]",
+    "aiohttp",
+    "langchain",
+    "langsmith",
+    "langchain-ollama",
+    "langchain-openrouter",
+    "langchain-anthropic",
+    "pydantic",
+    "pydantic-settings",
+    "scheduler",
+    "Pillow",
+    "opencv-python-headless",
+    "Jinja2",
+    "lottie",
+    "cairosvg", # for lottie gif export
+    "qdrant-client",
+    "async-cache",
+    "mcp>=2,<3", # blackbox MCP server; the prod image runs it too (manifests/blackbox/)
+    "uvicorn", # serves the blackbox app; also an mcp dependency, listed because it is imported
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-env",
+    "pytest-mock",
+    "freezegun",
+]
+
+[tool.uv]
+package = false

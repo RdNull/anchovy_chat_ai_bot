@@ -6,7 +6,7 @@ Loaded automatically when Claude reads a file under `src/blackbox/`. Companion t
 
 A read-only MCP server that gives a Claude Code session the bot's own data: chat history for eval fixtures, memory snapshots and the decay sidecar for forensics. It is a separate process with no path into the reply loop. Streamable HTTP is its only transport — the stdio entrypoint was removed rather than kept alongside, so the local server exercises the same auth path production does. It is hosted at `https://mcp.anchovy-bot.rdnull.im/` (see **Deployment** above for the manifests) and runs locally on `127.0.0.1:8765`.
 
-- **Layout.** `queries.py` holds every tool as a plain async function and imports nothing from `mcp`, so it survives a change of transport. `server.py` registers the seven tools on an `MCPServer` (SDK `mcp>=2,<3`, in `requirements.txt`, since the prod image runs it). `app.py` is the whole HTTP surface. `__main__.py` serves it with `uvicorn.run(..., access_log=False, log_config=None)`; `log_config=None` keeps `src/logs.py`'s handler and filters.
+- **Layout.** `queries.py` holds every tool as a plain async function and imports nothing from `mcp`, so it survives a change of transport. `server.py` registers the seven tools on an `MCPServer` (SDK `mcp>=2,<3`, in `pyproject.toml`, since the prod image runs it). `app.py` is the whole HTTP surface. `__main__.py` serves it with `uvicorn.run(..., access_log=False, log_config=None)`; `log_config=None` keeps `src/logs.py`'s handler and filters.
 - **App.** `app.py:build_app(token)` builds `mcp.streamable_http_app` with these settings, then wraps it in `BearerAuth`:
   - `streamable_http_path='/'`
   - `stateless_http=True`: a restart strands no session.
