@@ -1,7 +1,10 @@
 from datetime import datetime, timedelta, timezone
 
 from src import settings
-from src.memory.decay import DecayCaps, apply_decay, reconcile, resolve_watermark, summarize_churn
+from src.memory.decay import (
+    CAP_REASON, TOPICS_FIELD, DecayCaps, EvictionRecord, apply_decay, reconcile,
+    resolve_watermark, summarize_churn,
+)
 from src.memory.dedup import ConflictRecord
 from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInfo, StructuredMemory
 from src.memory.processors import _prompt_memory
@@ -40,19 +43,25 @@ def born(**entries: str) -> dict[str, DecayRecord]:
     return {key: DecayRecord(born=stamp, cycles=0, field='recent') for key, stamp in entries.items()}
 
 
-def cycle(updated, prior, guard_records=None, now=NOW, **overrides):
+def cycle(updated, prior, guard_records=None, now=NOW, prior_content=None, **overrides):
     """Runs one memory cycle in the order `extract_memory` runs it.
 
     Churn is measured last, against the memory that survived eviction — asserting it
     on `reconcile`'s output would re-create the bug where a deleted entry counted as
     carried.
 
+    `prior_content` defaults to an empty snapshot: a vanish's `text` then falls back
+    to its key, same as `_sample_text` always did, since most tests here don't assert
+    the vanish text itself.
+
     Returns:
         `(decay, evictions, churn)`.
     """
     decay = reconcile(updated, prior, now)
     evictions = apply_decay(updated, decay, caps(**overrides))
-    churn = summarize_churn(updated, prior, decay, guard_records or [], evictions)
+    churn = summarize_churn(
+        updated, prior_content or StructuredMemory(), prior, decay, guard_records or [], evictions
+    )
     return decay, evictions, churn
 
 
@@ -139,6 +148,32 @@ def test_vanish_record_carries_the_field_it_was_lost_from():
     }
 
 
+def test_vanish_reports_the_prior_snapshot_raw_text_not_the_key():
+    """The bug: a vanish used to log `text=key` — lowercased, punctuation-stripped —
+    since the raw text is already gone from `updated` by the time churn runs. The
+    prior snapshot is the only place it still exists."""
+    updated = make_memory(alice=ParticipantInfo())
+    prior_content = make_memory(alice=ParticipantInfo(traits=['Программист, Питон!']))
+    prior = {'@alice': {'программист питон': DecayRecord(born=YESTERDAY, cycles=1, field='traits')}}
+
+    _, _, churn = cycle(updated, prior, prior_content=prior_content)
+
+    vanished = next(r for r in churn if r.event == 'vanish')
+    assert vanished.key == 'программист питон'
+    assert vanished.text == 'Программист, Питон!'
+
+
+def test_vanish_without_a_prior_snapshot_falls_back_to_the_key():
+    """`_sample_text`'s existing fallback — a cold start with no prior content."""
+    updated = make_memory(alice=ParticipantInfo())
+    prior = {'@alice': {'программист питон': DecayRecord(born=YESTERDAY, cycles=1, field='traits')}}
+
+    _, _, churn = cycle(updated, prior)
+
+    vanished = next(r for r in churn if r.event == 'vanish')
+    assert vanished.text == 'программист питон'
+
+
 def test_evicted_entry_is_neither_carried_nor_vanished():
     """The reason churn runs last: eviction's casualties have their own log line.
 
@@ -154,6 +189,36 @@ def test_evicted_entry_is_neither_carried_nor_vanished():
     assert updated.participants['@alice'].recent == ['купил велосипед']
     assert [(e.text, e.applied) for e in evictions] == [('ездил в Лондон', True)]
     assert [(r.key, r.event) for r in churn] == [('купил велосипед', 'birth')]
+
+
+def test_only_participant_field_evictions_suppress_a_vanish():
+    """The `accounted` filter, checked directly rather than relying on `'-'` never
+    colliding with a real nick: an eviction on a non-participant field must never
+    suppress a genuine vanish, even sharing (nick, key)."""
+    updated = make_memory(alice=ParticipantInfo())
+    prior_decay = {'@alice': {'x': DecayRecord(born=YESTERDAY, cycles=1, field='recent')}}
+    non_participant_eviction = EvictionRecord(
+        nick='@alice', field=TOPICS_FIELD, text='x', reason=CAP_REASON, applied=True,
+    )
+
+    churn = summarize_churn(
+        updated, StructuredMemory(), prior_decay, {}, [], [non_participant_eviction]
+    )
+
+    assert [(r.key, r.event) for r in churn] == [('x', 'vanish')]
+
+
+def test_state_list_evictions_carry_no_participant_and_never_reach_churn():
+    """State evictions have no sidecar record to lose, so a dropped joke must never
+    surface as a participant `vanish` — only `MEMORY_DECAY` reports it."""
+    updated = make_memory(alice=ParticipantInfo(recent=['b']))
+    updated.state.running_jokes = ['a']
+    prior = {'@alice': {'b': DecayRecord(born=YESTERDAY, cycles=1, field='recent')}}
+
+    _, evictions, churn = cycle(updated, prior, jokes_keep=0)
+
+    assert [(e.nick, e.field, e.text) for e in evictions] == [('-', 'running_jokes', 'a')]
+    assert [(r.key, r.event) for r in churn] == [('b', 'carry')]
 
 
 def test_guard_dropped_entries_are_not_counted_as_vanished():
@@ -383,6 +448,33 @@ def test_state_caps_come_from_the_caps_object():
     assert updated.state.running_jokes == []
 
 
+def test_state_list_evictions_are_recorded():
+    """They were a bare slice with no `EvictionRecord` at all — `MEMORY_DECAY` had
+    never once reported a dropped joke, question or topic."""
+    updated = StructuredMemory(state=ChatState(
+        active_topics=['a', 'b', 'c'], open_questions=['a', 'b', 'c'], running_jokes=['a', 'b', 'c']
+    ))
+
+    evictions = apply_decay(updated, {}, caps(topics_keep=1, questions_keep=2, jokes_keep=0))
+
+    assert [(e.nick, e.field, e.text, e.reason, e.applied) for e in evictions] == [
+        ('-', 'active_topics', 'a', 'cap', True),
+        ('-', 'active_topics', 'b', 'cap', True),
+        ('-', 'open_questions', 'a', 'cap', True),
+        ('-', 'running_jokes', 'a', 'cap', True),
+        ('-', 'running_jokes', 'b', 'cap', True),
+        ('-', 'running_jokes', 'c', 'cap', True),
+    ]
+
+
+def test_state_lists_under_the_cap_record_no_eviction():
+    updated = StructuredMemory(state=ChatState(active_topics=['a']))
+
+    evictions = apply_decay(updated, {}, caps())
+
+    assert evictions == []
+
+
 def test_caps_are_a_noop_under_the_limit():
     updated = StructuredMemory(
         participants={'@bob': ParticipantInfo(traits=['a', 'b'], recent=['r'])},
@@ -563,8 +655,8 @@ def test_prompt_input_is_empty_object_without_prior_memory():
 
 # --- settings wiring ---
 
-def test_decay_ships_disabled():
-    assert settings.ENABLE_MEMORY_DECAY is False
+def test_decay_ships_enabled():
+    assert settings.ENABLE_MEMORY_DECAY is True
     assert settings.TRAITS_KEEP == 10
     assert settings.RECENT_KEEP == 5
     assert settings.RECENT_MAX_CYCLES == 20

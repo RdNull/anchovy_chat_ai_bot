@@ -21,12 +21,22 @@ _ROOT = Path(__file__).resolve().parents[2]
 _WORKFLOW = _ROOT / '.github' / 'workflows' / 'deploy.yml'
 _MANIFESTS = _ROOT / 'manifests'
 _SCRIPT = _ROOT / 'deploy-k8s.sh'
+_CONFIGMAP = _MANIFESTS / 'configmap.yaml'
 
 _PLACEHOLDER = re.compile(r'\$\{(\w+)\}')
 _GUARD = re.compile(r'^for v in ([\w\s]+); do', re.MULTILINE)
 
 # Set by the `Deploy k8s` step's own `env:` block, not by the job-level one.
 _STEP_LEVEL = frozenset({'IMAGE_TAG'})
+
+# Settings the bot ConfigMap deliberately does not carry — each for its own reason,
+# not an oversight the reverse-direction test below should catch.
+_CONFIGMAP_EXEMPT = frozenset({
+    # Secrets: manifests/secrets.yaml, guarded by deploy-k8s.sh, never a ConfigMap.
+    'TELEGRAM_TOKEN', 'DATABASE_URL', 'OPENROUTER_API_KEY', 'QDRANT_URL',
+    # Set only in manifests/blackbox/, read only by that process.
+    'BLACKBOX_CHAT_ID', 'BLACKBOX_HOST', 'BLACKBOX_PORT', 'BLACKBOX_MCP_ACCESS_TOKEN',
+})
 
 
 def required_vars() -> dict[str, set[str]]:
@@ -69,6 +79,11 @@ def guarded_vars() -> set[str]:
     return set(_GUARD.search(_SCRIPT.read_text()).group(1).split())
 
 
+def configmap_keys() -> set[str]:
+    """The keys the bot Deployment's ConfigMap actually carries."""
+    return set(yaml.safe_load(_CONFIGMAP.read_text())['data'])
+
+
 def test_every_required_var_is_exported_by_the_deploy_job():
     """The whole bug: an unexported name reaches the cluster as an empty value."""
     exported = deploy_job_env() | _STEP_LEVEL
@@ -93,6 +108,20 @@ def test_the_shell_guard_only_requires_what_the_job_exports():
     unexported = sorted(guarded_vars() - (deploy_job_env() | _STEP_LEVEL))
 
     assert not unexported, f'guarded by deploy-k8s.sh but never exported: {unexported}'
+
+
+def test_every_deployable_setting_reaches_the_configmap():
+    """The direction this file's docstring argues for but never checked: not just
+    'every placeholder is exported', but 'every setting that should be tunable
+    without a deploy actually has a placeholder to be exported into'. The decay caps
+    were the concrete case — recalibrating any of them was a code change plus a
+    deploy, when the whole point of the decay unit is tuning them against traffic.
+    """
+    from src.settings import _Settings
+
+    missing = sorted(set(_Settings.model_fields) - configmap_keys() - _CONFIGMAP_EXEMPT)
+
+    assert not missing, f'settings not reachable from the configmap: {missing}'
 
 
 def test_the_invariant_is_not_vacuous():

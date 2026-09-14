@@ -70,7 +70,17 @@ class _Settings(BaseSettings):
     LAST_MESSAGES_SIZE: int = 40
     LAST_MESSAGES_MIN_SIZE: int = 5
 
+    # The floor for update_chat_embeddings itself — unreachable via the trigger path
+    # once EMBEDDING_TASK_LOCK is held (the trigger gates at EMBEDDINGS_TRIGGER_SIZE,
+    # and a queued second call re-reads the advanced watermark), but a direct caller
+    # such as src/scripts/create_embeddings.py has no trigger to protect it.
+    EMBEDDINGS_MIN_SIZE: int = 5
+
     RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT: int = 10
+    # A vision describe call takes seconds; this is the crash-recovery window before a
+    # PROCESSING row (the description started, the process died before it finished) is
+    # treated as abandoned and retried rather than polled forever.
+    MEDIA_PROCESSING_STALE_MINUTES: int = 5
 
     OPENROUTER_API_URL: str = 'https://openrouter.ai/api/v1'
     OPENROUTER_API_KEY: str | None = None
@@ -94,8 +104,10 @@ class _Settings(BaseSettings):
     # `blackbox.diff_memory` a horizon long enough to watch a trait or a joke age.
     MEMORY_RETENTION_DAYS: int = 90
 
-    # Decay ships off: phase 1 logs what the policy would evict without evicting it.
-    ENABLE_MEMORY_DECAY: bool = False
+    # The policy rule (`recent` keeps the newest RECENT_KEEP by `born`, hard-drops
+    # past RECENT_MAX_CYCLES) versus the positional baseline used while it's off.
+    # `traits` and `state` use the baseline either way — see apply_decay's docstring.
+    ENABLE_MEMORY_DECAY: bool = True
     TRAITS_KEEP: int = 10
     RECENT_KEEP: int = 5
     RECENT_MAX_CYCLES: int = 20
@@ -173,7 +185,9 @@ INITIATIVE_COOLDOWN_MINUTES = _s.INITIATIVE_COOLDOWN_MINUTES
 INITIATIVE_MIN_GAP_MESSAGES = _s.INITIATIVE_MIN_GAP_MESSAGES
 LAST_MESSAGES_SIZE = _s.LAST_MESSAGES_SIZE
 LAST_MESSAGES_MIN_SIZE = _s.LAST_MESSAGES_MIN_SIZE
+EMBEDDINGS_MIN_SIZE = _s.EMBEDDINGS_MIN_SIZE
 RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT = _s.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
+MEDIA_PROCESSING_STALE_MINUTES = _s.MEDIA_PROCESSING_STALE_MINUTES
 OPENROUTER_API_URL = _s.OPENROUTER_API_URL
 OPENROUTER_API_KEY = _s.OPENROUTER_API_KEY
 QDRANT_URL = _s.QDRANT_URL

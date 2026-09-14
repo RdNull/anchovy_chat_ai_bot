@@ -158,8 +158,12 @@ async def extract_memory(
     _log_evictions(chat_id, evictions)
 
     # Churn last, so it describes the memory that is actually saved rather than the
-    # one the model emitted.
-    churn = summarize_churn(updated_memory, prior_decay, decay, guard_records, evictions)
+    # one the model emitted. `prior_content` is what still holds a vanished entry's
+    # raw text — it's already gone from `updated_memory` by this point.
+    prior_content = current_memory.content if current_memory else StructuredMemory()
+    churn = summarize_churn(
+        updated_memory, prior_content, prior_decay, decay, guard_records, evictions
+    )
     _log_churn(chat_id, churn)
 
     try:

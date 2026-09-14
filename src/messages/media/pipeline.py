@@ -1,7 +1,9 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 from telegram.ext import ContextTypes
 
+from src import settings
 from src.embeddings.stickers import stickers_embedding_client
 from src.logs import logger
 from src.models import (
@@ -25,21 +27,17 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
     if not message.media.unique_id:
         return
 
-    # Fetched before either skip check, because the backfill below has to run even on
+    # Fetched before the skip check, because the backfill below has to run even on
     # media that needs no description generating — that is the whole point of it.
     media_description = await get_media_description_by_media_id(message.media.unique_id)
     if media_description:
         media_description = await _backfill_sticker(message, media_description)
 
-    if _skip_media_description_generation(message.media.status):
+    if media_description and _skip_media_description_generation(media_description):
+        logger.info(
+            f"Media description found for {message.media.unique_id}: {media_description.description}"
+        )
         return
-
-    if media_description:
-        if _skip_media_description_generation(media_description.status):
-            logger.info(
-                f"Media description found for {message.media.unique_id}: {media_description.description}"
-            )
-            return
 
     media_detection_data = await get_message_media(message.media.media_id, context)
     if not media_detection_data:
@@ -49,7 +47,7 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
     content_hash = media_detection_data.content_hash
     if not media_description:
         if media_description := await get_media_descriptions_by_hash(content_hash):
-            if _skip_media_description_generation(media_description.status):
+            if _skip_media_description_generation(media_description):
                 logger.info(
                     f"Media description found for {content_hash}: {media_description.description}"
                 )
@@ -62,11 +60,6 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
             content_hash=content_hash,
             sticker_emoji=message.media.sticker_emoji,
         )
-
-    if not media_detection_data:
-        await update_media_description_status(media_description.id, MessageMediaStatus.ERROR)
-        logger.warning(f"Failed to get media data for message {message.id}")
-        return
 
     await update_media_description_status(media_description.id, MessageMediaStatus.PROCESSING)
     image_description = await _generate_media_description(message, media_detection_data)
@@ -157,8 +150,25 @@ async def _backfill_sticker(
     return retyped
 
 
-def _skip_media_description_generation(status: MessageMediaStatus) -> bool:
-    return status in {MessageMediaStatus.READY, MessageMediaStatus.PROCESSING}
+def _skip_media_description_generation(description: MediaDescription) -> bool:
+    """READY always skips; PROCESSING skips only while it's still plausibly in
+    flight. A crash or pod restart between the PROCESSING write and the describe
+    call would otherwise leave a row that is never retried and that
+    `wait_for_media_ready` polls to its full timeout on every future sighting."""
+    if description.status == MessageMediaStatus.READY:
+        return True
+    if description.status == MessageMediaStatus.PROCESSING:
+        return not _is_processing_stale(description.updated_at)
+    return False
+
+
+def _is_processing_stale(updated_at: datetime | None) -> bool:
+    # A missing stamp is a row written before this field existed — treat it as
+    # stale rather than raising, so a legacy row is retried instead of stuck.
+    if updated_at is None:
+        return True
+    age = datetime.now(timezone.utc) - updated_at
+    return age > timedelta(minutes=settings.MEDIA_PROCESSING_STALE_MINUTES)
 
 
 async def _generate_media_description(

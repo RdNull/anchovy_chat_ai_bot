@@ -204,6 +204,10 @@ class MediaDescription(BaseModel):
     type: MessageMediaTypes
     status: MessageMediaStatus = MessageMediaStatus.PROCESSING
     sticker_emoji: str | None = None
+    # When `status` last changed. None on a row written before this field existed —
+    # treated as stale rather than raising, so a legacy PROCESSING row is retried
+    # instead of polled forever.
+    updated_at: datetime | None = None
 
 
 class MediaDescriptionData(BaseModel):

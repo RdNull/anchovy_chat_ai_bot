@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -278,6 +279,7 @@ async def test_consecutive_snapshots_strictly_increase(mocker):
 # --- update_chat_embeddings ---
 
 async def test_update_chat_embeddings_calls_save_embeddings(mocker):
+    mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
     mock_save = mock_embeddings_client(mocker)
 
     await save_message(make_message())
@@ -290,6 +292,7 @@ async def test_update_chat_embeddings_calls_save_embeddings(mocker):
 
 
 async def test_update_chat_embeddings_saves_task(mocker):
+    mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
     mock_embeddings_client(mocker)
 
     await save_message(make_message())
@@ -317,6 +320,7 @@ async def test_update_chat_embeddings_backlog_is_deferred_not_dropped(mocker):
     never embedded, and unreachable by `search_messages` forever after.
     """
     mocker.patch.object(settings, 'MESSAGES_EMBEDDINGS_MAX_SIZE', 3)
+    mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
     mock_save = mock_embeddings_client(mocker)
 
     for i in range(5):
@@ -335,6 +339,7 @@ async def test_update_chat_embeddings_backlog_is_deferred_not_dropped(mocker):
 
 async def test_update_chat_embeddings_checkpoints_the_newest_embedded_message(mocker):
     mocker.patch.object(settings, 'MESSAGES_EMBEDDINGS_MAX_SIZE', 3)
+    mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
     mock_embeddings_client(mocker)
 
     for i in range(5):
@@ -346,6 +351,60 @@ async def test_update_chat_embeddings_checkpoints_the_newest_embedded_message(mo
     task = await get_last_embedding_task(1)
     assert task is not None
     assert task.last_message_time == embedded[-1].created_at
+
+
+async def test_update_chat_embeddings_below_min_size_is_no_op(mocker):
+    mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 5)
+    mock_save = mock_embeddings_client(mocker)
+
+    await save_message(make_message())  # 1 < EMBEDDINGS_MIN_SIZE 5
+
+    await update_chat_embeddings(1)
+
+    assert mock_save.call_count == 0
+    assert await get_last_embedding_task(1) is None
+
+
+async def test_update_chat_embeddings_concurrent_calls_save_once(mocker):
+    """The bug: `run_context_checks` is a detached task per message, so concurrent
+    calls used to all read the same checkpoint and each pay for the same embedding
+    pass (observed at 8x in prod). The lock serializes them; the second call re-reads
+    the advanced watermark and finds nothing left to embed."""
+    mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
+    mock_save = mock_embeddings_client(mocker)
+
+    for i in range(3):
+        await save_message(make_message(text=f'msg{i}'))
+
+    await asyncio.gather(update_chat_embeddings(1), update_chat_embeddings(1))
+
+    assert mock_save.call_count == 1
+    saved_messages = [m.text for m in mock_save.call_args[0][0]]
+    assert saved_messages == ['msg0', 'msg1', 'msg2']
+
+
+async def test_update_chat_embeddings_failed_save_leaves_checkpoint_unadvanced(mocker):
+    """The lock is held across the save, not released before it: a failed save must
+    not advance the watermark, so the same window is retried rather than lost."""
+    mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
+    mock_save = mocker.patch(
+        'src.processors.context.embeddings.messages_embeddings_client.save',
+        new_callable=AsyncMock,
+    )
+    mock_save.side_effect = [Exception('boom'), None]
+
+    await save_message(make_message())
+    await update_chat_embeddings(1)
+    assert await get_last_embedding_task(1) is None
+
+    await update_chat_embeddings(1)
+
+    assert mock_save.call_count == 2
+    first_batch = [m.text for m in mock_save.call_args_list[0][0][0]]
+    second_batch = [m.text for m in mock_save.call_args_list[1][0][0]]
+    assert first_batch == second_batch == ['hello']
+    task = await get_last_embedding_task(1)
+    assert task is not None
 
 
 async def test_update_chat_context_lock_held(mocker):
@@ -586,6 +645,9 @@ async def test_extract_memory_logs_churn_and_would_evict(mocker):
     mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
     mock_logger = mocker.patch('src.memory.processors.logger')
     mocker.patch.object(settings, 'RECENT_KEEP', 1)
+    # Baseline vs. policy diverge on purpose here — pin the baseline explicitly so
+    # this stays a test of the log-only phase's dual recording, not of the default.
+    mocker.patch.object(settings, 'ENABLE_MEMORY_DECAY', False)
 
     await extract_memory(chat_id=1, current_memory=current, new_messages=[make_message()])
 

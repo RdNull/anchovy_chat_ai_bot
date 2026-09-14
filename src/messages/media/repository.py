@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from bson import ObjectId
 
 from src.models import MediaDescription, MessageMediaStatus, MessageMediaTypes, UserRole
@@ -21,6 +23,7 @@ async def create_media_description(
         'type': type.value,
         'status': status.value,
         'sticker_emoji': sticker_emoji,
+        'updated_at': datetime.now(timezone.utc).timestamp(),
     })
     return await get_media_description(result.inserted_id)
 
@@ -41,6 +44,7 @@ async def update_media_description(
         update['ocr_text'] = ocr_text
     if status:
         update['status'] = status.value
+        update['updated_at'] = datetime.now(timezone.utc).timestamp()
 
     if update:
         await media_descriptions.update_one({'_id': ObjectId(description_id)}, {'$set': update})
@@ -84,8 +88,11 @@ async def get_media_descriptions_by_hash(content_hash: str) -> MediaDescription 
 
 async def update_media_description_status(description_id: str, status: MessageMediaStatus):
     await media_descriptions.update_one(
-        {'_id': description_id},
-        {'$set': {'status': status.value}}
+        {'_id': ObjectId(description_id)},
+        {'$set': {
+            'status': status.value,
+            'updated_at': datetime.now(timezone.utc).timestamp(),
+        }}
     )
 
 
@@ -125,8 +132,10 @@ async def sticker_corpus_size() -> int:
 
 
 def _parse_media_description(data: dict) -> MediaDescription:
-    # `sticker_emoji` uses `.get`, unlike its siblings: every row written before the
-    # sticker unit lacks the key and must parse as None rather than raise.
+    # `sticker_emoji` and `updated_at` use `.get`, unlike their siblings: every row
+    # written before the respective field existed lacks the key and must parse as
+    # None rather than raise. A missing `updated_at` is treated as stale by the
+    # staleness check in pipeline.py, so a legacy row is retried rather than stuck.
     return MediaDescription(
         _id=str(data['_id']),
         description=data['description'] or '',
@@ -135,4 +144,8 @@ def _parse_media_description(data: dict) -> MediaDescription:
         status=data['status'],
         media_id=data['media_id'],
         sticker_emoji=data.get('sticker_emoji'),
+        updated_at=(
+            datetime.fromtimestamp(ts, tz=timezone.utc)
+            if (ts := data.get('updated_at')) is not None else None
+        ),
     )
