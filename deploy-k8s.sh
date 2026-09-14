@@ -24,6 +24,11 @@ envsubst < manifests/configmap.yaml | kubectl apply -f -
 # same reasoning the stores are waited on below: a loudly failed deploy beats silently missing
 # logs.
 echo "apply otel collector"
+# The collector's own pipeline config is a plain YAML file, not a Kubernetes manifest — see
+# manifests/otel-collector-config.yaml's header. --from-file reads it as raw bytes, so (unlike
+# everything piped through envsubst above) no substitution pass runs over it at all: the
+# collector's own ${env:AXIOM_TOKEN} runtime-expansion syntax inside it is never at risk.
+kubectl create configmap otel-collector-config --from-file=config.yaml=manifests/otel-collector-config.yaml --dry-run=client -o yaml | kubectl apply -f -
 envsubst < manifests/otel-collector.yaml | kubectl apply -f -
 # The image tag is pinned, not ${IMAGE_TAG}, so a ConfigMap-only edit to the collector's config
 # changes no field of the DaemonSet's pod template — nothing here computes the Helm-style

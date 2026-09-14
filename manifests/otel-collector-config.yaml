@@ -1,0 +1,102 @@
+# The OpenTelemetry Collector's own config schema — not a Kubernetes manifest (no apiVersion,
+# no kind). deploy-k8s.sh turns this into the `otel-collector-config` ConfigMap with
+# `kubectl create configmap --from-file`, which reads it as raw bytes: no envsubst pass touches
+# it, so the collector's own env-var-expansion syntax below is never at risk of collision with
+# an envsubst placeholder — not that it could collide anyway, since envsubst only recognizes
+# bare names and that syntax's colon would keep it from matching regardless.
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/storage
+  # Default endpoint is localhost:13133 — loopback-only inside the container network
+  # namespace. kubelet's probes hit the pod IP, not localhost, so the default leaves both
+  # probes permanently connection-refused despite the collector itself being healthy.
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  file_log:
+    # Scoped to the two namespaces deploy-k8s.sh actually applies into, not to a list of
+    # service names: every project workload lands in `default` or `blackbox`, and cluster
+    # infrastructure (calico, coredns, csi-linode, konnectivity-agent, kube-proxy,
+    # metrics-server, traefik, cert-manager) does not. A pod glob would need editing every
+    # time a service is added; this glob needs editing only if a third project namespace
+    # is introduced, which is already documented as a deliberate move (see
+    # .claude/rules/deployment.md on blackbox's own namespace). Unscoped, kube-system
+    # chatter alone was measured at ~80% of ingested volume, mostly konnectivity-agent.
+    include:
+      - /var/log/pods/default_*/*/*.log
+      - /var/log/pods/blackbox_*/*/*.log
+    # Without this the collector reads its own log file, and any export error it logs
+    # becomes a new line to export. Must match this DaemonSet's pod-name prefix exactly.
+    exclude: [/var/log/pods/default_otel-collector-*/*/*.log]
+    # Nothing appears until something new is logged — deliberate, so a first start does not
+    # ship whatever backlog happens to be sitting on the node. Use `beginning` only for a
+    # one-off capture of the node's current buffer.
+    start_at: end
+    include_file_path: true
+    storage: file_storage
+    operators:
+      # On-disk CRI logs are `<rfc3339> stdout F <message>`, not JSON. This operator parses
+      # that, handles the docker variant, reassembles split multiline records, and — with
+      # add_metadata_from_filepath — populates the k8s.pod.name / k8s.namespace.name that
+      # pod_association below keys on. A hand-rolled regex_parser + recombine pair is the
+      # wrong turn here.
+      - type: container
+        add_metadata_from_filepath: true
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    # Below the container's 192Mi limit, so the collector sheds load itself before the
+    # kernel OOM-kills it.
+    limit_mib: 140
+    spike_limit_mib: 30
+  k8s_attributes:
+    auth_type: serviceAccount
+    # Restricts the informer to this node's own pods. On a one-node cluster this changes
+    # nothing about correctness, but at a 64Mi request it is resource use worth not paying
+    # for, and it is what keeps a future multi-node cluster from making every collector
+    # replica watch every pod.
+    filter:
+      node_from_env_var: KUBE_NODE_NAME
+    extract:
+      metadata:
+        - k8s.namespace.name
+        - k8s.pod.name
+        - k8s.container.name
+        - k8s.deployment.name
+        - k8s.statefulset.name
+        - k8s.node.name
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.name
+          - from: resource_attribute
+            name: k8s.namespace.name
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  otlp_http/axiom:
+    # The regional edge domain, not api.axiom.co: against an EU dataset the US default
+    # returns `400 ingest is only allowed into datasets in the primary region`.
+    # logs_endpoint, not endpoint: `endpoint` appends /v1/logs itself, giving
+    # /v1/logs/v1/logs.
+    logs_endpoint: https://eu-central-1.aws.edge.axiom.co/v1/logs
+    headers:
+      Authorization: "Bearer ${env:AXIOM_TOKEN}"
+      X-Axiom-Dataset: anchovy-bot-logs
+    retry_on_failure:
+      enabled: true
+    sending_queue:
+      enabled: true
+      storage: file_storage
+
+service:
+  extensions: [file_storage, health_check]
+  pipelines:
+    logs:
+      receivers: [file_log]
+      processors: [memory_limiter, k8s_attributes, batch]
+      exporters: [otlp_http/axiom]
