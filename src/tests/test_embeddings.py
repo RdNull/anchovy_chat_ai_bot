@@ -169,6 +169,8 @@ async def test_embeddings_client_search(mocker):
 
 
 async def test_update_chat_embeddings(mocker):
+    mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
+
     # Mock DB
     mock_db = mocker.patch('src.processors.context.embeddings.db')
 

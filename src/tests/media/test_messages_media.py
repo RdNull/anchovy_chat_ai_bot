@@ -1,5 +1,7 @@
+import asyncio
 import base64
 import io
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,6 +10,7 @@ from src import settings
 from src.messages.media import (
     create_media_description, get_media_description_by_media_id, get_recent_sticker_ids,
     get_sendable_file_id, handle_media_message, sticker_corpus_size,
+    update_media_description_status,
 )
 from src.messages.repository import get_message_media_data
 from src.mongo import media_descriptions, messages
@@ -146,22 +149,6 @@ async def test_handle_media_message_skips_when_no_unique_id(mock_context):
     assert mock_context.bot.get_file.call_count == 0
 
 
-async def test_handle_media_message_skips_when_status_ready(mock_context):
-    message = Message(
-        chat_id=123,
-        nickname='testuser',
-        role=UserRole.USER,
-        media=MessageMedia(
-            media_id='file_id_123',
-            unique_id='unique_id_ready',
-            type=MessageMediaTypes.IMAGE,
-            status=MessageMediaStatus.READY,
-        )
-    )
-    await handle_media_message(message, mock_context)
-    assert mock_context.bot.get_file.call_count == 0
-
-
 async def test_handle_media_message_generate_returns_none(mocker, sample_message, mock_context):
     mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
         content='base64content',
@@ -174,6 +161,100 @@ async def test_handle_media_message_generate_returns_none(mocker, sample_message
 
     desc = await get_media_description_by_media_id('unique_id_123')
     assert desc is not None
+
+
+# --- status writes & staleness ---
+
+async def test_update_media_description_status_persists_in_mongo():
+    """Regression for the `_id` no-op: every sibling write wraps `ObjectId(...)`,
+    this one didn't, so `update_one` matched zero documents and silently no-op'd."""
+    created = await create_media_description(media_id='uid_status', description='d')
+
+    await update_media_description_status(created.id, MessageMediaStatus.ERROR)
+
+    read_back = await get_media_description_by_media_id('uid_status')
+    assert read_back.status == MessageMediaStatus.ERROR
+
+
+async def test_wait_for_media_ready_stops_once_error_is_written():
+    """End-to-end through the real repository: before the `_id` fix this write
+    never landed, `is_finished` never became true, and this polled to the deadline
+    every time. Real I/O throughout — mocking `asyncio.sleep` here would patch the
+    module attribute process-wide and stall Motor's own background monitoring."""
+    created = await create_media_description(
+        media_id='uid_err', status=MessageMediaStatus.PROCESSING,
+    )
+    await update_media_description_status(created.id, MessageMediaStatus.ERROR)
+
+    started = asyncio.get_event_loop().time()
+    await wait_for_media_ready(['uid_err'], timeout=5.0)
+    elapsed = asyncio.get_event_loop().time() - started
+
+    assert elapsed < 1.0  # resolved on the first check; a real poll sleeps 0.5s
+
+
+async def test_handle_media_message_skips_a_fresh_processing_row(mocker, sample_message, mock_context):
+    await create_media_description(
+        media_id='unique_id_123', status=MessageMediaStatus.PROCESSING,
+    )
+    mock_get_media = mocker.patch('src.messages.media.pipeline.get_message_media')
+
+    await handle_media_message(sample_message, mock_context)
+
+    assert mock_get_media.call_count == 0
+
+
+async def test_handle_media_message_retries_a_stale_processing_row(
+    mocker, sample_message, mock_context,
+):
+    """A crash between the PROCESSING write and the describe call must not leave a
+    row that is polled forever — past the staleness window it is retried instead."""
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=10)).timestamp()
+    await media_descriptions.insert_one({
+        'hash': None, 'description': None, 'ocr_text': None,
+        'media_id': 'unique_id_123', 'type': MessageMediaTypes.IMAGE.value,
+        'status': MessageMediaStatus.PROCESSING.value, 'sticker_emoji': None,
+        'updated_at': stale,
+    })
+    mocker.patch.object(settings, 'MEDIA_PROCESSING_STALE_MINUTES', 5)
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+        content='base64content', format='jpg',
+    ))
+    mocker.patch(
+        'src.messages.media.pipeline._generate_media_description',
+        return_value=MediaDescriptionData(description='retried', ocr_text=None),
+    )
+
+    await handle_media_message(sample_message, mock_context)
+
+    desc = await get_media_description_by_media_id('unique_id_123')
+    assert desc.status == MessageMediaStatus.READY
+    assert desc.description == 'retried'
+
+
+async def test_handle_media_message_retries_a_processing_row_without_updated_at(
+    mocker, sample_message, mock_context,
+):
+    """A row written before `updated_at` existed has no way to prove it's fresh, so
+    it must be treated as stale rather than polled forever."""
+    await media_descriptions.insert_one({
+        'hash': None, 'description': None, 'ocr_text': None,
+        'media_id': 'unique_id_123', 'type': MessageMediaTypes.IMAGE.value,
+        'status': MessageMediaStatus.PROCESSING.value, 'sticker_emoji': None,
+    })
+    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+        content='base64content', format='jpg',
+    ))
+    mocker.patch(
+        'src.messages.media.pipeline._generate_media_description',
+        return_value=MediaDescriptionData(description='retried legacy', ocr_text=None),
+    )
+
+    await handle_media_message(sample_message, mock_context)
+
+    desc = await get_media_description_by_media_id('unique_id_123')
+    assert desc.status == MessageMediaStatus.READY
+    assert desc.description == 'retried legacy'
 
 
 # --- sticker metadata persistence ---

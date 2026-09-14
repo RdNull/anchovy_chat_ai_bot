@@ -50,6 +50,13 @@ PROMOTE_CANDIDATE = 'promote_candidate'
 # this rather than restating a subset that then falls behind.
 EVENTS = (BIRTH, CARRY, VANISH, PROMOTE, PROMOTE_CANDIDATE)
 
+TOPICS_FIELD = 'active_topics'
+QUESTIONS_FIELD = 'open_questions'
+JOKES_FIELD = 'running_jokes'
+# EvictionRecord.nick is required, and state lists have no participant to attribute
+# the drop to — this is the placeholder that says so.
+STATE_OWNER = '-'
+
 CAP_REASON = 'cap'
 CYCLES_REASON = 'cycles'
 # The policy would have kept this entry and the positional baseline dropped it
@@ -201,6 +208,23 @@ def _cut(size: int, keep: int) -> int:
     return max(size - keep, 0)
 
 
+def _evict_state_list(
+    field: str, entries: list[str], keep: int,
+) -> tuple[list[str], list[EvictionRecord]]:
+    """Applies the positional cap to one `ChatState` list and records what it costs.
+
+    Unconditional, like the traits cap — `state` gets no confidence or recurrence
+    signal either. Until now this was a bare slice with no `EvictionRecord` at all,
+    so `MEMORY_DECAY` had never once reported a dropped joke.
+    """
+    cut = _cut(len(entries), keep)
+    evictions = [
+        EvictionRecord(nick=STATE_OWNER, field=field, text=entry, reason=CAP_REASON, applied=True)
+        for entry in entries[:cut]
+    ]
+    return entries[cut:], evictions
+
+
 def _policy_selection(
     entries: list[str],
     records: dict[str, DecayRecord],
@@ -263,6 +287,9 @@ def apply_decay(
     overflow numbers this phase collects. It is still *recorded*, so the phase sees
     which traits the placeholder rule cost.
 
+    `state`'s three lists get the same recording, under `STATE_OWNER` since they
+    have no participant to attribute a drop to.
+
     Args:
         updated: Memory to evict from. Mutated in place.
         decay: This cycle's sidecar, from `reconcile`. Pruned in place.
@@ -320,11 +347,18 @@ def apply_decay(
             decay.pop(nick, None)
 
     state = updated.state
-    state.active_topics = state.active_topics[_cut(len(state.active_topics), caps.topics_keep):]
-    state.open_questions = state.open_questions[
-        _cut(len(state.open_questions), caps.questions_keep):
-    ]
-    state.running_jokes = state.running_jokes[_cut(len(state.running_jokes), caps.jokes_keep):]
+    state.active_topics, topic_evictions = _evict_state_list(
+        TOPICS_FIELD, state.active_topics, caps.topics_keep
+    )
+    state.open_questions, question_evictions = _evict_state_list(
+        QUESTIONS_FIELD, state.open_questions, caps.questions_keep
+    )
+    state.running_jokes, joke_evictions = _evict_state_list(
+        JOKES_FIELD, state.running_jokes, caps.jokes_keep
+    )
+    evictions.extend(topic_evictions)
+    evictions.extend(question_evictions)
+    evictions.extend(joke_evictions)
 
     for nick in set(decay) - set(updated.participants):
         decay.pop(nick)
@@ -334,6 +368,7 @@ def apply_decay(
 
 def summarize_churn(
     updated: StructuredMemory,
+    prior_content: StructuredMemory,
     prior_decay: Decay,
     decay: Decay,
     guard_records: list,
@@ -348,6 +383,8 @@ def summarize_churn(
 
     Args:
         updated: Memory as it will be saved, after guard and eviction.
+        prior_content: Last cycle's saved snapshot — a vanished entry is already gone
+            from `updated`, so this is the only place its raw text still exists.
         prior_decay: Last cycle's sidecar — the authority on what was stored.
         decay: This cycle's sidecar, pruned by `apply_decay` to the survivors.
         guard_records: `ConflictRecord`s from the guard.
@@ -363,7 +400,11 @@ def summarize_churn(
         (record.owner, normalize(record.text)) for record in guard_records if record.removed
     }
     accounted.update(
-        (record.nick, normalize(record.text)) for record in evictions if record.applied
+        (record.nick, normalize(record.text))
+        for record in evictions
+        # Participant fields only: a vanish is keyed on (nick, key), and state-list
+        # evictions carry no participant nick to collide with one.
+        if record.applied and record.field in (TRAITS_FIELD, RECENT_FIELD)
     )
 
     churn: list[ChurnRecord] = []
@@ -399,7 +440,8 @@ def summarize_churn(
             if key in survivors or (nick, key) in accounted:
                 continue
             churn.append(ChurnRecord(
-                nick=nick, key=key, text=key, field=record.field, event=VANISH
+                nick=nick, key=key, text=_sample_text(prior_content, nick, key),
+                field=record.field, event=VANISH,
             ))
             if record.field == RECENT_FIELD:
                 lost_recent += 1
