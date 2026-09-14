@@ -7,7 +7,10 @@
 #
 # Lives in `default`, like everything except blackbox. `k8s_attributes` needs cluster-wide read on
 # pods/namespaces (core) and replicasets (apps, to resolve a pod back to its Deployment name), so
-# the ClusterRole below mirrors dns-sync's — a namespaced Role cannot grant either.
+# the ClusterRole below mirrors dns-sync's — a namespaced Role cannot grant either. CronJob pods
+# (dns-sync, mongo-backup) resolve to their CronJob's name too, but via a name-only heuristic on
+# the Job's own name string — no Job/CronJob API read, so no extra RBAC. See
+# manifests/otel-collector-config.yaml for why that heuristic is worth knowing about.
 #
 # The collector's own pipeline config is NOT declared here — it lives as plain YAML in
 # manifests/otel-collector-config.yaml (not a Kubernetes manifest, no apiVersion/kind) and
