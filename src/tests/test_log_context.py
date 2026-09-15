@@ -97,3 +97,32 @@ def test_nested_log_context_shadows_without_mutating_the_outer_binding():
     assert inner_record.chat_id == 7
     assert inner_record.task == 'inner'
     assert outer_record.task == 'outer'
+
+
+def test_log_context_generates_a_request_id_when_none_is_bound():
+    with log_context(chat_id=1):
+        record = make_record()
+        LogContextFilter().filter(record)
+
+        assert isinstance(record.request_id, str)
+        assert len(record.request_id) == 8
+
+
+def test_nested_log_context_inherits_the_same_request_id():
+    with log_context():
+        outer_record = make_record()
+        LogContextFilter().filter(outer_record)
+
+        with log_context(task='inner'):
+            inner_record = make_record()
+            LogContextFilter().filter(inner_record)
+
+    assert inner_record.request_id == outer_record.request_id
+
+
+def test_log_context_accepts_an_explicit_request_id():
+    with log_context(request_id='deadbeef'):
+        record = make_record()
+        LogContextFilter().filter(record)
+
+        assert record.request_id == 'deadbeef'

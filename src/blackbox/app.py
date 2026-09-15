@@ -23,6 +23,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from src import mongo, settings
 from src.blackbox.server import mcp
 from src.embeddings.messages import messages_embeddings_client
+from src.log_context import log_context
 from src.logs import logger
 
 HEALTH_PATH = '/healthz'
@@ -104,23 +105,28 @@ class BearerAuth:
                 status = message['status']
             await send(message)
 
-        path = scope['path']
-        header = _authorization(scope)
-        if path == HEALTH_PATH:
-            await _empty(send_with_status, 200)
-        elif path == READY_PATH:
-            await _empty(send_with_status, 200 if await _stores_ready() else 503)
-        elif header is not None and self._authorized(header):
-            await self.app(scope, receive, send_with_status)
-        else:
-            await _empty(send_with_status, 401, [(b'www-authenticate', b'Bearer')])
+        # Bound once per HTTP request rather than around the one MCP tool call it may
+        # dispatch (`server.py:_run`): that keeps a single request_id on both the
+        # BLACKBOX_HTTP line below and the nested BLACKBOX_TOOL line, instead of two
+        # unrelated ids for what is causally one request.
+        with log_context():
+            path = scope['path']
+            header = _authorization(scope)
+            if path == HEALTH_PATH:
+                await _empty(send_with_status, 200)
+            elif path == READY_PATH:
+                await _empty(send_with_status, 200 if await _stores_ready() else 503)
+            elif header is not None and self._authorized(header):
+                await self.app(scope, receive, send_with_status)
+            else:
+                await _empty(send_with_status, 401, [(b'www-authenticate', b'Bearer')])
 
-        quiet = path in _PROBE_PATHS or (status == 401 and header is None)
-        logger.log(
-            logging.DEBUG if quiet else logging.INFO,
-            'BLACKBOX_HTTP method=%s path=%s status=%s elapsed_ms=%d',
-            scope['method'], path, status, (time.monotonic() - started) * 1000,
-        )
+            quiet = path in _PROBE_PATHS or (status == 401 and header is None)
+            logger.log(
+                logging.DEBUG if quiet else logging.INFO,
+                'BLACKBOX_HTTP method=%s path=%s status=%s elapsed_ms=%d',
+                scope['method'], path, status, (time.monotonic() - started) * 1000,
+            )
 
     def _authorized(self, header: bytes) -> bool:
         scheme, _, credentials = header.partition(b' ')

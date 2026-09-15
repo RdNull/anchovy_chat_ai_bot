@@ -1,6 +1,5 @@
 import asyncio
 from functools import wraps
-from uuid import uuid4
 
 from telegram import Message, Update
 from telegram.constants import ChatAction
@@ -9,7 +8,6 @@ from telegram.ext import (ContextTypes, filters)
 from src import settings
 from src.characters.repository import get_character
 from src.chat_settings import repository as chat_settings_repository
-from src.log_context import log_context
 from src.logs import logger
 from src.memory.models import MemoryData
 from src.models import RelatedMessagesData
@@ -54,12 +52,10 @@ def escape_markdown_v2(text: str) -> str:
 def restricted(func):
     """Restricts access to the bot by chat and user ids.
 
-    The single gate every Telegram update passes (two handlers bypass it — `start`, which
-    takes no ids to restrict, and `error_handler`, which is registered through
-    `add_error_handler` and never flows through a decorated handler at all — both bind their
-    own `log_context` directly). Binding `chat_id`/`user_id`/`request_id` here is what lets
-    every downstream log line, including ones in `asyncio.create_task`s this update spawns,
-    carry them without being passed explicitly.
+    `chat_id`/`user_id` are already bound by `ContextBindingApplication.process_update`
+    (`src/bot.py`) by the time any handler runs, so nothing here needs to bind them again —
+    including on the rejection path below, which used to be the one place that passed them
+    explicitly.
     """
 
     @wraps(func)
@@ -67,29 +63,25 @@ def restricted(func):
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
 
-        with log_context(chat_id=chat_id, user_id=user_id, request_id=uuid4().hex[:8]):
-            is_allowed = False
-            if str(user_id) in settings.ALLOWED_USER_IDS:
-                is_allowed = True
+        is_allowed = False
+        if str(user_id) in settings.ALLOWED_USER_IDS:
+            is_allowed = True
 
-            if str(chat_id) in settings.ALLOWED_CHAT_IDS:
-                is_allowed = True
+        if str(chat_id) in settings.ALLOWED_CHAT_IDS:
+            is_allowed = True
 
-            if not is_allowed:
-                # The one place chat_id/user_id are passed explicitly rather than left to
-                # the context filter: this line *is* the binding site, so there is nothing
-                # upstream that would have supplied them otherwise.
-                logger.warning(f"Unauthorized access: user {user_id}, chat {chat_id}")
-                if update.effective_message:
-                    await update.effective_message.reply_text(
-                        f"Сорян, тебе нельзя пользоваться этим ботом\n"
-                        f"Твой ID: `{user_id}`\n"
-                        f"ID чата: `{chat_id}`",
-                        parse_mode="MarkdownV2"
-                    )
-                return
+        if not is_allowed:
+            logger.warning(f"Unauthorized access: user {user_id}, chat {chat_id}")
+            if update.effective_message:
+                await update.effective_message.reply_text(
+                    f"Сорян, тебе нельзя пользоваться этим ботом\n"
+                    f"Твой ID: `{user_id}`\n"
+                    f"ID чата: `{chat_id}`",
+                    parse_mode="MarkdownV2"
+                )
+            return
 
-            return await func(update, context, *args, **kwargs)
+        return await func(update, context, *args, **kwargs)
 
     return wrapped
 

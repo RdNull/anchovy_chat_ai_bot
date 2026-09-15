@@ -1,6 +1,5 @@
 import asyncio
 import datetime as dt
-from uuid import uuid4
 
 from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
@@ -19,6 +18,25 @@ from src.messages.utils import ReplyToBotFilter
 from src.running_app import set_running_app
 
 
+class ContextBindingApplication(Application):
+    """Binds `chat_id`/`user_id` once per update, in the one place that reaches every
+    handler group's callback for it.
+
+    PTB's own `process_update` is that place: it dispatches each handler group either by
+    `await`ing the callback directly or via `self.create_task(...)` for the (default)
+    non-blocking case, and a handler that raises has its error routed to
+    `add_error_handler`'s callback from within that same call. `create_task` copies
+    whatever `log_context` bound here into the new task, so both paths inherit it without
+    each handler — or `error_handler` — binding its own copy.
+    """
+
+    async def process_update(self, update: object) -> None:
+        chat_id = getattr(getattr(update, 'effective_chat', None), 'id', None)
+        user_id = getattr(getattr(update, 'effective_user', None), 'id', None)
+        with log_context(chat_id=chat_id, user_id=user_id):
+            await super().process_update(update)
+
+
 async def log_sticker_corpus():
     """One line at boot: how much of the group's sticker vocabulary is searchable yet?
 
@@ -27,7 +45,7 @@ async def log_sticker_corpus():
     evidence that the group recycles a very small sticker set, the one thing that
     would make the narrow-vocabulary decision worth revisiting.
     """
-    with log_context(request_id=uuid4().hex[:8]):
+    with log_context():
         size = await sticker_corpus_size()
         logger.info(
             f'STICKER_CORPUS size={size} enabled={settings.ENABLE_STICKER_REPLIES}'
@@ -60,7 +78,7 @@ def main() -> None:
     loop.create_task(setup_scheduler())
     app = ApplicationBuilder().token(
         settings.TELEGRAM_TOKEN
-    ).http_version('2').post_init(post_init).build()
+    ).application_class(ContextBindingApplication).http_version('2').post_init(post_init).build()
 
     mention_handler = MessageHandler(
         filters.TEXT & (

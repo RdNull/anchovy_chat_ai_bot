@@ -21,6 +21,7 @@ import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Generator
+from uuid import uuid4
 
 _LOG_CONTEXT: ContextVar[dict[str, object]] = ContextVar('log_context', default={})
 
@@ -33,8 +34,15 @@ def log_context(**fields: object) -> Generator[None, None, None]:
     only ever adds to or shadows the outer binding for the duration of its own block, and
     the outer binding is restored exactly on exit — concurrent tasks sharing an ancestor
     context never see each other's nested bindings.
+
+    `request_id` is generated here rather than by every call site: the first `log_context`
+    call in a chain (the one where `request_id` is absent from both the current context and
+    `fields`) mints one, and every nested call inherits it unchanged. A call site that wants
+    a fresh id of its own — none do today — can still pass `request_id=` explicitly.
     """
     current = _LOG_CONTEXT.get()
+    if 'request_id' not in current and 'request_id' not in fields:
+        fields = {**fields, 'request_id': uuid4().hex[:8]}
     token = _LOG_CONTEXT.set({**current, **fields})
     try:
         yield

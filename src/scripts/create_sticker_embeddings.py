@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-from uuid import uuid4
 
 from src.embeddings.stickers import stickers_embedding_client
 from src.log_context import log_context
@@ -22,7 +21,7 @@ async def create_sticker_embeddings(batch_size: int):
     embedding-model change. Point ids are derived from `unique_id`, so re-running
     upserts rather than duplicating.
     """
-    with log_context(request_id=uuid4().hex[:8]):
+    with log_context():
         query = {
             'type': MessageMediaTypes.STICKER.value, 'status': MessageMediaStatus.READY.value,
         }

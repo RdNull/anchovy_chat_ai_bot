@@ -1,12 +1,10 @@
-from uuid import uuid4
-
 from src.log_context import log_context
 from src.logs import logger
 from src.facts.handlers import decay_all_facts
 
 
 async def run_fact_decay():
-    with log_context(task='fact_decay', request_id=uuid4().hex[:8]):
+    with log_context(task='fact_decay'):
         logger.info("Running scheduled fact confidence decay")
         try:
             await decay_all_facts()
