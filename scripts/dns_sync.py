@@ -25,6 +25,7 @@ from typing import Any
 
 import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pythonjsonlogger.json import JsonFormatter
 
 logger = logging.getLogger('dns_sync')
 
@@ -89,7 +90,8 @@ def sync(kube: httpx.Client, linode: httpx.Client, domain: str, record_name: str
 
     if is_private(node_ip):
         logger.error(
-            'DNS_SYNC record=%s node_ip=%s record_ip=%s action=refused', fqdn, node_ip, record_ip,
+            'DNS sync refused',
+            extra={'event': 'DNS_SYNC_SKIPPED', 'record': fqdn, 'ip': node_ip, 'outcome': 'refused'},
         )
         raise DnsSyncError(f'refusing to point {fqdn} at private address {node_ip}')
 
@@ -101,7 +103,8 @@ def sync(kube: httpx.Client, linode: httpx.Client, domain: str, record_name: str
         action = 'updated'
 
     logger.info(
-        'DNS_SYNC record=%s node_ip=%s record_ip=%s action=%s', fqdn, node_ip, record_ip, action,
+        'DNS sync finished',
+        extra={'event': 'DNS_SYNC_OK', 'record': fqdn, 'ip': node_ip, 'outcome': action},
     )
     return action
 
@@ -123,7 +126,7 @@ def main() -> int:
         try:
             sync(kube, linode, settings.DNS_SYNC_DOMAIN, settings.DNS_SYNC_RECORD)
         except DnsSyncError as exc:
-            logger.error('DNS_SYNC_FAILED %s', exc)
+            logger.error('DNS sync failed', extra={'event': 'DNS_SYNC_FAILED', 'error': str(exc)})
             return 1
     return 0
 
@@ -163,5 +166,19 @@ def _a_record(linode: httpx.Client, domain_id: int, name: str) -> dict[str, Any]
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+    # Its own copy of src/logs.py's JsonFormatter setup, duplicated on purpose: this
+    # script imports nothing from `src` (see the module docstring), so it cannot share
+    # the helper that builds this for the bot.
+    _formatter = JsonFormatter(
+        '%(levelname)s %(name)s %(module)s %(lineno)d %(message)s',
+        rename_fields={
+            'levelname': 'level', 'name': 'logger', 'lineno': 'line',
+            'message': 'msg', 'exc_info': 'stack',
+        },
+        json_ensure_ascii=False,
+        json_default=repr,
+    )
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(_formatter)
+    logging.basicConfig(level=logging.INFO, handlers=[_handler])
     raise SystemExit(main())
