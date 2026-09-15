@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+from uuid import uuid4
 
 from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
@@ -10,6 +11,7 @@ from telegram.ext import (
 )
 
 from src import const, settings, tasks
+from src.log_context import log_context
 from src.logs import logger
 from src.messages import handlers
 from src.messages.media import sticker_corpus_size
@@ -25,10 +27,11 @@ async def log_sticker_corpus():
     evidence that the group recycles a very small sticker set, the one thing that
     would make the narrow-vocabulary decision worth revisiting.
     """
-    size = await sticker_corpus_size()
-    logger.info(
-        f'STICKER_CORPUS size={size} enabled={settings.ENABLE_STICKER_REPLIES}'
-    )
+    with log_context(request_id=uuid4().hex[:8]):
+        size = await sticker_corpus_size()
+        logger.info(
+            f'STICKER_CORPUS size={size} enabled={settings.ENABLE_STICKER_REPLIES}'
+        )
 
 
 async def setup_scheduler():

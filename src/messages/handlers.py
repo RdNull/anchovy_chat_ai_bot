@@ -1,5 +1,6 @@
 import asyncio
 import random
+from uuid import uuid4
 
 from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage,
@@ -9,6 +10,7 @@ from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
 from src.characters.repository import CHARACTERS
+from src.log_context import log_context
 from src.logs import logger
 from src.models import UpdateMessage
 from .media import handle_media_message
@@ -26,12 +28,22 @@ from ..processors.context.handlers import run_context_checks
 
 
 async def start(update: Update, context: CallbackContext):
-    logger.info('started')
-    await update.message.reply_text('Дарова, чорт!')
+    with log_context(
+        chat_id=update.effective_chat.id, user_id=update.effective_user.id,
+        request_id=uuid4().hex[:8],
+    ):
+        logger.info('started')
+        await update.message.reply_text('Дарова, чорт!')
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error("Exception while handling an update:", exc_info=context.error)
+    # Registered via `add_error_handler`, a dispatch path that never passes through
+    # `restricted` — this is the one other place ids have to be bound directly, and `update`
+    # is typed `object` because PTB may hand this a non-`Update` in some failure paths.
+    chat_id = getattr(getattr(update, 'effective_chat', None), 'id', None)
+    user_id = getattr(getattr(update, 'effective_user', None), 'id', None)
+    with log_context(chat_id=chat_id, user_id=user_id, request_id=uuid4().hex[:8]):
+        logger.error("Exception while handling an update:", exc_info=context.error)
 
 
 @restricted

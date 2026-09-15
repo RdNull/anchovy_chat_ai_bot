@@ -1,13 +1,19 @@
-"""Bot-token redaction in the log stream.
+"""Bot-token redaction in the log stream, and the JSON formatter / `event()` contract.
 
 PTB puts the token in the URL path and `httpx` logs every request line at INFO, so the
 credential was written to the pod log on every API call the bot made. The token arrives as
 a lazy `%s` argument rather than inside the format string, which is the detail that makes
 this worth a test: a filter that rewrites `record.msg` alone changes nothing.
 """
+import json
 import logging
+import sys
 
-from src.logs import BOT_TOKEN_PATTERN, RedactBotToken, TelegramPollingFilter
+import pytest
+
+from src.logs import (
+    BOT_TOKEN_PATTERN, RedactBotToken, TelegramPollingFilter, _formatter, event,
+)
 
 # Shaped like a real token — digits, colon, 35 URL-safe characters — and not one.
 FAKE_TOKEN = '1234567890:AAHfake_Token_For_Tests_00000000000'
@@ -123,3 +129,86 @@ def test_the_filter_is_wired_into_the_root_handlers():
     ]
 
     assert attached
+
+
+def format_record(record: logging.LogRecord) -> dict:
+    """Runs a record through the same `JsonFormatter` the handler carries, and parses it."""
+    return json.loads(_formatter.format(record))
+
+
+def test_event_round_trips_an_int_not_a_string():
+    """`chat_id` must stay a queryable int in Axiom, not stringify into a text column."""
+    record = make_record('handled', name='bot', level=logging.INFO)
+    record.__dict__.update(event('SOME_EVENT', chat_id=1))
+
+    formatted = format_record(record)
+
+    assert formatted['chat_id'] == 1
+    assert isinstance(formatted['chat_id'], int)
+
+
+@pytest.mark.parametrize('bad_fields', [
+    {'module': 1},   # reserved LogRecord attribute
+    {'log': 1},      # owned by the collector's container operator
+    {'args': 1},     # reserved LogRecord attribute
+    {'Foo': 1},      # not [a-z][a-z0-9_]*
+])
+def test_event_rejects_a_bad_field_name(bad_fields):
+    with pytest.raises(ValueError):
+        event('SOME_EVENT', **bad_fields)
+
+
+def test_exc_info_produces_a_single_line_with_a_populated_stack():
+    """A traceback must land as one field on one event, not split across records."""
+    try:
+        raise RuntimeError('boom')
+    except RuntimeError:
+        record = logging.LogRecord(
+            name='bot', level=logging.ERROR, pathname='x.py', lineno=1,
+            msg='failed', args=(), exc_info=sys.exc_info(),
+        )
+
+    formatted = format_record(record)
+
+    assert isinstance(formatted['stack'], str)
+    assert 'Traceback (most recent call last)' in formatted['stack']
+
+
+def test_a_non_serializable_value_formats_without_raising():
+    from bson import ObjectId
+
+    record = make_record('handled', name='bot', level=logging.INFO)
+    record.__dict__.update(event('SOME_EVENT', oid=ObjectId()))
+
+    formatted = format_record(record)
+
+    assert isinstance(formatted['oid'], str)
+
+
+def test_cyrillic_survives_unescaped():
+    record = make_record('handled', name='bot', level=logging.INFO)
+    record.__dict__.update(event('SOME_EVENT', nick='@толя'))
+
+    raw = _formatter.format(record)
+
+    assert '@толя' in raw
+    assert '\\u' not in raw
+
+
+def test_redact_bot_token_still_redacts_after_json_formatting():
+    """The filter runs on the record; the formatter runs after it, so order matters."""
+    record = make_record('HTTP Request: %s', f'https://api.telegram.org/bot{FAKE_TOKEN}/getMe')
+
+    RedactBotToken().filter(record)
+    formatted = format_record(record)
+
+    assert FAKE_TOKEN not in json.dumps(formatted)
+    assert 'bot1234567890:<redacted>' in formatted['msg']
+
+
+def test_logger_field_is_present_and_names_a_third_party_logger():
+    record = make_record('HTTP Request: %s', 'https://example.com', name='httpx')
+
+    formatted = format_record(record)
+
+    assert formatted['logger'] == 'httpx'

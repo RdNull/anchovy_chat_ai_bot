@@ -44,6 +44,34 @@ receivers:
       - type: container
         add_metadata_from_filepath: true
 
+      # Scoped to this project's own containers, NOT applied to every JSON line on the node.
+      # mongod 4.4+ logs structured JSON whose per-message `attr` object would mint 100+
+      # permanent `attributes.attr.*` columns against Axiom's 256-field budget, and would
+      # feed `"s":"I"` into severity parsing. `container` has already set k8s.container.name
+      # from the file path by this point, which is what makes the guard cheap.
+      - type: json_parser
+        if: 'resource["k8s.container.name"] == "anchovy-bot-deployment" or resource["k8s.container.name"] == "blackbox" or resource["k8s.container.name"] == "dns-sync"'
+        parse_from: body
+        parse_to: attributes
+        # A non-JSON line — a pydantic UserWarning written straight to stderr by the
+        # `warnings` module, say — must pass through with `body` intact. `_quiet` because
+        # the alternative is the collector logging about every such line.
+        on_error: send_quiet
+        parse_ints: true
+        severity:
+          parse_from: attributes.level
+          # Kept as an attribute as well as lifted to SeverityText, so a query works whether
+          # or not Axiom surfaces severity as its own column for this dataset kind.
+          preserve_to: attributes.level
+
+      # `parse_to: attributes` merges the parsed map into attributes and leaves the raw JSON
+      # in `body`. Moving `msg` over it makes `body` the constant human-readable sentence
+      # again, so `summarize count() by body` groups, and drops the duplicated payload.
+      - type: move
+        if: 'attributes?.msg != nil'
+        from: attributes.msg
+        to: body
+
 processors:
   memory_limiter:
     check_interval: 1s

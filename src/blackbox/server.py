@@ -8,6 +8,7 @@ import time
 from collections.abc import Awaitable
 from datetime import datetime
 from typing import Annotated, Any, TypeVar
+from uuid import uuid4
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -15,6 +16,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from src.blackbox import queries
+from src.log_context import log_context
 from src.logs import logger
 
 T = TypeVar('T')
@@ -50,17 +52,18 @@ async def _run(name: str, query: Awaitable[T]) -> T:
     """
     started = time.monotonic()
     outcome = 'error'
-    try:
-        result = await query
-        outcome = 'ok'
-        return result
-    except Exception as exc:
-        raise ToolError(f'{type(exc).__name__}: {exc}') from exc
-    finally:
-        logger.info(
-            'BLACKBOX_TOOL name=%s outcome=%s elapsed_ms=%d',
-            name, outcome, (time.monotonic() - started) * 1000,
-        )
+    with log_context(tool=name, request_id=uuid4().hex[:8]):
+        try:
+            result = await query
+            outcome = 'ok'
+            return result
+        except Exception as exc:
+            raise ToolError(f'{type(exc).__name__}: {exc}') from exc
+        finally:
+            logger.info(
+                'BLACKBOX_TOOL name=%s outcome=%s elapsed_ms=%d',
+                name, outcome, (time.monotonic() - started) * 1000,
+            )
 
 
 @mcp.tool(annotations=_READ_ONLY)
