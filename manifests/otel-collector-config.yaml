@@ -115,6 +115,30 @@ processors:
   batch:
     timeout: 5s
     send_batch_size: 1024
+  # Volume control, not correctness: 21.2k of mongo's ~21.3k events per day and 4.4k of
+  # qdrant's ~4.5k are connection churn, WiredTiger checkpoints and a client connection
+  # probe. Dropped here rather than at the source so `kubectl logs` keeps everything for
+  # live debugging, and so the list of what is discarded stays readable. Slow queries, auth
+  # events, client metadata and disconnect notices — the ~81/day that can answer a
+  # question — all survive. `mongod --quiet` was rejected: it takes the connection pair but
+  # not WiredTiger, needs a StatefulSet rollout, strips the lines from `kubectl logs` too,
+  # and MongoDB's manual both warns against it in production and declines to enumerate what
+  # it suppresses.
+  filter/noise:
+    # A body that isn't a string, or a regex that can't run, must not take the batch down.
+    error_mode: ignore
+    logs:
+      log_record:
+        # Match on mongod's stable numeric message ids, not on `msg` text, which moves
+        # between releases. 22943/22944 are NETWORK "Connection accepted"/"Connection ended".
+        - 'resource.attributes["k8s.container.name"] == "mongo" and (IsMatch(body, "\"id\":22943,") or IsMatch(body, "\"id\":22944,"))'
+        # WiredTiger checkpoint chatter, Informational only — an error out of WTCHKPT is
+        # exactly the thing worth keeping. mongod orders its keys `t, s, c, id`, hence `s`
+        # before `c`.
+        - 'resource.attributes["k8s.container.name"] == "mongo" and IsMatch(body, "\"s\":\"I\",\\s+\"c\":\"WTCHKPT\"")'
+        # The qdrant client's connection probe. Anchored on the 200 on purpose: a probe that
+        # starts *failing* is the one line from this endpoint you would want to see.
+        - 'resource.attributes["k8s.container.name"] == "qdrant" and IsMatch(body, "\"GET /collections HTTP/1.1\" 200")'
 
 exporters:
   otlp_http/axiom:
@@ -137,5 +161,8 @@ service:
   pipelines:
     logs:
       receivers: [file_log]
-      processors: [memory_limiter, k8s_attributes, batch]
+      # filter/noise sits before k8s_attributes so a dropped record never pays for the
+      # informer lookup; resource.attributes["k8s.container.name"] is already populated by
+      # then, set by the `container` operator's add_metadata_from_filepath in the receiver.
+      processors: [memory_limiter, filter/noise, k8s_attributes, batch]
       exporters: [otlp_http/axiom]

@@ -8,7 +8,6 @@ import time
 from collections.abc import Awaitable
 from datetime import datetime
 from typing import Annotated, Any, TypeVar
-from uuid import uuid4
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -16,7 +15,6 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from src.blackbox import queries
-from src.log_context import log_context
 from src.logs import elapsed_ms, event, logger
 
 T = TypeVar('T')
@@ -49,23 +47,26 @@ async def _run(name: str, query: Awaitable[T]) -> T:
 
     The log line is the only place the tool name is visible without logging the
     request body, which is the chat. It carries no arguments and no result.
+
+    No `log_context` here: nothing in `queries.py` logs anything, so there is no nested
+    call this would need to reach, and `request_id` already comes from the one bound
+    around the whole HTTP request in `app.py:BearerAuth.__call__`.
     """
     started = time.monotonic()
     outcome = 'error'
-    with log_context(tool=name, request_id=uuid4().hex[:8]):
-        try:
-            result = await query
-            outcome = 'ok'
-            return result
-        except Exception as exc:
-            raise ToolError(f'{type(exc).__name__}: {exc}') from exc
-        finally:
-            logger.info(
-                'Blackbox tool finished',
-                extra=event(
-                    'BLACKBOX_TOOL', tool=name, outcome=outcome, elapsed_ms=elapsed_ms(started),
-                ),
-            )
+    try:
+        result = await query
+        outcome = 'ok'
+        return result
+    except Exception as exc:
+        raise ToolError(f'{type(exc).__name__}: {exc}') from exc
+    finally:
+        logger.info(
+            'Blackbox tool finished',
+            extra=event(
+                'BLACKBOX_TOOL', tool=name, outcome=outcome, elapsed_ms=elapsed_ms(started),
+            ),
+        )
 
 
 @mcp.tool(annotations=_READ_ONLY)

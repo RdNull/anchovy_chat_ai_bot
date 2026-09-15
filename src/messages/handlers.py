@@ -1,6 +1,5 @@
 import asyncio
 import random
-from uuid import uuid4
 
 from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage,
@@ -28,21 +27,23 @@ from ..processors.context.handlers import run_context_checks
 
 
 async def start(update: Update, context: CallbackContext):
-    with log_context(
-        chat_id=update.effective_chat.id, user_id=update.effective_user.id,
-        request_id=uuid4().hex[:8],
-    ):
-        logger.info('Command handled', extra=event('COMMAND_HANDLED', command='start'))
-        await update.message.reply_text('Дарова, чорт!')
+    # chat_id/user_id are already bound by ContextBindingApplication.process_update
+    # (src/bot.py) by the time this callback runs.
+    logger.info('Command handled', extra=event('COMMAND_HANDLED', command='start'))
+    await update.message.reply_text('Дарова, чорт!')
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Registered via `add_error_handler`, a dispatch path that never passes through
-    # `restricted` — this is the one other place ids have to be bound directly, and `update`
-    # is typed `object` because PTB may hand this a non-`Update` in some failure paths.
+    # Registered via `add_error_handler`. A handler-raised exception is routed here from
+    # within the same `process_update` call (or the same task, for a non-blocking handler),
+    # so it normally already carries the update's bound chat_id/user_id -- but PTB can also
+    # call this for a failure with no associated update at all (a polling-level error), which
+    # never went through process_update and so never bound anything. Binding again here is a
+    # no-op in the common case (log_context leaves an existing value alone) and the fallback
+    # for the uncommon one; `update` is typed `object` because it may not be an `Update`.
     chat_id = getattr(getattr(update, 'effective_chat', None), 'id', None)
     user_id = getattr(getattr(update, 'effective_user', None), 'id', None)
-    with log_context(chat_id=chat_id, user_id=user_id, request_id=uuid4().hex[:8]):
+    with log_context(chat_id=chat_id, user_id=user_id):
         logger.error(
             'Exception while handling an update', exc_info=context.error,
             extra=event('UPDATE_FAILED'),

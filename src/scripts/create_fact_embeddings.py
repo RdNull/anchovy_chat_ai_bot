@@ -2,10 +2,9 @@
 import argparse
 import asyncio
 import time
-from uuid import uuid4
 
 from src.embeddings.facts import facts_embedding_client
-from src.log_context import log_context
+from src.log_context import push_log_context
 from src.logs import elapsed_ms, event, logger
 from src.models import UserFact
 from src import mongo
@@ -22,30 +21,30 @@ async def create_fact_embeddings(nickname: str | None, batch_size: int):
         nickname: Optional nickname to limit processing to a single user. If None, process all facts.
         batch_size: Number of facts to process before logging progress.
     """
-    with log_context(request_id=uuid4().hex[:8]):
-        query = {'nickname': nickname} if nickname else {}
-        total = await mongo.facts.count_documents(query)
-        started = time.monotonic()
-        logger.info('Backfill starting', extra=event('BACKFILL_START', kind='facts', total=total))
+    push_log_context()  # one CLI process, asyncio.run's own fresh task -- nothing to reset
+    query = {'nickname': nickname} if nickname else {}
+    total = await mongo.facts.count_documents(query)
+    started = time.monotonic()
+    logger.info('Backfill starting', extra=event('BACKFILL_START', kind='facts', total=total))
 
-        cursor = mongo.facts.find(query).batch_size(batch_size)
-        processed = 0
-        async for raw in cursor:
-            fact = UserFact.model_validate(raw)
-            await facts_embedding_client.save_fact(fact)
-            processed += 1
-            if processed % batch_size == 0:
-                logger.info(
-                    'Backfill progress',
-                    extra=event('BACKFILL_PROGRESS', kind='facts', processed=processed, total=total),
-                )
+    cursor = mongo.facts.find(query).batch_size(batch_size)
+    processed = 0
+    async for raw in cursor:
+        fact = UserFact.model_validate(raw)
+        await facts_embedding_client.save_fact(fact)
+        processed += 1
+        if processed % batch_size == 0:
+            logger.info(
+                'Backfill progress',
+                extra=event('BACKFILL_PROGRESS', kind='facts', processed=processed, total=total),
+            )
 
-        logger.info(
-            'Backfill finished',
-            extra=event(
-                'BACKFILL_DONE', kind='facts', processed=processed, elapsed_ms=elapsed_ms(started),
-            ),
-        )
+    logger.info(
+        'Backfill finished',
+        extra=event(
+            'BACKFILL_DONE', kind='facts', processed=processed, elapsed_ms=elapsed_ms(started),
+        ),
+    )
 
 
 if __name__ == '__main__':  # pragma: no cover

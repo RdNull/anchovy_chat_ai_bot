@@ -1,5 +1,4 @@
 import time
-from uuid import uuid4
 
 from src.log_context import log_context
 from src.logs import elapsed_ms, event, logger
@@ -7,7 +6,7 @@ from src.facts.handlers import decay_all_facts
 
 
 async def run_fact_decay():
-    with log_context(task='fact_decay', request_id=uuid4().hex[:8]):
+    with log_context(task='fact_decay'):
         logger.info('Running scheduled task', extra=event('TASK_START'))
         started = time.monotonic()
         try:

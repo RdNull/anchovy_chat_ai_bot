@@ -1,5 +1,4 @@
 import time
-from uuid import uuid4
 
 from src import settings
 from src.log_context import log_context
@@ -8,7 +7,7 @@ from src.memory.handlers import delete_old_memories
 
 
 async def run_memory_cleanup():
-    with log_context(task='memory_cleanup', request_id=uuid4().hex[:8]):
+    with log_context(task='memory_cleanup'):
         logger.info('Running scheduled task', extra=event('TASK_START'))
         started = time.monotonic()
         try:
