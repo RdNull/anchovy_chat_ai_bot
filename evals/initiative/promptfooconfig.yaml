@@ -7,8 +7,8 @@ prompts:
     label: "initiative v1"
 
 providers:
-  - file://../models/cloud/initiative/glm-5.3-flash-low.yaml
-  - file://../models/cloud/initiative/gemini-3.8-flash-low.yaml
+  - file://../models/initiative/glm-5.3-flash-low.yaml
+  - file://../models/initiative/gemini-3.8-flash-low.yaml
 
 defaultTest:
   vars:

@@ -7,7 +7,7 @@ prompts:
     label: "Memory v4"
 
 providers:
-  - file://../models/cloud/memory/v3-cheap.yaml
+  - file://../models/memory/v3-cheap.yaml
 
 defaultTest:
   # `v4.j2` reads this; production passes `settings.LAST_MESSAGES_SIZE`. A deliberate

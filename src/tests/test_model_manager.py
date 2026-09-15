@@ -39,27 +39,10 @@ def test_resolve_env_vars():
     }
 
 
-def test_get_model_settings_local(tmp_path):
+def test_get_model_settings(tmp_path):
     # Setup temporary models directory
     models_dir = tmp_path / 'models'
-    task_dir = models_dir / 'local' / 'test_task'
-    task_dir.mkdir(parents=True)
-
-    config = {'model': 'local-model', 'temperature': 0}
-    (task_dir / 'v1.json').write_text(json.dumps(config))
-
-    manager = ModelManager(models_dir=str(models_dir))
-
-    with patch.object(settings, 'IS_LOCAL', True):
-        settings_result = manager.get_model_settings('test_task', 'v1')
-
-    assert settings_result == config
-
-
-def test_get_model_settings_cloud(tmp_path):
-    # Setup temporary models directory
-    models_dir = tmp_path / 'models'
-    task_dir = models_dir / 'cloud' / 'test_task'
+    task_dir = models_dir / 'test_task'
     task_dir.mkdir(parents=True)
 
     config = {'model': 'cloud-model', 'api_key': 'env:CLOUD_KEY'}
@@ -67,16 +50,15 @@ def test_get_model_settings_cloud(tmp_path):
 
     manager = ModelManager(models_dir=str(models_dir))
 
-    with patch.object(settings, 'IS_LOCAL', False):
-        with patch.dict(os.environ, {'CLOUD_KEY': 'secret_key'}):
-            settings_result = manager.get_model_settings('test_task', 'v1')
+    with patch.dict(os.environ, {'CLOUD_KEY': 'secret_key'}):
+        settings_result = manager.get_model_settings('test_task', 'v1')
 
     assert settings_result == {'model': 'cloud-model', 'api_key': 'secret_key'}
 
 
 def test_get_model_settings_fallback(tmp_path):
     models_dir = tmp_path / 'models'
-    task_dir = models_dir / 'cloud' / 'test_task'
+    task_dir = models_dir / 'test_task'
     task_dir.mkdir(parents=True)
 
     config_v1 = {'model': 'v1-model'}
@@ -84,22 +66,20 @@ def test_get_model_settings_fallback(tmp_path):
 
     manager = ModelManager(models_dir=str(models_dir))
 
-    with patch.object(settings, 'IS_LOCAL', False):
-        # Request v2, should fallback to v1
-        settings_result = manager.get_model_settings('test_task', 'v2')
+    # Request v2, should fallback to v1
+    settings_result = manager.get_model_settings('test_task', 'v2')
 
     assert settings_result == config_v1
 
 
 def test_get_model_settings_not_found(tmp_path):
     models_dir = tmp_path / 'models'
-    (models_dir / 'cloud').mkdir(parents=True)
+    models_dir.mkdir(parents=True)
 
     manager = ModelManager(models_dir=str(models_dir))
 
-    with patch.object(settings, 'IS_LOCAL', False):
-        with pytest.raises(ValueError) as excinfo:
-            manager.get_model_settings('non_existent_task', 'v1')
+    with pytest.raises(ValueError) as excinfo:
+        manager.get_model_settings('non_existent_task', 'v1')
 
     assert 'No model settings found' in str(excinfo.value)
     assert 'non_existent_task' in str(excinfo.value)
@@ -113,12 +93,9 @@ def test_web_search_settings_keep_plugins():
     """
     manager = ModelManager()
 
-    with patch.object(settings, 'IS_LOCAL', False):
-        cloud = manager.get_model_settings('web_search', 'v1')
-    with patch.object(settings, 'IS_LOCAL', True):
-        local = manager.get_model_settings('web_search', 'v1')
+    config = manager.get_model_settings('web_search', 'v1')
 
-    plugin = cloud['plugins'][0]
+    plugin = config['plugins'][0]
     assert plugin['id'] == 'web'
     assert plugin['engine'] == 'parallel'
     assert plugin['max_results'] == 3
@@ -126,8 +103,7 @@ def test_web_search_settings_keep_plugins():
     # otherwise outranks the extraction prompt and spends the 150-token budget on
     # citations the parser then deletes.
     assert 'search_prompt' in plugin
-    assert cloud['max_tokens'] == 150
-    assert local == cloud
+    assert config['max_tokens'] == 150
 
 
 def test_web_search_model_declares_plugins():
@@ -140,8 +116,7 @@ def test_web_search_model_declares_plugins():
     regression into a red build. No network: construction only.
     """
     manager = ModelManager()
-    with patch.object(settings, 'IS_LOCAL', False):
-        model_settings = manager.get_model_settings('web_search', 'v1')
+    model_settings = manager.get_model_settings('web_search', 'v1')
 
     llm = init_chat_model(**model_settings)
 
@@ -164,11 +139,10 @@ def test_web_search_transport_fits_the_tool_budget():
     cancellation.
     """
     manager = ModelManager()
-    with patch.object(settings, 'IS_LOCAL', False):
-        cloud = manager.get_model_settings('web_search', 'v1')
+    config = manager.get_model_settings('web_search', 'v1')
 
-    assert cloud['max_retries'] == 0
-    assert cloud['timeout'] < settings.WEB_SEARCH_TIMEOUT * 1000
+    assert config['max_retries'] == 0
+    assert config['timeout'] < settings.WEB_SEARCH_TIMEOUT * 1000
 
 
 def test_every_openrouter_config_bounds_its_transport():
@@ -179,11 +153,9 @@ def test_every_openrouter_config_bounds_its_transport():
     HTTP timeout at all. Together, a connection-level stall spends minutes inside
     the SDK, emitting no httpx log line, however tight the caller's own budget is.
     Every config pins both so a hang fails at a known bound with a cause.
-
-    Local (ollama) configs are excluded: different SDK, different parameters.
     """
-    configs = sorted(pathlib.Path('src/models/cloud').glob('*/*.json'))
-    assert configs, 'no cloud model configs found'
+    configs = sorted(pathlib.Path('src/models').glob('*/*.json'))
+    assert configs, 'no model configs found'
 
     unbounded = []
     for path in configs:
