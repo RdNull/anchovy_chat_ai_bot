@@ -47,6 +47,10 @@ async def _run(name: str, query: Awaitable[T]) -> T:
 
     The log line is the only place the tool name is visible without logging the
     request body, which is the chat. It carries no arguments and no result.
+
+    No `log_context` here: nothing in `queries.py` logs anything, so there is no nested
+    call this would need to reach, and `request_id` already comes from the one bound
+    around the whole HTTP request in `app.py:BearerAuth.__call__`.
     """
     started = time.monotonic()
     outcome = 'error'

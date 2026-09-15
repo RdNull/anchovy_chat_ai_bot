@@ -50,7 +50,13 @@ def escape_markdown_v2(text: str) -> str:
 
 
 def restricted(func):
-    """Restricts access to the bot by chat and user ids."""
+    """Restricts access to the bot by chat and user ids.
+
+    `chat_id`/`user_id` are already bound by `ContextBindingApplication.process_update`
+    (`src/bot.py`) by the time any handler runs, so nothing here needs to bind them again —
+    including on the rejection path below, which used to be the one place that passed them
+    explicitly.
+    """
 
     @wraps(func)
     async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):

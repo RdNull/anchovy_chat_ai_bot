@@ -2,6 +2,7 @@ import argparse
 import asyncio
 
 from src.embeddings.stickers import stickers_embedding_client
+from src.log_context import push_log_context
 from src.logs import logger
 from src.messages.media.repository import _parse_media_description
 from src.models import MessageMediaStatus, MessageMediaTypes
@@ -20,7 +21,10 @@ async def create_sticker_embeddings(batch_size: int):
     embedding-model change. Point ids are derived from `unique_id`, so re-running
     upserts rather than duplicating.
     """
-    query = {'type': MessageMediaTypes.STICKER.value, 'status': MessageMediaStatus.READY.value}
+    push_log_context()  # one CLI process, asyncio.run's own fresh task -- nothing to reset
+    query = {
+        'type': MessageMediaTypes.STICKER.value, 'status': MessageMediaStatus.READY.value,
+    }
     total = await mongo.media_descriptions.count_documents(query)
     logger.info(f'Found {total} stickers to embed')
 

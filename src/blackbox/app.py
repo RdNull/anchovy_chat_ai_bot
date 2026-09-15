@@ -23,6 +23,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from src import mongo, settings
 from src.blackbox.server import mcp
 from src.embeddings.messages import messages_embeddings_client
+from src.log_context import push_log_context
 from src.logs import logger
 
 HEALTH_PATH = '/healthz'
@@ -104,6 +105,13 @@ class BearerAuth:
                 status = message['status']
             await send(message)
 
+        # Bound once per HTTP request rather than around the one MCP tool call it may
+        # dispatch (`server.py:_run`): that keeps a single request_id on both the
+        # BLACKBOX_HTTP line below and the nested BLACKBOX_TOOL line, instead of two
+        # unrelated ids for what is causally one request. No `with`/reset needed: uvicorn
+        # creates a fresh task per request (`loop.create_task(cycle.run_asgi(app))`, not
+        # per connection), so a keep-alive connection's next request still starts clean.
+        push_log_context()
         path = scope['path']
         header = _authorization(scope)
         if path == HEALTH_PATH:

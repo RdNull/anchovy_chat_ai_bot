@@ -9,6 +9,7 @@ from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
 from src.characters.repository import CHARACTERS
+from src.log_context import log_context
 from src.logs import logger
 from src.models import UpdateMessage
 from .media import handle_media_message
@@ -26,12 +27,24 @@ from ..processors.context.handlers import run_context_checks
 
 
 async def start(update: Update, context: CallbackContext):
+    # chat_id/user_id are already bound by ContextBindingApplication.process_update
+    # (src/bot.py) by the time this callback runs.
     logger.info('started')
     await update.message.reply_text('Дарова, чорт!')
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error("Exception while handling an update:", exc_info=context.error)
+    # Registered via `add_error_handler`. A handler-raised exception is routed here from
+    # within the same `process_update` call (or the same task, for a non-blocking handler),
+    # so it normally already carries the update's bound chat_id/user_id -- but PTB can also
+    # call this for a failure with no associated update at all (a polling-level error), which
+    # never went through process_update and so never bound anything. Binding again here is a
+    # no-op in the common case (log_context leaves an existing value alone) and the fallback
+    # for the uncommon one; `update` is typed `object` because it may not be an `Update`.
+    chat_id = getattr(getattr(update, 'effective_chat', None), 'id', None)
+    user_id = getattr(getattr(update, 'effective_user', None), 'id', None)
+    with log_context(chat_id=chat_id, user_id=user_id):
+        logger.error("Exception while handling an update:", exc_info=context.error)
 
 
 @restricted
