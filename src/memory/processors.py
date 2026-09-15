@@ -1,8 +1,11 @@
+import time
+
 from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
 from src import ai, settings
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
+from src.model_manager import model_manager
 from src.memory.decay import (
     BIRTH,
     CARRY,
@@ -43,7 +46,7 @@ def _prompt_memory(current: MemoryData | None) -> str:
     return for_prompt.model_dump_json()
 
 
-def _log_churn(chat_id: int, churn: list) -> None:
+def _log_churn(churn: list) -> None:
     """Reports the cycle's churn counters.
 
     `lost_recent` sits next to `promote_candidates` on purpose: a candidate is a
@@ -59,29 +62,36 @@ def _log_churn(chat_id: int, churn: list) -> None:
         1 for record in churn if record.event == VANISH and record.field == RECENT_FIELD
     )
     logger.info(
-        f'MEMORY_CHURN chat_id={chat_id} nicks={len({r.nick for r in churn})} '
-        f'carried={counts[CARRY]} added={counts[BIRTH]} '
-        f'vanished={counts[VANISH]} lost_recent={lost_recent} '
-        f'promoted={counts[PROMOTE]} promote_candidates={counts[PROMOTE_CANDIDATE]}'
+        'Memory churn',
+        extra=event(
+            'MEMORY_CHURN', nicks=len({r.nick for r in churn}), carried=counts[CARRY],
+            added=counts[BIRTH], vanished=counts[VANISH], lost_recent=lost_recent,
+            promoted=counts[PROMOTE], promote_candidates=counts[PROMOTE_CANDIDATE],
+        ),
     )
     for record in churn:
         if record.event == VANISH:
             logger.info(
-                f'MEMORY_CHURN_LOST chat_id={chat_id} nick={record.nick} '
-                f'field={record.field} text={record.text}'
+                'Memory entry lost to churn',
+                extra=event(
+                    'MEMORY_CHURN_LOST', nick=record.nick, field=record.field, text=record.text,
+                ),
             )
 
 
-def _log_evictions(chat_id: int, evictions: list) -> None:
+def _log_evictions(evictions: list) -> None:
     for record in evictions:
         action = 'evicted' if record.applied else 'would_evict'
         logger.info(
-            f'MEMORY_DECAY chat_id={chat_id} nick={record.nick} field={record.field} '
-            f'action={action} reason={record.reason} text={record.text}'
+            'Memory eviction',
+            extra=event(
+                'MEMORY_DECAY', nick=record.nick, field=record.field, action=action,
+                reason=record.reason, text=record.text,
+            ),
         )
 
 
-def _log_trait_overflow(chat_id: int, memory: StructuredMemory, traits_keep: int) -> None:
+def _log_trait_overflow(memory: StructuredMemory, traits_keep: int) -> None:
     """Reports participants over the trait cap, before eviction reshapes the list.
 
     Whether trait eviction needs a real rule at all is an open question, and this
@@ -93,7 +103,10 @@ def _log_trait_overflow(chat_id: int, memory: StructuredMemory, traits_keep: int
     """
     for nick, info in memory.participants.items():
         if len(info.traits) > traits_keep:
-            logger.info(f'MEMORY_TRAIT_OVERFLOW chat_id={chat_id} nick={nick} count={len(info.traits)}')
+            logger.info(
+                'Trait overflow',
+                extra=event('MEMORY_TRAIT_OVERFLOW', nick=nick, count=len(info.traits)),
+            )
 
 
 @traceable
@@ -104,10 +117,16 @@ async def extract_memory(
 ):
     if not settings.ENABLE_MEMORY_PROCESSING:
         await save_memory(chat_id, StructuredMemory())
-        logger.info(f'Memory processing disabled; saved empty memory for chat {chat_id}')
+        logger.info(
+            'Memory processing disabled, saved empty memory',
+            extra=event('MEMORY_EXTRACT', outcome='disabled'),
+        )
         return
 
-    llm = ai.get_memory_model(version='v3-cheap')
+    started = time.monotonic()
+    version = 'v3-cheap'
+    model_name = model_manager.get_model_settings('memory', version).get('model')
+    llm = ai.get_memory_model(version=version)
     model_with_structure = llm.with_structured_output(StructuredMemory)
 
     formatted_messages = '\n'.join([m.ai_format for m in new_messages])
@@ -127,7 +146,7 @@ async def extract_memory(
         SystemMessage(content=system_prompt)
     ])
     if not updated_memory:
-        logger.error(f'No memory extracted for chat {chat_id}')
+        logger.error('No memory extracted', extra=event('MEMORY_EXTRACT', outcome='empty'))
         return
 
     guard_records = resolve_attribution_conflicts(
@@ -137,9 +156,11 @@ async def extract_memory(
         action = 'dropped' if record.removed else 'kept'
         kept = record.kept_owner or '-'
         logger.info(
-            f'MEMORY_ATTRIBUTION_CONFLICT chat_id={chat_id} action={action} '
-            f'reason={record.reason} owner={record.owner} kept={kept} '
-            f'field={record.field} text={record.text}'
+            'Attribution conflict',
+            extra=event(
+                'MEMORY_ATTRIBUTION_CONFLICT', action=action, reason=record.reason,
+                owner=record.owner, kept=kept, field=record.field, text=record.text,
+            ),
         )
 
     prior_decay = current_memory.decay if current_memory else {}
@@ -152,10 +173,10 @@ async def extract_memory(
     decay = reconcile(updated_memory, prior_decay, format_ts(watermark))
     # Must precede eviction: the cap is what reshapes the list, so afterwards there
     # is no overflow left to count.
-    _log_trait_overflow(chat_id, updated_memory, caps.traits_keep)
+    _log_trait_overflow(updated_memory, caps.traits_keep)
 
     evictions = apply_decay(updated_memory, decay, caps)
-    _log_evictions(chat_id, evictions)
+    _log_evictions(evictions)
 
     # Churn last, so it describes the memory that is actually saved rather than the
     # one the model emitted. `prior_content` is what still holds a vanished entry's
@@ -164,12 +185,25 @@ async def extract_memory(
     churn = summarize_churn(
         updated_memory, prior_content, prior_decay, decay, guard_records, evictions
     )
-    _log_churn(chat_id, churn)
+    _log_churn(churn)
 
     try:
         await save_memory(chat_id, updated_memory, decay, created_at=watermark)
-        logger.info(f'Memory updated and saved for chat {chat_id}')
-    except Exception as e:
+        logger.info(
+            'Memory updated and saved',
+            extra=event(
+                'MEMORY_EXTRACT', outcome='ok', elapsed_ms=elapsed_ms(started),
+                model=model_name, version=version, window=len(new_messages),
+            ),
+        )
+    except Exception:
         logger.error(
-            f'Failed to parse memory JSON for chat {chat_id}: {e}\nContent: {updated_memory}'
+            'Failed to parse memory JSON', exc_info=True,
+            extra=event('MEMORY_EXTRACT', outcome='error'),
+        )
+        # The raw model output is chat-derived content, not diagnostic metadata -- kept at
+        # DEBUG rather than shipped at ERROR.
+        logger.debug(
+            'Memory extraction content',
+            extra=event('MEMORY_EXTRACT_CONTENT', content=str(updated_memory)),
         )
