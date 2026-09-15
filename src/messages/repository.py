@@ -5,7 +5,7 @@ from typing import Iterable
 from bson import ObjectId
 
 from src import mongo, settings
-from src.logs import logger
+from src.logs import event, logger
 from src.messages.media import get_media_description_by_media_id
 from src.messages.media.pipeline import wait_for_media_ready
 from src.models import Message, MessageMedia, MessageReply, UpdateMessage, UserRole
@@ -13,8 +13,10 @@ from src.models import Message, MessageMedia, MessageReply, UpdateMessage, UserR
 
 async def save_message(message: Message):
     chat_id = message.chat_id
-    message_text = message.text[:50] if message.text else '<media>'
-    logger.debug(f"Pushing history for chat {chat_id}: {message.nickname}: {message_text}...")
+    logger.debug(
+        'Pushing history',
+        extra=event('DB_MESSAGE_PUSH', nickname=message.nickname, text_len=len(message.text or '')),
+    )
     data = {
         'chat_id': chat_id,
         'telegram_id': message.telegram_id,
@@ -68,7 +70,13 @@ async def add_bot_reaction(message: Message, bot_nickname: str, emoji: str):
 
 
 async def update_message(update_message_data: UpdateMessage):
-    logger.info(f"Updating message {update_message_data.id}: {update_message_data.text}")
+    logger.info(
+        'Message edited',
+        extra=event(
+            'MESSAGE_EDITED', message_id=update_message_data.id,
+            text_len=len(update_message_data.text),
+        ),
+    )
     update_payload = update_message_data.model_dump(exclude={'id'}, exclude_unset=True)
     if not update_payload:
         return
@@ -116,7 +124,13 @@ async def get_messages(
         The selected messages, oldest first.
     """
     logger.debug(
-        f"Fetching history for chat {chat_id} ({size=} {from_date=} {to_date=} {sort_order=})"
+        'Fetching history',
+        extra=event(
+            'DB_MESSAGES_FETCH', size=size,
+            from_date=from_date.isoformat() if from_date else None,
+            to_date=to_date.isoformat() if to_date else None,
+            sort_order=sort_order,
+        ),
     )
     search_query = {'chat_id': chat_id}
     created_at = {}
@@ -145,7 +159,10 @@ async def get_messages(
 async def get_messages_by_ids(
     ids: Iterable[str], size: int = 100, sort_order: int = -1,
 ) -> list[Message]:
-    logger.debug(f"Fetching messages: {ids} ({size=} {ids=})")
+    ids = list(ids)
+    logger.debug(
+        'Fetching messages by id', extra=event('DB_MESSAGES_FETCH_BY_ID', count=len(ids), size=size),
+    )
     search_query = {'_id': {'$in': [ObjectId(id_str) for id_str in ids]}}
 
     cursor = mongo.messages.find(search_query).sort('created_at', sort_order).limit(size)
@@ -174,7 +191,10 @@ async def fetch_last_messages(chat_id: int, size: int, **kwargs) -> list[Message
 
 
 async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None:
-    logger.debug(f"Fetching message by telegram id {telegram_id}")
+    logger.debug(
+        'Fetching message by telegram id',
+        extra=event('DB_MESSAGE_FETCH_BY_TG_ID', telegram_id=telegram_id),
+    )
     message = await mongo.messages.find_one({
         'chat_id': chat_id,
         'telegram_id': telegram_id,
@@ -186,7 +206,9 @@ async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None
 
 
 async def get_last_message(chat_id: int, role: UserRole | None = None) -> Message | None:
-    logger.debug(f"Fetching last message for chat {chat_id} (role={role})")
+    logger.debug(
+        'Fetching last message', extra=event('DB_LAST_MESSAGE_FETCH', role=role.value if role else None),
+    )
     query = {'chat_id': chat_id}
     if role:
         query['role'] = role.value
@@ -201,7 +223,7 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
 async def get_messages_count_since(
     chat_id: int, timestamp: float, role: UserRole | None = None,
 ) -> int:
-    logger.debug(f'Counting messages for chat {chat_id} since {timestamp}')
+    logger.debug('Counting messages', extra=event('DB_MESSAGES_COUNT', since=timestamp))
     query = {'chat_id': chat_id, 'created_at': {'$gt': timestamp}}
     if role:
         query['role'] = role.value
@@ -209,7 +231,7 @@ async def get_messages_count_since(
 
 
 async def get_messages_count(chat_id: int) -> int:
-    logger.debug(f"Counting messages for chat {chat_id}")
+    logger.debug('Counting messages', extra=event('DB_MESSAGES_COUNT'))
     return await mongo.messages.count_documents({'chat_id': chat_id})
 
 
