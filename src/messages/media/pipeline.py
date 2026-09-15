@@ -1,11 +1,12 @@
 import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 
 from telegram.ext import ContextTypes
 
 from src import settings
 from src.embeddings.stickers import stickers_embedding_client
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescription, MediaDescriptionData,
     MediaDetectionData, Message, MessageMediaStatus, MessageMediaTypes,
@@ -35,13 +36,21 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
 
     if media_description and _skip_media_description_generation(media_description):
         logger.info(
-            f"Media description found for {message.media.unique_id}: {media_description.description}"
+            'Media description found (cached)',
+            extra=event('MEDIA_DESCRIPTION_CACHED', unique_id=message.media.unique_id),
+        )
+        logger.debug(
+            'Cached media description text',
+            extra=event('MEDIA_DESCRIPTION_TEXT', description=media_description.description),
         )
         return
 
     media_detection_data = await get_message_media(message.media.media_id, context)
     if not media_detection_data:
-        logger.warning(f"Failed to get media data for message {message.id}")
+        logger.warning(
+            'Failed to get media data',
+            extra=event('MEDIA_FETCH', outcome='error', message_id=message.id),
+        )
         return
 
     content_hash = media_detection_data.content_hash
@@ -49,7 +58,14 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
         if media_description := await get_media_descriptions_by_hash(content_hash):
             if _skip_media_description_generation(media_description):
                 logger.info(
-                    f"Media description found for {content_hash}: {media_description.description}"
+                    'Media description found (cached)',
+                    extra=event('MEDIA_DESCRIPTION_CACHED', content_hash=content_hash),
+                )
+                logger.debug(
+                    'Cached media description text',
+                    extra=event(
+                        'MEDIA_DESCRIPTION_TEXT', description=media_description.description,
+                    ),
                 )
                 return
 
@@ -65,7 +81,10 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
     image_description = await _generate_media_description(message, media_detection_data)
 
     if not image_description:
-        logger.warning(f"Failed to generate media description for message {message.id}")
+        logger.warning(
+            'Failed to generate media description',
+            extra=event('MEDIA_DESCRIBE', outcome='error', message_id=message.id),
+        )
         await update_media_description_status(media_description.id, MessageMediaStatus.ERROR)
         return
 
@@ -90,7 +109,8 @@ async def wait_for_media_ready(unique_ids: list[str], timeout: float) -> None:
     while pending:
         if asyncio.get_event_loop().time() >= deadline:
             logger.warning(
-                f'Media processing timed out, proceeding without descriptions for: {pending}'
+                'Media processing timed out, proceeding without descriptions',
+                extra=event('MEDIA_WAIT', outcome='timeout', pending=len(pending)),
             )
             return
 
@@ -139,7 +159,10 @@ async def _backfill_sticker(
     if media_description.type == MessageMediaTypes.STICKER:
         return media_description  # already retyped on an earlier sighting
 
-    logger.info(f"Backfilling sticker type for {message.media.unique_id}")
+    logger.info(
+        'Backfilling sticker type',
+        extra=event('MEDIA_STICKER_BACKFILL', unique_id=message.media.unique_id),
+    )
     retyped = await mark_as_sticker(media_description.id, message.media.sticker_emoji)
     if not retyped:
         return media_description
@@ -175,12 +198,27 @@ async def _generate_media_description(
     message: Message,
     media_detection_data: MediaDetectionData,
 ) -> MediaDescriptionData | None:
+    started = time.monotonic()
     if isinstance(media_detection_data, ImageDetectionData):
-        logger.info(f"Generating image description for image {message.media.media_id}")
-        return await describe_image(media_detection_data)
+        result = await describe_image(media_detection_data)
+        logger.info(
+            'Media description generated',
+            extra=event(
+                'MEDIA_DESCRIBE', kind='image', media_id=message.media.media_id,
+                elapsed_ms=elapsed_ms(started), outcome='ok' if result else 'error',
+            ),
+        )
+        return result
 
     if isinstance(media_detection_data, AnimationDetectionData):
-        logger.info(f"Generating animation description for animation {message.media.media_id}")
-        return await describe_animation(media_detection_data)
+        result = await describe_animation(media_detection_data)
+        logger.info(
+            'Media description generated',
+            extra=event(
+                'MEDIA_DESCRIBE', kind='animation', media_id=message.media.media_id,
+                elapsed_ms=elapsed_ms(started), outcome='ok' if result else 'error',
+            ),
+        )
+        return result
 
     return None
