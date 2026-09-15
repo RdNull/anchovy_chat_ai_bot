@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 
 from src import const, settings, tasks
-from src.log_context import log_context
+from src.log_context import log_context, push_log_context
 from src.logs import logger
 from src.messages import handlers
 from src.messages.media import sticker_corpus_size
@@ -45,11 +45,11 @@ async def log_sticker_corpus():
     evidence that the group recycles a very small sticker set, the one thing that
     would make the narrow-vocabulary decision worth revisiting.
     """
-    with log_context():
-        size = await sticker_corpus_size()
-        logger.info(
-            f'STICKER_CORPUS size={size} enabled={settings.ENABLE_STICKER_REPLIES}'
-        )
+    push_log_context()  # a dedicated task at boot, never fired again -- nothing to reset
+    size = await sticker_corpus_size()
+    logger.info(
+        f'STICKER_CORPUS size={size} enabled={settings.ENABLE_STICKER_REPLIES}'
+    )
 
 
 async def setup_scheduler():

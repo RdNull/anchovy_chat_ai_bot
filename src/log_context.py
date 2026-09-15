@@ -26,28 +26,60 @@ from uuid import uuid4
 _LOG_CONTEXT: ContextVar[dict[str, object]] = ContextVar('log_context', default={})
 
 
+def _with_request_id(current: dict[str, object], fields: dict[str, object]) -> dict[str, object]:
+    """`request_id` is generated here rather than by every call site: the first bind in a
+    chain (the one where `request_id` is absent from both the current context and `fields`)
+    mints one, and every nested bind inherits it unchanged. A call site that wants a fresh
+    id of its own — none do today — can still pass `request_id=` explicitly.
+    """
+    if 'request_id' not in current and 'request_id' not in fields:
+        return {**fields, 'request_id': uuid4().hex[:8]}
+    return fields
+
+
 @contextmanager
 def log_context(**fields: object) -> Generator[None, None, None]:
-    """Binds `fields` onto every log record emitted within the block (and its child tasks).
+    """Binds `fields` onto every log record emitted within the block (and its child tasks),
+    restoring the prior binding on exit.
 
     Sets a *new* dict rather than mutating the current one, so a nested `log_context` call
     only ever adds to or shadows the outer binding for the duration of its own block, and
     the outer binding is restored exactly on exit — concurrent tasks sharing an ancestor
     context never see each other's nested bindings.
 
-    `request_id` is generated here rather than by every call site: the first `log_context`
-    call in a chain (the one where `request_id` is absent from both the current context and
-    `fields`) mints one, and every nested call inherits it unchanged. A call site that wants
-    a fresh id of its own — none do today — can still pass `request_id=` explicitly.
+    Use this, not `push_log_context`, at any site that can run more than once *inside one
+    task* — the reset is what lets `request_id` regenerate on the next run instead of
+    sticking forever. Both `python-telegram-bot`'s own update loop (`max_concurrent_updates`
+    defaults to 1) and this project's `scheduler` jobs work exactly that way: one task
+    created once, looping `while ...: await handler(...)` internally rather than spawning a
+    fresh task per update or per firing. `ContextBindingApplication.process_update` and
+    `tasks/facts.py`/`tasks/memory.py` bind here for that reason.
     """
     current = _LOG_CONTEXT.get()
-    if 'request_id' not in current and 'request_id' not in fields:
-        fields = {**fields, 'request_id': uuid4().hex[:8]}
+    fields = _with_request_id(current, fields)
     token = _LOG_CONTEXT.set({**current, **fields})
     try:
         yield
     finally:
         _LOG_CONTEXT.reset(token)
+
+
+def push_log_context(**fields: object) -> None:
+    """Binds `fields` for the rest of the current task, with no cleanup and no `with` block.
+
+    Only safe where nothing meaningful runs afterward, *in this same task*, that must not
+    see the binding — a task spawned fresh for one purpose and then left to finish: a
+    boot-time background task, one backfill script's own process, one HTTP request's own
+    task (uvicorn calls `loop.create_task` per request, not per connection, so keep-alive
+    requests on the same connection still get separate tasks and separate contexts).
+    `log_sticker_corpus`, `BearerAuth.__call__` and the backfill scripts use this.
+
+    Not safe at a site that can fire more than once inside one long-lived task — see
+    `log_context`'s docstring for the two verified cases that shape this split.
+    """
+    current = _LOG_CONTEXT.get()
+    fields = _with_request_id(current, fields)
+    _LOG_CONTEXT.set({**current, **fields})
 
 
 class LogContextFilter(logging.Filter):
