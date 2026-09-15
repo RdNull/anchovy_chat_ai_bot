@@ -1,7 +1,7 @@
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 
-from src.logs import logger
+from src.logs import event, logger
 from src.model_manager import model_manager
 
 _llm_cache = {}
@@ -42,7 +42,8 @@ def _get_model(task: str, version: str = 'v1') -> BaseChatModel:
 
     ai_settings = model_manager.get_model_settings(task, version)
     logger.debug(
-        f"Initializing {task.capitalize()} LLM (version: {version}) with model: {ai_settings.get('model')}"
+        'Initializing LLM',
+        extra=event('LLM_INIT', task=task, version=version, model=ai_settings.get('model')),
     )
     llm = init_chat_model(**ai_settings)
     _llm_cache[cache_key] = llm

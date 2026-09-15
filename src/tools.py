@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -5,7 +6,7 @@ from langchain_core.messages import ToolCall, ToolMessage
 from langchain_core.tools import BaseTool
 
 from src.characters.reply import Replier
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 
 
 @dataclass
@@ -44,15 +45,38 @@ class ToolRegistry:
         from success once it has been stringified into a `ToolMessage`.
         """
         tool = self._get_tool(tool_call)
-        logger.info(f'Executing tool: {tool_call['name']} with arguments: {tool_call['args']}')
+        name = tool_call['name']
+        # Argument *names* only at INFO — tool arguments include things like search_query,
+        # so the full values are raw chat intent and belong at DEBUG, not shipped to Axiom
+        # on every tool call.
+        logger.info(
+            'Executing tool',
+            extra=event('TOOL_CALL', tool=name, tool_args=list(tool_call['args'])),
+        )
+        logger.debug(
+            'Tool call arguments',
+            extra=event('TOOL_CALL_ARGS', tool=name, tool_args=tool_call['args']),
+        )
 
         tool.metadata = {'context': self.context}
-        tool_result = await tool.ainvoke(tool_call['args'])
+        started = time.monotonic()
+        outcome = 'error'
+        try:
+            tool_result = await tool.ainvoke(tool_call['args'])
+            outcome = 'error' if isinstance(tool_result, ToolFailure) else 'ok'
 
-        return ToolMessage(
-            tool_call_id=tool_call['id'],
-            content=str(tool_result)
-        ), tool_result
+            return ToolMessage(
+                tool_call_id=tool_call['id'],
+                content=str(tool_result)
+            ), tool_result
+        finally:
+            logger.info(
+                'Tool call finished',
+                extra=event(
+                    'TOOL_CALL_DONE', tool=name, elapsed_ms=elapsed_ms(started),
+                    outcome=outcome, direct=tool.return_direct,
+                ),
+            )
 
     def is_return_direct(self, tool_call: ToolCall) -> bool:
         tool = self._get_tool(tool_call)

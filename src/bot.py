@@ -11,7 +11,7 @@ from telegram.ext import (
 
 from src import const, settings, tasks
 from src.log_context import log_context, push_log_context
-from src.logs import logger
+from src.logs import event, logger
 from src.messages import handlers
 from src.messages.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
@@ -48,7 +48,8 @@ async def log_sticker_corpus():
     push_log_context()  # a dedicated task at boot, never fired again -- nothing to reset
     size = await sticker_corpus_size()
     logger.info(
-        f'STICKER_CORPUS size={size} enabled={settings.ENABLE_STICKER_REPLIES}'
+        'Sticker corpus size',
+        extra=event('STICKER_CORPUS', size=size, enabled=settings.ENABLE_STICKER_REPLIES),
     )
 
 
@@ -71,6 +72,7 @@ async def post_init(application: Application) -> None:
 
 
 def main() -> None:
+    logger.info('Bot starting', extra=event('APP_START'))
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)  # so that both tg app and scheduler run on a single loop
 
@@ -134,6 +136,7 @@ def main() -> None:
     app.add_error_handler(handlers.error_handler)
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info('Bot stopped', extra=event('APP_STOP'))
 
 
 if __name__ == '__main__':

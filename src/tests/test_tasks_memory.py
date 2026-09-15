@@ -26,4 +26,5 @@ async def test_run_memory_cleanup_handles_errors(mocker):
     await run_memory_cleanup()
 
     assert mock_logger.error.call_count == 1
-    assert 'db error' in mock_logger.error.call_args[0][0]
+    assert mock_logger.error.call_args.kwargs['extra'] == {'event': 'TASK_FAILED'}
+    assert mock_logger.error.call_args.kwargs['exc_info'] is True

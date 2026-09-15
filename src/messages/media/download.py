@@ -5,7 +5,7 @@ from pathlib import Path
 
 from telegram.ext import ContextTypes
 
-from src.logs import logger
+from src.logs import event, logger
 from src.models import (
     AnimationDetectionData, ImageDetectionData, MediaDetectionData,
     MessageMediaTypes,
@@ -26,7 +26,7 @@ async def get_message_media(
     file_format = Path(media_file.file_path).suffix[1:].lower()
     file_type = _get_file_type(file_format)
     if not file_type:
-        logger.warning(f"Unsupported media sent: {file_format}")
+        logger.warning('Unsupported media sent', extra=event('MEDIA_UNSUPPORTED', file_format=file_format))
         return None
 
     with io.BytesIO() as file_bytes:

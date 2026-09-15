@@ -53,7 +53,9 @@ async def test_log_sticker_corpus_reports_size_and_flag(mocker):
 
     await log_sticker_corpus()
 
-    assert 'STICKER_CORPUS size=7 enabled=True' in mock_logger.info.call_args[0][0]
+    assert mock_logger.info.call_args.kwargs['extra'] == {
+        'event': 'STICKER_CORPUS', 'size': 7, 'enabled': True,
+    }
 
 
 async def test_log_sticker_corpus_on_a_cold_start(mocker):
@@ -63,7 +65,9 @@ async def test_log_sticker_corpus_on_a_cold_start(mocker):
 
     await log_sticker_corpus()
 
-    assert 'STICKER_CORPUS size=0 enabled=False' in mock_logger.info.call_args[0][0]
+    assert mock_logger.info.call_args.kwargs['extra'] == {
+        'event': 'STICKER_CORPUS', 'size': 0, 'enabled': False,
+    }
 
 
 async def test_context_binding_application_binds_ids_before_delegating(mocker):

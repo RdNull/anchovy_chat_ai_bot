@@ -3,6 +3,7 @@ import io
 import math
 import os
 import tempfile
+import time
 from typing import List
 
 import cv2
@@ -13,7 +14,7 @@ from lottie.exporters.cairo import PngRenderer
 from lottie.importers.core import import_tgs
 
 from src import ai
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.models import AnimationDetectionData, MediaDescriptionData
 from src.prompt_manager import prompt_manager
 
@@ -22,11 +23,18 @@ from src.prompt_manager import prompt_manager
 async def describe_animation(animation: AnimationDetectionData) -> MediaDescriptionData | None:
     key_frames = _get_animation_key_frames(animation)
     if not key_frames:
-        logger.warning(f"No key frames found for animation {animation.content_hash}")
+        logger.warning(
+            'No key frames found for animation',
+            extra=event('MEDIA_FRAMES', outcome='empty', content_hash=animation.content_hash),
+        )
         return None
 
-    logger.info(
-        f"Generating animation description ({len(key_frames)} frames) for animation {animation.content_hash}"
+    logger.debug(
+        'Generating animation description',
+        extra=event(
+            'MEDIA_DESCRIBE_START', kind='animation', frames=len(key_frames),
+            content_hash=animation.content_hash,
+        ),
     )
     llm = ai.get_animation_descriptor_model(version='v2')
     model_with_structure = llm.with_structured_output(MediaDescriptionData)
@@ -43,20 +51,35 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
         ])
     ]
 
+    started = time.monotonic()
     try:
         response: MediaDescriptionData = await model_with_structure.ainvoke(messages)
         if not response:
             raise Exception("No response from model")
 
+        logger.debug(
+            'Animation description text',
+            extra=event(
+                'MEDIA_DESCRIBE_TEXT', content_hash=animation.content_hash,
+                description=response.description, ocr_text=response.ocr_text,
+            ),
+        )
         logger.info(
-            "Image description generated for "
-            f"{animation.content_hash}: {response.description}; {response.ocr_text}"
+            'Animation description generated',
+            extra=event(
+                'MEDIA_DESCRIBE', outcome='ok', kind='animation',
+                content_hash=animation.content_hash, desc_len=len(response.description or ''),
+                ocr_len=len(response.ocr_text or ''), elapsed_ms=elapsed_ms(started),
+            ),
         )
         return response
-    except Exception as e:
+    except Exception:
         logger.error(
-            f"Error generating image description for image {animation.content_hash}: {e}",
-            exc_info=True
+            'Error generating animation description', exc_info=True,
+            extra=event(
+                'MEDIA_DESCRIBE', outcome='error', kind='animation',
+                content_hash=animation.content_hash,
+            ),
         )
 
     return None
@@ -105,10 +128,16 @@ def _extract_tgs_frames(tgs_bytes: bytes) -> List[str]:
                         frame = img.convert("RGB")
                         frame = _resize_frame_if_needed(frame)
                         frames.append(_image_to_base64(frame))
-                except Exception as e:
-                    logger.error(f"Error processing TGS frame {i}: {e}")
-    except Exception as e:
-        logger.error(f"Error extracting frames from TGS: {e}", exc_info=True)
+                except Exception:
+                    logger.error(
+                        'Error processing TGS frame',
+                        extra=event('MEDIA_FRAME_FAILED', frame=i, format='tgs'),
+                    )
+    except Exception:
+        logger.error(
+            'Error extracting frames from TGS', exc_info=True,
+            extra=event('MEDIA_FRAME_EXTRACT', outcome='error', format='tgs'),
+        )
     return frames
 
 
@@ -132,8 +161,11 @@ def _extract_gif_frames(gif_bytes: bytes) -> List[str]:
                 frame = img.convert("RGB")
                 frame = _resize_frame_if_needed(frame)
                 frames.append(_image_to_base64(frame))
-    except Exception as e:
-        logger.error(f"Error extracting frames from GIF: {e}", exc_info=True)
+    except Exception:
+        logger.error(
+            'Error extracting frames from GIF', exc_info=True,
+            extra=event('MEDIA_FRAME_EXTRACT', outcome='error', format='gif'),
+        )
     return frames
 
 
@@ -147,7 +179,13 @@ def _extract_video_frames(video_bytes: bytes) -> List[str]:
     try:
         cap = cv2.VideoCapture(temp_video_path)
         if not cap.isOpened():
-            logger.error("Could not open video file with OpenCV")
+            logger.error(
+                'Could not open video file with OpenCV',
+                extra=event(
+                    'MEDIA_FRAME_EXTRACT', outcome='error', format='video',
+                    reason='opencv_open_failed',
+                ),
+            )
             return []
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -171,8 +209,11 @@ def _extract_video_frames(video_bytes: bytes) -> List[str]:
                 pil_img = _resize_frame_if_needed(pil_img)
                 frames.append(_image_to_base64(pil_img))
         cap.release()
-    except Exception as e:
-        logger.error(f"Error extracting frames from video: {e}", exc_info=True)
+    except Exception:
+        logger.error(
+            'Error extracting frames from video', exc_info=True,
+            extra=event('MEDIA_FRAME_EXTRACT', outcome='error', format='video'),
+        )
     finally:
         if os.path.exists(temp_video_path):
             os.remove(temp_video_path)

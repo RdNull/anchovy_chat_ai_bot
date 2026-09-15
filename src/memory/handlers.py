@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from src import mongo
-from src.logs import logger
+from src.logs import event, logger
 
 
 async def delete_old_memories(retention_days: int) -> None:
@@ -17,4 +17,7 @@ async def delete_old_memories(retention_days: int) -> None:
         'created_at': {'$lt': cutoff_ts},
         '_id': {'$nin': list(latest_ids)},
     })
-    logger.info(f'Deleted {result.deleted_count} stale memory records older than {retention_days} days')
+    logger.info(
+        'Memory cleanup finished',
+        extra=event('MEMORY_CLEANUP', deleted=result.deleted_count, retention_days=retention_days),
+    )

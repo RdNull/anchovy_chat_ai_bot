@@ -8,7 +8,7 @@ from telegram.ext import (ContextTypes, filters)
 from src import settings
 from src.characters.repository import get_character
 from src.chat_settings import repository as chat_settings_repository
-from src.logs import logger
+from src.logs import event, logger
 from src.memory.models import MemoryData
 from src.models import RelatedMessagesData
 from src.running_app import get_bot
@@ -71,7 +71,9 @@ def restricted(func):
             is_allowed = True
 
         if not is_allowed:
-            logger.warning(f"Unauthorized access: user {user_id}, chat {chat_id}")
+            # chat_id/user_id come from the ambient context (bound by
+            # ContextBindingApplication.process_update), not passed explicitly here.
+            logger.warning('Unauthorized access', extra=event('ACCESS_DENIED'))
             if update.effective_message:
                 await update.effective_message.reply_text(
                     f"Сорян, тебе нельзя пользоваться этим ботом\n"
@@ -112,8 +114,11 @@ def send_action(action: ChatAction):
                         count += 1
                 except asyncio.CancelledError:
                     pass
-                except Exception as e:
-                    logger.error(f"Error in send_action_loop: {e}")
+                except Exception:
+                    logger.error(
+                        'Error in send_action_loop', exc_info=True,
+                        extra=event('TYPING_LOOP_FAILED'),
+                    )
 
             action_task = asyncio.create_task(send_action_loop())
             try:

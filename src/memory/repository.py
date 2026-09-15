@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from src import mongo
-from src.logs import logger
+from src.logs import event, logger
 from .models import Decay, MemoryData, StructuredMemory
 
 
@@ -26,7 +26,7 @@ async def save_memory(
             silently excludes whatever arrived in the gap. `None` stamps wall
             clock, which is correct only when no window was processed.
     """
-    logger.debug(f"Saving memory for chat {chat_id}")
+    logger.debug('Saving memory', extra=event('MEMORY_WRITE'))
     data = {
         'chat_id': chat_id,
         'content': memory.model_dump(),
@@ -40,7 +40,7 @@ async def save_memory(
 
 
 async def get_last_memory(chat_id: int) -> MemoryData | None:
-    logger.debug(f"Fetching last memory for chat {chat_id}")
+    logger.debug('Fetching last memory', extra=event('MEMORY_READ'))
     memory = await mongo.memory.find_one(
         {'chat_id': chat_id}, sort=[('created_at', -1)]
     )

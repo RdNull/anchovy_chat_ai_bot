@@ -3,7 +3,7 @@ from telegram.error import BadRequest
 
 from src.const import ALLOWED_REACTIONS
 from src.embeddings.stickers import stickers_embedding_client
-from src.logs import logger
+from src.logs import event, logger
 from src.messages.media.repository import get_sendable_file_id
 from src.tools import ToolContext, ToolFailure
 from src.types import ReactionEmoji
@@ -16,7 +16,7 @@ ANSWER_TEXT_DESCRIPTION = '''
 @tool(description=ANSWER_TEXT_DESCRIPTION, return_direct=True)
 async def answer_text(text: str) -> ToolFailure | None:
     if not text:
-        logger.warning('Empty text provided, skipping answer')
+        logger.warning('Empty text provided, skipping answer', extra=event('TOOL_ANSWER_EMPTY'))
         return ToolFailure('пустой ответ')
 
     tool_context: ToolContext = answer_text.metadata['context']
@@ -48,15 +48,21 @@ async def send_sticker(sticker_id: str) -> ToolFailure | None:
 
     file_id = await get_sendable_file_id(sticker_id)
     if not file_id:
-        logger.warning(f'[TOOL] send_sticker: no sendable file_id for {sticker_id}')
+        logger.warning(
+            'No sendable file_id for sticker',
+            extra=event('TOOL_STICKER_SEND', outcome='not_found', sticker_id=sticker_id),
+        )
         await stickers_embedding_client.drop_sticker(sticker_id)
         return ToolFailure('стикер недоступен')
 
     try:
         await tool_context.replier.reply_sticker(file_id, sticker_id)
-    except BadRequest as e:
+    except BadRequest:
         # Only BadRequest: a network blip must surface as an error rather than quietly
         # evicting a sticker that is still perfectly good.
-        logger.warning(f'[TOOL] send_sticker failed for {sticker_id}: {e}')
+        logger.warning(
+            'send_sticker failed', exc_info=True,
+            extra=event('TOOL_STICKER_SEND', outcome='error', sticker_id=sticker_id),
+        )
         await stickers_embedding_client.drop_sticker(sticker_id)
         return ToolFailure('стикер недоступен')

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from src import settings
 from src.embeddings.client import ChunkData, EmbeddingsClient
-from src.logs import logger
+from src.logs import event, logger
 from src.models import MediaDescription, MessageMediaStatus
 
 
@@ -45,11 +45,21 @@ class StickerEmbeddingsClient(EmbeddingsClient):
     async def save_sticker(self, description: MediaDescription) -> None:
         text = sticker_embedding_text(description)
         if not text:
-            logger.info(f'Nothing to embed for sticker {description.media_id}, skipping')
+            logger.info(
+                'Nothing to embed for sticker, skipping',
+                extra=event(
+                    'STICKER_EMBED_SKIPPED', reason='nothing_to_embed', media_id=description.media_id,
+                ),
+            )
             return
 
         if description.status != MessageMediaStatus.READY:
-            logger.info(f'Sticker {description.media_id} is not ready, skipping')
+            logger.info(
+                'Sticker not ready, skipping',
+                extra=event(
+                    'STICKER_EMBED_SKIPPED', reason='not_ready', media_id=description.media_id,
+                ),
+            )
             return
 
         # The payload carries identity only. The sendable `file_id` is resolved from
@@ -107,7 +117,10 @@ class StickerEmbeddingsClient(EmbeddingsClient):
         return await get_media_description_by_media_id(unique_id)
 
     async def drop_sticker(self, unique_id: str) -> None:
-        logger.info(f'Dropping sticker {unique_id} from the index')
+        logger.info(
+            'Dropping sticker from the index',
+            extra=event('STICKER_INDEX_DROPPED', unique_id=unique_id),
+        )
         await self.qdrant_client.delete(
             collection_name=self.collection_name,
             points_selector=[_point_id(unique_id)],

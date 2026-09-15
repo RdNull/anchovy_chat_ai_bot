@@ -3,7 +3,7 @@ import asyncio
 from src import settings
 from src.facts.processors import extract_facts
 from src.initiative.handlers import run_initiative_checks
-from src.logs import logger
+from src.logs import event, logger
 from src.memory.processors import extract_memory
 from src.memory.repository import get_last_memory
 from src.messages.repository import get_messages, get_messages_count, get_messages_count_since
@@ -18,20 +18,25 @@ async def run_context_checks(chat_id: int):
     # `create_task`, so the traceback would surface only at GC time.
     try:
         await run_initiative_checks(chat_id)
-    except Exception as e:
-        logger.error(f'Error running initiative checks for chat {chat_id}: {e}', exc_info=True)
+    except Exception:
+        logger.error(
+            'Error running initiative checks', exc_info=True,
+            extra=event('INITIATIVE_CHECK', outcome='error'),
+        )
 
     await run_memory_checks(chat_id)
     await run_embedding_checks(chat_id)
 
 
 async def update_chat_context(chat_id: int):
-    logger.info(f'Updating memory for chat {chat_id}')
+    logger.debug('Updating memory', extra=event('MEMORY_UPDATE_START'))
     try:
         async with CHAT_CONTEXT_LOCK:
             await _update_chat_memory(chat_id)
-    except Exception as e:
-        logger.error(f'Error updating memory for chat {chat_id}: {e}', exc_info=True)
+    except Exception:
+        logger.error(
+            'Error updating memory', exc_info=True, extra=event('MEMORY_UPDATE', outcome='error'),
+        )
 
 
 async def _update_chat_memory(chat_id: int):
@@ -48,7 +53,10 @@ async def _update_chat_memory(chat_id: int):
     )
 
     if len(new_messages) < settings.LAST_MESSAGES_MIN_SIZE:
-        logger.info(f'No new messages for memory update in chat {chat_id}')
+        logger.info(
+            'No new messages for memory update',
+            extra=event('MEMORY_UPDATE', outcome='empty', count=len(new_messages)),
+        )
         return
 
     await extract_memory(chat_id, last_memory_data, new_messages)
@@ -66,7 +74,10 @@ async def run_memory_checks(chat_id: int):
 
     if messages_count >= settings.MEMORY_TRIGGER_SIZE:
         logger.info(
-            f'Triggering periodic memory update for chat {chat_id} (count since last: {messages_count})'
+            'Triggering periodic memory update',
+            extra=event(
+                'MEMORY_TRIGGERED', count=messages_count, trigger_size=settings.MEMORY_TRIGGER_SIZE,
+            ),
         )
         await update_chat_context(chat_id)
 
@@ -82,6 +93,10 @@ async def run_embedding_checks(chat_id: int):
 
     if messages_count >= settings.EMBEDDINGS_TRIGGER_SIZE:
         logger.info(
-            f'Triggering periodic embedding update for chat {chat_id} (count since last: {messages_count})'
+            'Triggering periodic embedding update',
+            extra=event(
+                'EMBEDDING_TRIGGERED', count=messages_count,
+                trigger_size=settings.EMBEDDINGS_TRIGGER_SIZE,
+            ),
         )
         await update_chat_embeddings(chat_id)

@@ -132,10 +132,10 @@ def test_sync_leaves_a_matching_record_alone(caplog):
 
     assert action == 'unchanged'
     assert apis.writes() == []
-    assert (
-        f'DNS_SYNC record={RECORD}.{DOMAIN} node_ip={NODE_IP} record_ip={NODE_IP} action=unchanged'
-        in caplog.messages
-    )
+    ok_records = [r for r in caplog.records if getattr(r, 'event', None) == 'DNS_SYNC_OK']
+    assert [
+        (r.record, r.ip, r.outcome) for r in ok_records
+    ] == [(f'{RECORD}.{DOMAIN}', NODE_IP, 'unchanged')]
 
 
 def test_sync_updates_a_mismatched_record_with_one_put(caplog):
@@ -150,10 +150,10 @@ def test_sync_updates_a_mismatched_record_with_one_put(caplog):
     assert writes[0].method == 'PUT'
     assert writes[0].url.path == f'/v4/domains/{DOMAIN_ID}/records/{RECORD_ID}'
     assert json.loads(writes[0].content) == {'target': NODE_IP}
-    assert (
-        f'DNS_SYNC record={RECORD}.{DOMAIN} node_ip={NODE_IP} record_ip=203.0.113.1 action=updated'
-        in caplog.messages
-    )
+    ok_records = [r for r in caplog.records if getattr(r, 'event', None) == 'DNS_SYNC_OK']
+    assert [
+        (r.record, r.ip, r.outcome) for r in ok_records
+    ] == [(f'{RECORD}.{DOMAIN}', NODE_IP, 'updated')]
 
 
 def test_sync_touches_only_the_named_record():
@@ -172,10 +172,10 @@ def test_sync_refuses_a_private_address_and_logs_both_values(caplog):
         sync(*apis.clients(), DOMAIN, RECORD)
 
     assert apis.writes() == []
-    assert (
-        f'DNS_SYNC record={RECORD}.{DOMAIN} node_ip=10.0.0.5 record_ip={NODE_IP} action=refused'
-        in caplog.messages
-    )
+    skipped_records = [r for r in caplog.records if getattr(r, 'event', None) == 'DNS_SYNC_SKIPPED']
+    assert [
+        (r.record, r.ip, r.outcome) for r in skipped_records
+    ] == [(f'{RECORD}.{DOMAIN}', '10.0.0.5', 'refused')]
 
 
 def test_sync_refuses_when_the_record_does_not_exist():

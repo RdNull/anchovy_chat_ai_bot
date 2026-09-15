@@ -214,7 +214,9 @@ async def test_respond_no_tool_calls_stays_silent(mocker):
     # No tool_calls means intended silence — nothing is sent, just a warning logged
     assert replier.reply_message.call_count == 0
     assert replier.reply_reaction.call_count == 0
-    assert mock_warning.call_args_list == [call('Tool requirement was ignored')]
+    assert mock_warning.call_args_list == [
+        call('Tool requirement was ignored', extra={'event': 'LLM_TOOL_REQUIREMENT_IGNORED'}),
+    ]
 
 
 async def test_respond_multiple_direct_tools_tags_langsmith(mocker, mock_langsmith):

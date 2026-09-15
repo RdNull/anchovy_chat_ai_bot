@@ -1,7 +1,7 @@
 import time
 from collections import defaultdict, deque
 
-from src.logs import logger
+from src.logs import event, logger
 
 _WINDOW = 60  # seconds
 
@@ -26,7 +26,12 @@ class SlidingWindowRateLimiter:
             call_times.popleft()
 
         if len(call_times) >= self.rate_limit:
-            logger.warning(f'Rate limit "{self.name}" exceeded for chat {chat_id}')
+            # chat_id comes from the bound context; `limiter` (not `name`) is what tells two
+            # exhausted budgets apart, since `name` is a reserved LogRecord attribute.
+            logger.warning(
+                'Rate limit exceeded',
+                extra=event('RATE_LIMIT_EXCEEDED', limiter=self.name, limit=self.rate_limit),
+            )
             return True
 
         call_times.append(now)

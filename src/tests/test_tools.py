@@ -157,6 +157,7 @@ async def test_tool_registry_execute_unknown_tool():
 async def test_tool_registry_execute_logging(mocker):
     mock_tool = MagicMock()
     mock_tool.name = 'test_tool'
+    mock_tool.return_direct = False
     mock_tool.ainvoke = AsyncMock(return_value='res')
 
     mock_logger = mocker.patch('src.tools.logger')
@@ -172,8 +173,21 @@ async def test_tool_registry_execute_logging(mocker):
 
     await registry.execute(tool_call)
 
-    assert mock_logger.info.call_count == 1
-    assert "Executing tool: test_tool with arguments: {'p': 1}" in mock_logger.info.call_args[0][0]
+    # Argument names only at INFO, never the values -- tool arguments can carry raw chat
+    # intent (a search query, say).
+    assert mock_logger.info.call_count == 2
+    call_extra, done_extra = mock_logger.info.call_args_list[0].kwargs['extra'], \
+        mock_logger.info.call_args_list[1].kwargs['extra']
+    assert call_extra == {'event': 'TOOL_CALL', 'tool': 'test_tool', 'tool_args': ['p']}
+    assert done_extra['event'] == 'TOOL_CALL_DONE'
+    assert done_extra['tool'] == 'test_tool'
+    assert done_extra['outcome'] == 'ok'
+    assert done_extra['direct'] is False
+    assert isinstance(done_extra['elapsed_ms'], int)
+
+    assert mock_logger.debug.call_count == 1
+    debug_extra = mock_logger.debug.call_args.kwargs['extra']
+    assert debug_extra == {'event': 'TOOL_CALL_ARGS', 'tool': 'test_tool', 'tool_args': {'p': 1}}
 
 
 async def test_tool_registry_is_return_direct_for_direct_tool():
@@ -332,7 +346,8 @@ async def test_search_web_error_returns_not_found(mocker):
     assert result == ['не нашлось']
     assert model.ainvoke.call_count == 1
     assert mock_logger.error.call_count == 1
-    assert 'openrouter exploded' in mock_logger.error.call_args[0][0]
+    assert mock_logger.error.call_args.kwargs['exc_info'] is True
+    assert mock_logger.error.call_args.kwargs['extra'] == {'event': 'TOOL_WEB_SEARCH_FAILED'}
 
 
 async def test_search_web_rate_limited_skips_the_model(mocker):
@@ -388,9 +403,12 @@ async def test_search_web_logs_the_house_format(mocker):
 
     await search_web.ainvoke({'query': 'почем айфон', 'limit': 2})
 
-    logged = mock_logger.info.call_args[0][0]
-    assert 'TOOL_WEB_SEARCH chat_id=123 query=почем айфон results=2 outcome=ok' in logged
-    assert 'elapsed_ms=' in logged
+    extra = mock_logger.info.call_args.kwargs['extra']
+    assert extra['event'] == 'TOOL_WEB_SEARCH'
+    assert extra['query'] == 'почем айфон'
+    assert extra['results'] == 2
+    assert extra['outcome'] == 'ok'
+    assert isinstance(extra['elapsed_ms'], int)
 
 
 async def test_search_web_strips_markdown_link_citations(mocker):
@@ -519,7 +537,11 @@ async def test_find_stickers_clamps_the_query_count(mocker):
 
     assert mock_search.call_count == 3
     assert [c[0][0] for c in mock_search.call_args_list] == ['q1', 'q2', 'q3']
-    assert 'truncating to 3' in mock_logger.warning.call_args[0][0]
+    extra = mock_logger.warning.call_args.kwargs['extra']
+    assert extra == {
+        'event': 'TOOL_ARG_CLAMPED', 'tool': 'find_stickers', 'arg': 'queries',
+        'given': 5, 'used': 3,
+    }
 
 
 async def test_find_stickers_drops_duplicate_queries(mocker):
@@ -602,13 +624,15 @@ async def test_find_stickers_logs_per_probe_hits_and_contribution(mocker):
 
     await find_stickers.ainvoke({'queries': ['кот', 'клоун']})
 
-    line = mock_logger.info.call_args[0][0]
-    assert 'TOOL_STICKER_SEARCH chat_id=123' in line
-    assert 'queries=кот | клоун' in line
-    assert 'hits=2|0' in line
+    extra = mock_logger.info.call_args.kwargs['extra']
+    assert extra['event'] == 'TOOL_STICKER_SEARCH'
+    assert extra['queries'] == 'кот | клоун'
+    assert extra['hits'] == '2|0'
     # The question the whole change rests on: did the second probe contribute anything?
-    assert 'contrib=2|0' in line
-    assert 'fused=2 returned=2' in line
+    assert extra['contrib'] == '2|0'
+    assert extra['query_count'] == 2
+    assert extra['fused'] == 2
+    assert extra['returned'] == 2
 
 
 # --- send_sticker ---

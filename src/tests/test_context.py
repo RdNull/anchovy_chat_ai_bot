@@ -421,7 +421,9 @@ async def test_update_chat_context_lock_held(mocker):
     await update_chat_context(123)
 
     assert mock_logger.error.call_count == 1
-    assert 'Error updating memory for chat 123' in mock_logger.error.call_args[0][0]
+    assert mock_logger.error.call_args.kwargs['extra'] == {
+        'event': 'MEMORY_UPDATE', 'outcome': 'error',
+    }
 
 
 async def test_update_chat_memory_db_error(mocker):
@@ -445,7 +447,9 @@ async def test_update_chat_memory_db_error(mocker):
     await update_chat_context(123)
 
     assert mock_logger.error.call_count == 1
-    assert 'Failed to parse memory JSON for chat 123' in mock_logger.error.call_args[0][0]
+    assert mock_logger.error.call_args.kwargs['extra'] == {
+        'event': 'MEMORY_EXTRACT', 'outcome': 'error',
+    }
 
 
 # --- extract_memory ---
@@ -606,17 +610,13 @@ async def test_extract_memory_resolves_attribution_before_eviction(mocker):
     assert saved.content.participants['@bob'].traits == ['дубль']
 
     conflict_logs = [
-        c[0][0] for c in mock_logger.info.call_args_list
-        if c[0][0].startswith('MEMORY_ATTRIBUTION_CONFLICT')
+        c.kwargs['extra'] for c in mock_logger.info.call_args_list
+        if c.kwargs.get('extra', {}).get('event') == 'MEMORY_ATTRIBUTION_CONFLICT'
     ]
-    assert len(conflict_logs) == 1
-    assert 'chat_id=1' in conflict_logs[0]
-    assert 'action=dropped' in conflict_logs[0]
-    assert 'reason=incumbent_wins' in conflict_logs[0]
-    assert 'owner=@alice' in conflict_logs[0]
-    assert 'kept=@bob' in conflict_logs[0]
-    assert 'field=traits' in conflict_logs[0]
-    assert 'text=Дубль!' in conflict_logs[0]
+    assert conflict_logs == [{
+        'event': 'MEMORY_ATTRIBUTION_CONFLICT', 'action': 'dropped', 'reason': 'incumbent_wins',
+        'owner': '@alice', 'kept': '@bob', 'field': 'traits', 'text': 'Дубль!',
+    }]
 
 
 async def test_extract_memory_logs_churn_and_would_evict(mocker):
@@ -651,24 +651,30 @@ async def test_extract_memory_logs_churn_and_would_evict(mocker):
 
     await extract_memory(chat_id=1, current_memory=current, new_messages=[make_message()])
 
-    logs = [c[0][0] for c in mock_logger.info.call_args_list]
+    extras = [c.kwargs['extra'] for c in mock_logger.info.call_args_list]
 
     # «купил велосипед» is deleted by the baseline this cycle, so it is not `added`.
-    churn = next(line for line in logs if line.startswith('MEMORY_CHURN '))
-    assert churn == (
-        'MEMORY_CHURN chat_id=1 nicks=1 carried=1 added=0 vanished=1 lost_recent=1 '
-        'promoted=0 promote_candidates=0'
-    )
+    churn = next(e for e in extras if e['event'] == 'MEMORY_CHURN')
+    assert churn == {
+        'event': 'MEMORY_CHURN', 'nicks': 1, 'carried': 1, 'added': 0, 'vanished': 1,
+        'lost_recent': 1, 'promoted': 0, 'promote_candidates': 0,
+    }
 
-    lost = [line for line in logs if line.startswith('MEMORY_CHURN_LOST')]
-    assert lost == ['MEMORY_CHURN_LOST chat_id=1 nick=@alice field=recent text=опоздал']
+    lost = [e for e in extras if e['event'] == 'MEMORY_CHURN_LOST']
+    assert lost == [{
+        'event': 'MEMORY_CHURN_LOST', 'nick': '@alice', 'field': 'recent', 'text': 'опоздал',
+    }]
 
-    decayed = [line for line in logs if line.startswith('MEMORY_DECAY')]
+    decayed = [e for e in extras if e['event'] == 'MEMORY_DECAY']
     assert decayed == [
-        'MEMORY_DECAY chat_id=1 nick=@alice field=recent action=evicted '
-        'reason=baseline text=купил велосипед',
-        'MEMORY_DECAY chat_id=1 nick=@alice field=recent action=would_evict '
-        'reason=cap text=ездил в Лондон',
+        {
+            'event': 'MEMORY_DECAY', 'nick': '@alice', 'field': 'recent', 'action': 'evicted',
+            'reason': 'baseline', 'text': 'купил велосипед',
+        },
+        {
+            'event': 'MEMORY_DECAY', 'nick': '@alice', 'field': 'recent', 'action': 'would_evict',
+            'reason': 'cap', 'text': 'ездил в Лондон',
+        },
     ]
     saved = await get_last_memory(1)
     assert saved.content.participants['@alice'].recent == ['ездил в Лондон']
@@ -684,7 +690,7 @@ async def test_extract_memory_logs_trait_overflow(mocker):
 
     await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
 
-    logs = [c[0][0] for c in mock_logger.info.call_args_list]
-    assert [line for line in logs if line.startswith('MEMORY_TRAIT_OVERFLOW')] == [
-        'MEMORY_TRAIT_OVERFLOW chat_id=1 nick=@alice count=12'
+    extras = [c.kwargs['extra'] for c in mock_logger.info.call_args_list]
+    assert [e for e in extras if e['event'] == 'MEMORY_TRAIT_OVERFLOW'] == [
+        {'event': 'MEMORY_TRAIT_OVERFLOW', 'nick': '@alice', 'count': 12},
     ]

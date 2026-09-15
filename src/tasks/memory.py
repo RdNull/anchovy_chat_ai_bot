@@ -1,13 +1,21 @@
+import time
+
 from src import settings
 from src.log_context import log_context
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.memory.handlers import delete_old_memories
 
 
 async def run_memory_cleanup():
     with log_context(task='memory_cleanup'):
-        logger.info('Running scheduled memory cleanup')
+        logger.info('Running scheduled task', extra=event('TASK_START'))
+        started = time.monotonic()
         try:
             await delete_old_memories(settings.MEMORY_RETENTION_DAYS)
-        except Exception as e:
-            logger.error(f'Failed to run memory cleanup: {e}', exc_info=True)
+            logger.info(
+                'Scheduled task finished', extra=event('TASK_DONE', elapsed_ms=elapsed_ms(started)),
+            )
+        except Exception:
+            logger.error(
+                'Failed to run memory cleanup', exc_info=True, extra=event('TASK_FAILED'),
+            )

@@ -1,9 +1,10 @@
 import asyncio
+import time
 from datetime import datetime, timezone
 
 from src import mongo as db, settings
 from src.embeddings.messages import messages_embeddings_client
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.messages.repository import get_messages
 from src.models import EmbeddingTask, Message, RelatedMessagesData
 
@@ -30,7 +31,7 @@ async def search_related_messages(user_message: Message) -> list[RelatedMessages
 
 
 async def update_chat_embeddings(chat_id: int):
-    logger.info(f"Updating embeddings for chat {chat_id}")
+    logger.debug('Updating embeddings', extra=event('EMBEDDING_UPDATE_START'))
 
     async with EMBEDDING_TASK_LOCK:
         last_embedding_task = await get_last_embedding_task(chat_id)
@@ -46,19 +47,32 @@ async def update_chat_embeddings(chat_id: int):
         )
 
         if len(messages) < settings.EMBEDDINGS_MIN_SIZE:
-            logger.info(f"No new messages for embeddings update in chat {chat_id}")
+            logger.info(
+                'No new messages for embeddings update',
+                extra=event('EMBEDDING_UPDATE', outcome='empty'),
+            )
             return
 
+        started = time.monotonic()
         try:
-            await messages_embeddings_client.save(messages)
+            chunks = await messages_embeddings_client.save(messages)
             await save_embedding_task(chat_id, messages[-1].created_at)
-            logger.info(f"Embeddings updated for chat {chat_id}")
-        except Exception as e:
-            logger.error(f"Error updating embeddings for chat {chat_id}: {e}", exc_info=True)
+            logger.info(
+                'Embeddings updated',
+                extra=event(
+                    'EMBEDDING_UPDATE', outcome='ok', elapsed_ms=elapsed_ms(started),
+                    messages=len(messages), chunks=chunks,
+                ),
+            )
+        except Exception:
+            logger.error(
+                'Error updating embeddings', exc_info=True,
+                extra=event('EMBEDDING_UPDATE', outcome='error'),
+            )
 
 
 async def get_last_embedding_task(chat_id: int) -> EmbeddingTask | None:
-    logger.debug(f"Getting embedding for chat {chat_id}")
+    logger.debug('Getting embedding task', extra=event('EMBEDDING_TASK_FETCH'))
     embedding_task = await db.embedding_tasks.find_one(
         {'chat_id': chat_id}, sort=[('created_at', -1)]
     )
@@ -69,7 +83,7 @@ async def get_last_embedding_task(chat_id: int) -> EmbeddingTask | None:
 
 
 async def save_embedding_task(chat_id: int, last_message_time: datetime):
-    logger.info(f"Saving embedding for chat {chat_id}")
+    logger.debug('Saving embedding task', extra=event('EMBEDDING_TASK_SAVED'))
     data = {
         'chat_id': chat_id,
         'last_message_time': last_message_time.timestamp(),

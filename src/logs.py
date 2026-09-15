@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 
 from pythonjsonlogger.json import JsonFormatter
 
@@ -133,3 +134,12 @@ def event(name: str, **fields) -> dict:
         if not _FIELD_NAME_PATTERN.fullmatch(key):
             raise ValueError(f'{key!r} is not a valid field name')
     return {'event': name, **fields}
+
+
+def elapsed_ms(started: float) -> int:
+    """Milliseconds since `started` (a `time.monotonic()` timestamp).
+
+    One helper rather than fifteen ad-hoc `(time.monotonic() - started) * 1000` expressions,
+    so every `elapsed_ms` field in Axiom means the same thing.
+    """
+    return round((time.monotonic() - started) * 1000)

@@ -3,7 +3,7 @@ from uuid import UUID
 
 from src import settings
 from src.embeddings.client import ChunkData, EmbeddingsClient
-from src.logs import logger
+from src.logs import event, logger
 from src.messages.repository import get_messages_by_ids
 from src.models import Message, RelatedMessagesData
 
@@ -59,13 +59,14 @@ class MessageEmbeddingsClient(EmbeddingsClient):
 
         return result
 
-    async def save(self, messages: list[Message]) -> None:
+    async def save(self, messages: list[Message]) -> int:
         chunks = chunk_messages(messages)
-        chat_id = messages[0].chat_id
         logger.info(
-            f"Saving embedding for chat {chat_id} with {len(messages)} in {len(chunks)} chunks"
+            'Saving embedding',
+            extra=event('EMBEDDING_SAVE', messages=len(messages), chunks=len(chunks)),
         )
         await self._save(chunks)
+        return len(chunks)
 
     async def _search_related_message_ids(self, chat_id, query, limit=5) -> list[dict]:
         search_results = await self._search(query, limit=limit, chat_id=chat_id)

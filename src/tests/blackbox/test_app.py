@@ -186,12 +186,11 @@ def test_logs_carry_neither_the_token_nor_the_body(client, caplog):
         client.post('/', json=request, headers=_authorized())
         client.post('/', json=request, headers=_authorized('wrong-token'))
 
+    http_records = [r for r in caplog.records if getattr(r, 'event', None) == 'BLACKBOX_HTTP']
+    assert len(http_records) == 2
+    assert all(r.method == 'POST' and r.path == '/' and hasattr(r, 'status') for r in http_records)
+
     lines = [record.getMessage() for record in caplog.records]
-    http_lines = [line for line in lines if line.startswith('BLACKBOX_HTTP ')]
-    assert http_lines == [
-        line for line in http_lines if 'method=POST path=/ status=' in line
-    ]
-    assert len(http_lines) == 2
     assert not [line for line in lines if TOKEN in line or 'wrong-token' in line]
     assert not [line for line in lines if body_marker in line]
 
@@ -203,11 +202,11 @@ def test_a_rejection_without_a_token_is_quiet_but_a_wrong_token_is_not(client, c
         client.post('/', json=_INITIALIZE, headers=_authorized('wrong-token'))
 
     logged = [
-        (record.levelno, record.getMessage().rsplit(' elapsed_ms=', 1)[0])
+        (record.levelno, record.method, record.path, record.status)
         for record in caplog.records
-        if record.getMessage().startswith('BLACKBOX_HTTP ')
+        if getattr(record, 'event', None) == 'BLACKBOX_HTTP'
     ]
     assert logged == [
-        (logging.DEBUG, 'BLACKBOX_HTTP method=GET path=/.env status=401'),
-        (logging.INFO, 'BLACKBOX_HTTP method=POST path=/ status=401'),
+        (logging.DEBUG, 'GET', '/.env', 401),
+        (logging.INFO, 'POST', '/', 401),
     ]

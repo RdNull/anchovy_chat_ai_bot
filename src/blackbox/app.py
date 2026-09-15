@@ -24,7 +24,7 @@ from src import mongo, settings
 from src.blackbox.server import mcp
 from src.embeddings.messages import messages_embeddings_client
 from src.log_context import push_log_context
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 
 HEALTH_PATH = '/healthz'
 READY_PATH = '/readyz'
@@ -126,8 +126,11 @@ class BearerAuth:
         quiet = path in _PROBE_PATHS or (status == 401 and header is None)
         logger.log(
             logging.DEBUG if quiet else logging.INFO,
-            'BLACKBOX_HTTP method=%s path=%s status=%s elapsed_ms=%d',
-            scope['method'], path, status, (time.monotonic() - started) * 1000,
+            'Blackbox HTTP request finished',
+            extra=event(
+                'BLACKBOX_HTTP', method=scope['method'], path=path, status=status,
+                elapsed_ms=elapsed_ms(started),
+            ),
         )
 
     def _authorized(self, header: bytes) -> bool:
@@ -165,6 +168,9 @@ async def _stores_ready() -> bool:
             messages_embeddings_client.qdrant_client.get_collections(), _READY_TIMEOUT,
         )
     except Exception as exc:
-        logger.warning('BLACKBOX_NOT_READY %s: %s', type(exc).__name__, exc)
+        logger.warning(
+            'Blackbox not ready',
+            extra=event('BLACKBOX_NOT_READY', exc_type=type(exc).__name__, error=str(exc)),
+        )
         return False
     return True

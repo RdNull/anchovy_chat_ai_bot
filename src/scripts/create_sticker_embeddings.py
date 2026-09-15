@@ -1,9 +1,10 @@
 import argparse
 import asyncio
+import time
 
 from src.embeddings.stickers import stickers_embedding_client
 from src.log_context import push_log_context
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.messages.media.repository import _parse_media_description
 from src.models import MessageMediaStatus, MessageMediaTypes
 from src import mongo
@@ -26,7 +27,8 @@ async def create_sticker_embeddings(batch_size: int):
         'type': MessageMediaTypes.STICKER.value, 'status': MessageMediaStatus.READY.value,
     }
     total = await mongo.media_descriptions.count_documents(query)
-    logger.info(f'Found {total} stickers to embed')
+    started = time.monotonic()
+    logger.info('Backfill starting', extra=event('BACKFILL_START', kind='stickers', total=total))
 
     cursor = mongo.media_descriptions.find(query).batch_size(batch_size)
     processed = 0
@@ -34,9 +36,20 @@ async def create_sticker_embeddings(batch_size: int):
         await stickers_embedding_client.save_sticker(_parse_media_description(raw))
         processed += 1
         if processed % batch_size == 0:
-            logger.info(f'Embedded {processed}/{total} stickers')
+            logger.info(
+                'Backfill progress',
+                extra=event(
+                    'BACKFILL_PROGRESS', kind='stickers', processed=processed, total=total,
+                ),
+            )
 
-    logger.info(f'Done. Embedded {processed} stickers')
+    logger.info(
+        'Backfill finished',
+        extra=event(
+            'BACKFILL_DONE', kind='stickers', processed=processed,
+            elapsed_ms=elapsed_ms(started),
+        ),
+    )
 
 
 if __name__ == '__main__':  # pragma: no cover

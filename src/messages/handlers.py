@@ -10,7 +10,7 @@ from telegram.ext import CallbackContext, ContextTypes
 
 from src.characters.repository import CHARACTERS
 from src.log_context import log_context
-from src.logs import logger
+from src.logs import event, logger
 from src.models import UpdateMessage
 from .media import handle_media_message
 from .parsing import parse_user_message
@@ -29,7 +29,7 @@ from ..processors.context.handlers import run_context_checks
 async def start(update: Update, context: CallbackContext):
     # chat_id/user_id are already bound by ContextBindingApplication.process_update
     # (src/bot.py) by the time this callback runs.
-    logger.info('started')
+    logger.info('Command handled', extra=event('COMMAND_HANDLED', command='start'))
     await update.message.reply_text('Дарова, чорт!')
 
 
@@ -44,13 +44,16 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     chat_id = getattr(getattr(update, 'effective_chat', None), 'id', None)
     user_id = getattr(getattr(update, 'effective_user', None), 'id', None)
     with log_context(chat_id=chat_id, user_id=user_id):
-        logger.error("Exception while handling an update:", exc_info=context.error)
+        logger.error(
+            'Exception while handling an update', exc_info=context.error,
+            extra=event('UPDATE_FAILED'),
+        )
 
 
 @restricted
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    logger.info(f"Info requested in chat {chat_id}")
+    logger.info('Command handled', extra=event('COMMAND_HANDLED', command='info'))
     character = await get_chat_character(chat_id)
     name = escape_markdown_v2(character.display_name)
     description = escape_markdown_v2(character.description)
@@ -63,8 +66,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted
 async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    logger.info(f"Characters list requested in chat {chat_id}")
+    logger.info('Command handled', extra=event('COMMAND_HANDLED', command='list'))
     keyboard = [
         [InlineKeyboardButton(character.display_name, callback_data=f"select_char:{code}")]
         for code, character in CHARACTERS.items()
@@ -81,7 +83,9 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     character_code = query.data.split(":")[1]
-    logger.info(f"Character {character_code} selected in chat {chat_id}")
+    logger.info(
+        'Character set', extra=event('CHARACTER_SET', character=character_code, source='select'),
+    )
     await set_chat_character(chat_id, character_code)
     character = CHARACTERS[character_code]
 
@@ -92,7 +96,9 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     character_code = random.choice(list(CHARACTERS.keys()))
-    logger.info(f"Random character {character_code} chosen for chat {chat_id}")
+    logger.info(
+        'Character set', extra=event('CHARACTER_SET', character=character_code, source='random'),
+    )
     await set_chat_character(chat_id, character_code)
     character = CHARACTERS[character_code]
 
@@ -101,8 +107,7 @@ async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted
 async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    logger.info(f"Bot mentioned or replied to in chat {chat_id}")
+    logger.info('Bot mentioned or replied to', extra=event('MESSAGE_MENTION'))
     await generate_answer(update, context)
 
 
@@ -113,7 +118,14 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not user_message:
         return
 
-    logger.debug(f"Handling conversation in chat {chat_id} from {user_message.nickname}")
+    # Promoted from DEBUG: intake volume per chat is currently not queryable at all.
+    logger.info(
+        'Message received',
+        extra=event(
+            'MESSAGE_RECEIVED', nickname=user_message.nickname,
+            has_media=bool(user_message.media), text_len=len(user_message.text or ''),
+        ),
+    )
 
     await save_message(user_message)
     # Dispatched for any media, not just PENDING: the pipeline has its own skip checks,
@@ -129,7 +141,7 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 @restricted
 @send_action(ChatAction.TYPING)
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info('Handling media message')
+    logger.info('Handling media message', extra=event('MEDIA_RECEIVED'))
     user_message = await parse_user_message(update)
     if not user_message:
         return
@@ -141,7 +153,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted
 async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info('Handling message reaction')
+    logger.info('Handling message reaction', extra=event('REACTION_RECEIVED'))
     reaction_update = update.message_reaction
     if not reaction_update or not reaction_update.user:
         return
@@ -162,7 +174,7 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
 
 @restricted
 async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info('Handling message edit')
+    logger.info('Handling message edit', extra=event('MESSAGE_EDIT_RECEIVED'))
     if not update.edited_message:
         return
 

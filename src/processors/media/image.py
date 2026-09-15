@@ -1,8 +1,10 @@
+import time
+
 from langchain_core.messages import HumanMessage, ImageContentBlock, SystemMessage
 from langsmith import traceable
 
 from src import ai
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.models import ImageDetectionData, MediaDescriptionData
 from src.prompt_manager import prompt_manager
 
@@ -24,20 +26,34 @@ async def describe_image(image: ImageDetectionData) -> MediaDescriptionData | No
         ])
     ]
 
+    started = time.monotonic()
     try:
         response: MediaDescriptionData = await model_with_structure.ainvoke(messages)
         if not response:
             raise Exception("No response from model")
 
+        logger.debug(
+            'Image description text',
+            extra=event(
+                'MEDIA_DESCRIBE_TEXT', content_hash=image.content_hash,
+                description=response.description, ocr_text=response.ocr_text,
+            ),
+        )
         logger.info(
-            "Image description generated for "
-            f"{image.content_hash}: {response.description}; {response.ocr_text}"
+            'Image description generated',
+            extra=event(
+                'MEDIA_DESCRIBE', outcome='ok', kind='image', content_hash=image.content_hash,
+                desc_len=len(response.description or ''), ocr_len=len(response.ocr_text or ''),
+                elapsed_ms=elapsed_ms(started),
+            ),
         )
         return response
-    except Exception as e:
+    except Exception:
         logger.error(
-            f"Error generating image description for image {image.content_hash}: {e}",
-            exc_info=True
+            'Error generating image description', exc_info=True,
+            extra=event(
+                'MEDIA_DESCRIBE', outcome='error', kind='image', content_hash=image.content_hash,
+            ),
         )
 
     return None
