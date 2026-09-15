@@ -76,9 +76,6 @@ _formatter = JsonFormatter(
     # The chat is Russian; escaping Cyrillic to \uXXXX triples the byte size of any line
     # carrying chat text and makes the Axiom UI unreadable.
     json_ensure_ascii=False,
-    # Makes an unconverted call site *findable* (`attributes.event == 'UNSET'`) instead of
-    # producing a null column. Removed once that query returns zero rows for our own logger.
-    defaults={'event': 'UNSET'},
     # A stray ObjectId, datetime or pydantic model in an `extra` must never raise inside
     # logging itself.
     json_default=repr,
