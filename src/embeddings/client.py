@@ -12,7 +12,7 @@ from qdrant_client.http.models import (
 from qdrant_client.models import (Distance, PointStruct, VectorParams)
 
 from src import settings
-from src.logs import logger
+from src.logs import event, logger
 from src.settings import QDRANT_URL
 
 
@@ -67,7 +67,10 @@ class EmbeddingsClient:
                     )
                 ]
             )
-            logger.info(f'Saved embedding for chunk {chunk.chunk_id}')
+            logger.debug(
+                'Saved embedding chunk',
+                extra=event('EMBEDDING_CHUNK_SAVED', chunk_id=str(chunk.chunk_id)),
+            )
 
     async def _search(self, query: str, limit=5, score_threshold=0.2,  **filters) -> list[EmbeddingSearchDataItem]:
         await self._check_collection()
