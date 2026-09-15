@@ -3,12 +3,12 @@ from datetime import datetime, timezone
 from bson import ObjectId
 
 from src import mongo
-from src.logs import logger
+from src.logs import event, logger
 from src.models import UserFact
 
 
 async def get_facts(nickname: str, limit: int = 5) -> list[UserFact]:
-    logger.debug(f"Fetching facts for {nickname}")
+    logger.debug('Fetching facts', extra=event('DB_FACTS_FETCH', nickname=nickname))
     if 'facts' not in await mongo.db.list_collection_names():
         await mongo.db.create_collection('facts')
         return []
@@ -19,7 +19,7 @@ async def get_facts(nickname: str, limit: int = 5) -> list[UserFact]:
 
 
 async def get_fact_by_id(fact_id: str) -> UserFact | None:
-    logger.debug(f"Fetching fact by id {fact_id}")
+    logger.debug('Fetching fact by id', extra=event('DB_FACT_FETCH', fact_id=fact_id))
     fact = await mongo.facts.find_one({'_id': ObjectId(fact_id)})
     return UserFact.model_validate(fact) if fact else None
 
@@ -44,7 +44,7 @@ async def update_fact(
 
 
 async def create_fact(nickname: str, text: str, confidence: float) -> UserFact:
-    logger.info(f"Saving fact for {nickname}")
+    logger.debug('Saving fact', extra=event('DB_FACT_WRITE', nickname=nickname))
     fact = UserFact(nickname=nickname, text=text, confidence=confidence)
     return await save_fact(fact)
 
