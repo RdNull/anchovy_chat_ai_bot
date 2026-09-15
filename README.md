@@ -91,7 +91,9 @@ A single `IS_LOCAL` flag switches the entire model stack between OpenRouter (clo
 **Observability**
 LangSmith tracing is integrated via `@traceable` decorators across the LLM call graph, including A/B model-version tags on chat completions. Full span trees are captured for each agentic loop execution.
 
-A deploy recreates the bot pod, and kubelet deletes a pod's log directory on cleanup — so before this, the outgoing pod's plain log lines went with it, and the only thing LangSmith couldn't cover (output written before the application logger even starts, such as a crashlooping container's entrypoint stderr) was gone for good. A node-level OpenTelemetry Collector DaemonSet now tails every pod's log files directly off the node's disk and ships them to Axiom, independent of and in addition to LangSmith's tracing — covering the bot, MongoDB, and Qdrant alike without any application code involved.
+A deploy recreates the bot pod, and kubelet deletes a pod's log directory on cleanup — so before this, the outgoing pod's plain log lines went with it, and the only thing LangSmith couldn't cover (output written before the application logger even starts, such as a crashlooping container's entrypoint stderr) was gone for good. A node-level OpenTelemetry Collector DaemonSet now tails every pod's log files directly off the node's disk and ships them to Axiom, independent of and in addition to LangSmith's tracing — covering every project workload (the bot, both stores, the blackbox MCP server, and the DNS sync CronJob) without any application code involved.
+
+The bot's own logs are structured, not just shipped: every line is one JSON object carrying a stable `event` name plus typed fields, rather than a sentence with values interpolated into it. A `chat_id`/`user_id`/`request_id` bound once per Telegram update — or once per scheduled job, or once per MCP request — is inherited by every log line that update sets in motion, including ones from a detached background task, so "what did the bot do about this message" is one query by `request_id` instead of an unreconstructable guess. The same identifiers make spend and latency queryable that were previously visible only inside a LangSmith trace: which model/prompt-version answered, how long, how many tokens each way.
 
 **Kubernetes Deployment & CI/CD**
 A GitHub Actions workflow builds and pushes a multi-stage Docker image to GHCR on every push to `main`, then deploys it to a Kubernetes cluster (bot, MongoDB, and Qdrant manifests under `manifests/`) via `kubectl`, with app config supplied through a ConfigMap/Secret pair populated from repo variables and secrets.
@@ -122,7 +124,7 @@ Two constraints in the manifests are load-bearing and read like frugality: the b
 | Scheduling           | scheduler                                       | Weekly fact-confidence decay, daily memory cleanup |
 | Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks         |
 | Developer Tooling    | MCP Python SDK v2 (streamable HTTP)             | Read-only data access for Claude Code sessions  |
-| Observability        | LangSmith, OpenTelemetry Collector, Axiom       | LLM call tracing; node-level pod log shipping   |
+| Observability        | LangSmith, OpenTelemetry Collector, Axiom       | LLM call tracing; structured JSON logs shipped and queryable per-request |
 | Containerization     | Docker (multi-stage build)                      | Bot, MongoDB, and Qdrant services               |
 | Deployment           | Kubernetes, GitHub Actions                      | CI build/push to GHCR, `kubectl`-based deploy   |
 | Ingress & TLS        | Traefik, cert-manager, Let's Encrypt            | HTTPS on the node's own ports, no load balancer |
