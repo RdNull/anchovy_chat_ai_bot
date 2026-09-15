@@ -17,7 +17,7 @@ from pydantic import Field
 
 from src.blackbox import queries
 from src.log_context import log_context
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 
 T = TypeVar('T')
 
@@ -61,8 +61,10 @@ async def _run(name: str, query: Awaitable[T]) -> T:
             raise ToolError(f'{type(exc).__name__}: {exc}') from exc
         finally:
             logger.info(
-                'BLACKBOX_TOOL name=%s outcome=%s elapsed_ms=%d',
-                name, outcome, (time.monotonic() - started) * 1000,
+                'Blackbox tool finished',
+                extra=event(
+                    'BLACKBOX_TOOL', tool=name, outcome=outcome, elapsed_ms=elapsed_ms(started),
+                ),
             )
 
 

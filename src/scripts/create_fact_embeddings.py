@@ -1,11 +1,12 @@
 """Backfill embeddings for user fact documents in the database."""
 import argparse
 import asyncio
+import time
 from uuid import uuid4
 
 from src.embeddings.facts import facts_embedding_client
 from src.log_context import log_context
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.models import UserFact
 from src import mongo
 
@@ -24,7 +25,8 @@ async def create_fact_embeddings(nickname: str | None, batch_size: int):
     with log_context(request_id=uuid4().hex[:8]):
         query = {'nickname': nickname} if nickname else {}
         total = await mongo.facts.count_documents(query)
-        logger.info(f'Found {total} facts to embed')
+        started = time.monotonic()
+        logger.info('Backfill starting', extra=event('BACKFILL_START', kind='facts', total=total))
 
         cursor = mongo.facts.find(query).batch_size(batch_size)
         processed = 0
@@ -33,9 +35,17 @@ async def create_fact_embeddings(nickname: str | None, batch_size: int):
             await facts_embedding_client.save_fact(fact)
             processed += 1
             if processed % batch_size == 0:
-                logger.info(f'Embedded {processed}/{total} facts')
+                logger.info(
+                    'Backfill progress',
+                    extra=event('BACKFILL_PROGRESS', kind='facts', processed=processed, total=total),
+                )
 
-        logger.info(f'Done. Embedded {processed} facts')
+        logger.info(
+            'Backfill finished',
+            extra=event(
+                'BACKFILL_DONE', kind='facts', processed=processed, elapsed_ms=elapsed_ms(started),
+            ),
+        )
 
 
 if __name__ == '__main__':  # pragma: no cover
