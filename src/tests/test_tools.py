@@ -157,6 +157,7 @@ async def test_tool_registry_execute_unknown_tool():
 async def test_tool_registry_execute_logging(mocker):
     mock_tool = MagicMock()
     mock_tool.name = 'test_tool'
+    mock_tool.return_direct = False
     mock_tool.ainvoke = AsyncMock(return_value='res')
 
     mock_logger = mocker.patch('src.tools.logger')
@@ -172,8 +173,21 @@ async def test_tool_registry_execute_logging(mocker):
 
     await registry.execute(tool_call)
 
-    assert mock_logger.info.call_count == 1
-    assert "Executing tool: test_tool with arguments: {'p': 1}" in mock_logger.info.call_args[0][0]
+    # Argument names only at INFO, never the values -- tool arguments can carry raw chat
+    # intent (a search query, say).
+    assert mock_logger.info.call_count == 2
+    call_extra, done_extra = mock_logger.info.call_args_list[0].kwargs['extra'], \
+        mock_logger.info.call_args_list[1].kwargs['extra']
+    assert call_extra == {'event': 'TOOL_CALL', 'tool': 'test_tool', 'tool_args': ['p']}
+    assert done_extra['event'] == 'TOOL_CALL_DONE'
+    assert done_extra['tool'] == 'test_tool'
+    assert done_extra['outcome'] == 'ok'
+    assert done_extra['direct'] is False
+    assert isinstance(done_extra['elapsed_ms'], int)
+
+    assert mock_logger.debug.call_count == 1
+    debug_extra = mock_logger.debug.call_args.kwargs['extra']
+    assert debug_extra == {'event': 'TOOL_CALL_ARGS', 'tool': 'test_tool', 'tool_args': {'p': 1}}
 
 
 async def test_tool_registry_is_return_direct_for_direct_tool():
