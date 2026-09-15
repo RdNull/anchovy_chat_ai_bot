@@ -10,7 +10,7 @@ from src.initiative.models import InitiativeVerdict
 from src.initiative.policies import decide, pre_check, split_at_gap
 from src.initiative.processors import evaluate_initiative
 from src.initiative.repository import get_last_initiative_run, save_initiative_run
-from src.logs import logger
+from src.logs import event, logger
 from src.memory.repository import get_last_memory
 from src.messages.repository import fetch_last_messages
 from src.messages.utils import get_chat_character, send_chat_action
@@ -29,7 +29,7 @@ async def run_initiative_checks(chat_id: int):
     if not settings.INITIATIVE_CHECKS_ENABLED:
         return
 
-    logger.info(f'Running initiative checks for chat {chat_id}')
+    logger.debug('Running initiative checks', extra=event('INITIATIVE_CHECK_START'))
     context, candidates = await _claim_window(chat_id)
     if not candidates:
         return
@@ -39,14 +39,18 @@ async def run_initiative_checks(chat_id: int):
     evaluation = await evaluate_initiative(character, context, candidates)
     if not await decide(evaluation):
         logger.info(
-            f'Initiative run skipped for chat {chat_id}; {evaluation.score=}, {evaluation.reason=}'
+            'Initiative run skipped',
+            extra=event(
+                'INITIATIVE_SKIPPED', reason='below_threshold', score=evaluation.score,
+                threshold=settings.INITIATIVE_SCORE_THRESHOLD,
+            ),
         )
         return
 
     if not settings.INITIATIVE_ENABLED:
         logger.info(
-            f'Initiative run for chat {chat_id} would reply (dry run); '
-            f'{evaluation.score=}|{evaluation.reason=}'
+            'Initiative run would reply (dry run)',
+            extra=event('INITIATIVE_DRY_RUN', score=evaluation.score, reason=evaluation.reason),
         )
         return
 
@@ -69,10 +73,13 @@ async def _claim_window(chat_id: int) -> tuple[list[Message], list[Message]]:
         context, candidates = _split_window(chat_id, sequence, watermark)
 
         if not await pre_check(chat_id, candidates):
-            logger.info(f'Initiative run pre-checks failed for chat {chat_id}')
+            logger.info('Initiative run pre-checks failed', extra=event('INITIATIVE_PRECHECK_FAILED'))
             return [], []
 
-        logger.info(f'Triggering initiative run for chat {chat_id} {len(candidates)}')
+        logger.info(
+            'Triggering initiative run',
+            extra=event('INITIATIVE_CLAIMED', candidates=len(candidates)),
+        )
         await save_initiative_run(chat_id, last_message_time=candidates[-1].created_at)
 
     return context, candidates
@@ -108,9 +115,13 @@ async def _get_messages(chat_id: int, watermark: datetime | None) -> list[Messag
 
 
 def _split_window(
-    chat_id: int, sequence: list[Message], watermark: datetime | None,
+    _chat_id: int, sequence: list[Message], watermark: datetime | None,
 ) -> tuple[list[Message], list[Message]]:
     """Cuts `sequence` at its newest large gap, then re-partitions around the watermark.
+
+    `_chat_id` is unused now that `INITIATIVE_WINDOW` reads it from the bound context
+    rather than an explicit field; kept positional so the call site and the direct-call
+    tests need no change.
 
     Cutting inside the candidate region empties the context — a fresh conversation
     with nothing worth carrying forward. Cutting inside the context region merely
@@ -130,9 +141,11 @@ def _split_window(
     candidates = [m for m in window if watermark is None or m.created_at > watermark]
 
     logger.info(
-        f'INITIATIVE_WINDOW chat_id={chat_id} fetched={len(sequence)} '
-        f'cut_gap_minutes={cut_gap_minutes if cut_gap_minutes is not None else "none"} '
-        f'context_count={len(context)} candidate_count={len(candidates)}'
+        'Initiative window built',
+        extra=event(
+            'INITIATIVE_WINDOW', fetched=len(sequence), cut_gap_minutes=cut_gap_minutes,
+            context_count=len(context), candidate_count=len(candidates),
+        ),
     )
     return context, candidates
 
@@ -140,7 +153,7 @@ def _split_window(
 async def _run_initiative_reply(
     chat_id: int, character: Character, evaluation: InitiativeVerdict,
 ):
-    logger.info(f'Initiative run triggered for chat {chat_id}')
+    logger.info('Initiative run triggered', extra=event('INITIATIVE_REPLY_SENT'))
     await send_chat_action(chat_id, ChatAction.TYPING)
     # No `character.memory = ...` here: `get_character` hands out a shared singleton,
     # and this runs as a detached task, so re-stamping it from a background task can

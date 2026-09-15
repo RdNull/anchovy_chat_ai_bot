@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from src import mongo as db
 from src.initiative.models import InitiativeRun
-from src.logs import logger
+from src.logs import event, logger
 
 
 async def get_last_initiative_run(chat_id: int) -> InitiativeRun | None:
@@ -16,7 +16,7 @@ async def get_last_initiative_run(chat_id: int) -> InitiativeRun | None:
 
 
 async def save_initiative_run(chat_id: int, last_message_time: datetime):
-    logger.info(f'Saving initiative run for chat {chat_id}')
+    logger.debug('Saving initiative run', extra=event('INITIATIVE_RUN_SAVED'))
     data = {
         'chat_id': chat_id,
         'last_message_time': last_message_time.timestamp(),

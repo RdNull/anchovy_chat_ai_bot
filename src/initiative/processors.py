@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timezone
 
 from langchain_core.messages import SystemMessage
@@ -6,7 +7,7 @@ from langsmith import traceable
 from src import ai, settings
 from src.characters.character import Character
 from src.initiative.models import InitiativeDecision, InitiativeVerdict
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.models import Message, format_ts
 from src.prompt_manager import prompt_manager
 
@@ -35,12 +36,16 @@ async def evaluate_initiative(
         character_description=character.style_prompt,
     )
 
+    started = time.monotonic()
     try:
         evaluation_result: InitiativeDecision = await model_with_structure.ainvoke([
             SystemMessage(content=system_prompt)
         ])
-    except Exception as e:
-        logger.error(f'Error while evaluating initiative: {e}')
+    except Exception:
+        logger.error(
+            'Error while evaluating initiative', exc_info=True,
+            extra=event('INITIATIVE_EVALUATE', outcome='error'),
+        )
         return InitiativeVerdict(
             target_message=None,
             score=0,
@@ -64,14 +69,29 @@ async def evaluate_initiative(
     )
     if evaluation_result.target_index and target_message is None:
         logger.warning(
-            f'Initiative evaluation target_index out of range: '
-            f'{evaluation_result.target_index=}, {len(candidates)=}'
+            'Initiative evaluation target_index out of range',
+            extra=event(
+                'INITIATIVE_TARGET_OUT_OF_RANGE', target_index=evaluation_result.target_index,
+                candidates=len(candidates),
+            ),
         )
 
+    # The resolved target's text is high-cardinality chat content, not diagnostic
+    # metadata -- kept at DEBUG, separate from the terminal INFO line below.
+    logger.debug(
+        'Initiative evaluation target',
+        extra=event(
+            'INITIATIVE_EVALUATE_TARGET',
+            text=target_message.embedding_text if target_message else None,
+        ),
+    )
     logger.info(
-        f'Initiative evaluation result: '
-        f'{target_message.embedding_text if target_message else "<direct>"}'
-        f'|{evaluation_result.reason=}|{evaluation_result.score=}'
+        'Initiative evaluation result',
+        extra=event(
+            'INITIATIVE_EVALUATE', outcome='ok', score=evaluation_result.score,
+            reason=evaluation_result.reason, target_index=evaluation_result.target_index,
+            elapsed_ms=elapsed_ms(started),
+        ),
     )
     return InitiativeVerdict(
         target_message=target_message,

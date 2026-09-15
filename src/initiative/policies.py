@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from src import settings
 from src.initiative.models import InitiativeVerdict
-from src.logs import logger
+from src.logs import event, logger
 from src.messages.repository import get_last_message, get_messages_count_since
 from src.models import Message, UserRole
 
@@ -26,7 +26,10 @@ def split_at_gap(messages: list[Message], gap_minutes: float) -> list[Message]:
 
 async def pre_check(chat_id: int, messages: list[Message]) -> bool:
     if len(messages) < settings.INITIATIVE_TRIGGER_SIZE:
-        logger.info(f'Skipping initiative reply in chat {chat_id}: messages count too low')
+        logger.info(
+            'Skipping initiative reply',
+            extra=event('INITIATIVE_SKIPPED', reason='messages_too_few', count=len(messages)),
+        )
         return False
 
     # The chat's true newest, not `messages[-1]`: the window is fetched before this
@@ -34,7 +37,9 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
     # guard has to see what was actually said last.
     last_message = await get_last_message(chat_id)
     if last_message and last_message.role == UserRole.AI:
-        logger.info(f'Skipping initiative reply in chat {chat_id}: last message was from AI')
+        logger.info(
+            'Skipping initiative reply', extra=event('INITIATIVE_SKIPPED', reason='last_from_ai'),
+        )
         return False
 
     last_bot_message = await get_last_message(chat_id, role=UserRole.AI)
@@ -42,7 +47,9 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
         now = datetime.now(timezone.utc)
         cooldown_threshold = now - timedelta(minutes=settings.INITIATIVE_COOLDOWN_MINUTES)
         if last_bot_message.created_at > cooldown_threshold:
-            logger.info(f'Skipping initiative reply in chat {chat_id}: bot cooldown not passed')
+            logger.info(
+                'Skipping initiative reply', extra=event('INITIATIVE_SKIPPED', reason='cooldown'),
+            )
             return False
 
         user_messages_count = await get_messages_count_since(
@@ -50,8 +57,8 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
         )
         if user_messages_count < settings.INITIATIVE_MIN_GAP_MESSAGES:
             logger.info(
-                f'Skipping initiative reply in chat {chat_id}: '
-                f'messages gap low {user_messages_count=}'
+                'Skipping initiative reply',
+                extra=event('INITIATIVE_SKIPPED', reason='gap_too_small', count=user_messages_count),
             )
             return False
 
