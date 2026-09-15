@@ -9,7 +9,7 @@ prompts:
     label: "Prompt v2"
 
 providers:
-  - file://../models/cloud/recap/v3.yaml
+  - file://../models/recap/v3.yaml
 
 defaultTest:
   assert:

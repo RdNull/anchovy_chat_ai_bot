@@ -14,8 +14,6 @@ class _Settings(BaseSettings):
     DATABASE_URL: str
     DATABASE_NAME: str = 'data'
 
-    IS_LOCAL: bool = False
-
     ALLOWED_CHAT_IDS: list[str] = []
     ALLOWED_USER_IDS: list[str] = []
 
@@ -117,6 +115,11 @@ class _Settings(BaseSettings):
 
     # Stickers ship cold: the index starts empty and fills from live traffic as people
     # re-send stickers the bot has already described.
+    # Admits src/characters/repository/debug.yaml into CHARACTERS — it is a
+    # diagnostic persona (shows tool calls, memory decisions, etc.), not one meant
+    # to appear in /list or /random in production.
+    ENABLE_DEBUG_CHARACTER: bool = False
+
     ENABLE_STICKER_REPLIES: bool = False
     # Two different questions: how deep one probe goes before the probes are fused
     # (over-fetch freely, Qdrant is local and the fusion discards the tail), and how
@@ -162,7 +165,6 @@ TELEGRAM_TOKEN = _s.TELEGRAM_TOKEN
 BOT_NICKNAME = _s.BOT_NICKNAME
 DATABASE_URL = _s.DATABASE_URL
 DATABASE_NAME = _s.DATABASE_NAME
-IS_LOCAL = _s.IS_LOCAL
 ALLOWED_CHAT_IDS = _s.ALLOWED_CHAT_IDS
 ALLOWED_USER_IDS = _s.ALLOWED_USER_IDS
 AI_TIMEOUT = _s.AI_TIMEOUT
@@ -204,6 +206,7 @@ RECENT_MAX_CYCLES = _s.RECENT_MAX_CYCLES
 TOPICS_KEEP = _s.TOPICS_KEEP
 QUESTIONS_KEEP = _s.QUESTIONS_KEEP
 JOKES_KEEP = _s.JOKES_KEEP
+ENABLE_DEBUG_CHARACTER = _s.ENABLE_DEBUG_CHARACTER
 ENABLE_STICKER_REPLIES = _s.ENABLE_STICKER_REPLIES
 STICKER_PROBE_LIMIT = _s.STICKER_PROBE_LIMIT
 STICKER_SEARCH_LIMIT = _s.STICKER_SEARCH_LIMIT

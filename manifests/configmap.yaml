@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: bot-configmap
 data:
-  IS_LOCAL: 'false'
+  ENABLE_DEBUG_CHARACTER: 'false'
   BOT_NICKNAME: "${BOT_NICKNAME}"
   DATABASE_NAME: "${DATABASE_NAME}"
   ALLOWED_CHAT_IDS: "${ALLOWED_CHAT_IDS}"

@@ -1,5 +1,0 @@
-{
-  "model": "llama3.2",
-  "model_provider": "ollama",
-  "base_url": "env:AI_API_BASE_URL"
-}

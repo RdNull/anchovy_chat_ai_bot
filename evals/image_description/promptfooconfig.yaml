@@ -10,7 +10,7 @@ prompts:
     label: "Prompt-v1"
 
 providers:
-  - file://../models/cloud/image_describe/v2.yaml
+  - file://../models/image_describe/v2.yaml
 
 defaultTest:
   options:

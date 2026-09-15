@@ -2,26 +2,22 @@ import json
 import os
 from typing import Any, Dict
 
-from src import settings
-
 
 class ModelManager:
     def __init__(self, models_dir: str = "src/models"):
         self.models_dir = models_dir
 
     def get_model_settings(self, task: str, version: str = "v1") -> Dict[str, Any]:
-        env = "local" if settings.IS_LOCAL else "cloud"
-
-        file_path = os.path.join(self.models_dir, env, task, f"{version}.json")
+        file_path = os.path.join(self.models_dir, task, f"{version}.json")
 
         if not os.path.exists(file_path):
             # Fallback to 'v1.json' if specific version file not found
-            fallback_path = os.path.join(self.models_dir, env, task, "v1.json")
+            fallback_path = os.path.join(self.models_dir, task, "v1.json")
             if os.path.exists(fallback_path):
                 file_path = fallback_path
             else:
                 raise ValueError(
-                    f"No model settings found for env: {env}, task: {task}, version: {version} (looked in {file_path} and {fallback_path})")
+                    f"No model settings found for task: {task}, version: {version} (looked in {file_path} and {fallback_path})")
 
         with open(file_path, "r") as f:
             model_config = json.load(f)

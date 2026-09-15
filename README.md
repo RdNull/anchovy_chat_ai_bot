@@ -85,9 +85,6 @@ Building eval fixtures and auditing memory both meant querying MongoDB by hand a
 - **Reachable from anywhere, and nothing else is.** It answers at one HTTPS host behind a bearer token, checked before a request body is read, so a rejected caller never reaches the protocol layer. An empty token refuses to start the process rather than serving without auth — the same silent-blank failure the deploy tests guard against, where the outcome would be the chat published. The pod holds only the read-only database credential and a separate, spend-capped embedding key, never the bot's secrets. Its network policy admits traffic only from the ingress and lets it out only to the two stores, DNS, and public HTTPS for query embeddings, so read-only is a property of the cluster, not just of the code. There is one transport: the local copy is the same HTTP server with the same token check, so the auth path runs every day rather than only in production.
 - **Its output is untrusted.** Everything it returns was written by chat members, some of it deliberately adversarial, and it is handed back as data to analyse, never as instructions.
 
-**Dual Local/Cloud Mode**
-A single `IS_LOCAL` flag switches the entire model stack between OpenRouter (cloud) and Ollama (local). Model configs are versioned JSON files per task, supporting environment variable interpolation.
-
 **Observability**
 LangSmith tracing is integrated via `@traceable` decorators across the LLM call graph, including A/B model-version tags on chat completions. Full span trees are captured for each agentic loop execution.
 
@@ -114,7 +111,6 @@ Two constraints in the manifests are load-bearing and read like frugality: the b
 | Telegram Integration | python-telegram-bot (HTTP/2)                    | Bot API, polling, message reactions             |
 | LLM Orchestration    | LangChain                                       | Tool binding, structured output, model routing  |
 | Cloud LLM Provider   | OpenRouter API                                  | Gemini and Claude models, pinned per task       |
-| Local LLM            | Ollama                                          | Self-hosted fallback for all tasks              |
 | Embeddings           | OpenAI text-embedding-3-small (via OpenRouter)  | 1536-dim vectors for RAG, cached via async-cache|
 | Vector Database      | Qdrant (AsyncQdrantClient)                      | Message, fact and sticker retrieval             |
 | Document Database    | MongoDB (AsyncIOMotorClient)                    | Chat history, memory, facts, chat + initiative state |
