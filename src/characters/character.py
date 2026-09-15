@@ -1,5 +1,7 @@
 import asyncio
 import random
+import time
+from dataclasses import dataclass
 from typing import Generator, Sequence
 
 import langsmith
@@ -8,8 +10,9 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langsmith import traceable
 
 from src import ai, settings
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.memory.models import MemoryData
+from src.model_manager import model_manager
 from src.models import Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
 from . import tools
@@ -22,6 +25,24 @@ from ..tools import ToolContext, ToolFailure, ToolRegistry
 # Now that one can fail and hand the model another turn, a send that fails every time
 # would recurse forever without an absolute stop.
 _MAX_LOOP_DEPTH = 8
+
+
+@dataclass
+class _LoopStats:
+    """Accumulates across every recursive turn of `_run_llm_loop`, for the one `LLM_INVOKE`
+    line logged when the whole loop finishes — model spend and latency are otherwise
+    invisible outside LangSmith."""
+    depth: int = 0
+    tool_calls: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
+
+    def record(self, response: AIMessage, depth: int) -> None:
+        self.depth = depth
+        self.tool_calls += len(response.tool_calls)
+        usage = response.usage_metadata or {}
+        self.tokens_in += usage.get('input_tokens') or 0
+        self.tokens_out += usage.get('output_tokens') or 0
 
 
 def _format_previous_messages(
@@ -99,7 +120,7 @@ class Character:
         if self.rate_limiter.is_exceeded(chat_id):
             return None
 
-        llm = self._get_llm(versions=('v8',))
+        llm, version, model_name = self._get_llm(versions=('v8',))
         messages = [
             self.system_message,
             *_format_previous_messages(replier, last_messages or []),
@@ -107,42 +128,68 @@ class Character:
 
         tools_registry = _get_tools_registry(replier)
         logger.debug(
-            f'Invoking LLM for character {self.name} with {len(messages)} messages'
+            'Invoking LLM', extra=event('LLM_INVOKE_START', character=self.name, messages=len(messages)),
         )
+        stats = _LoopStats()
+        started = time.monotonic()
         try:
             await asyncio.wait_for(
-                self._run_llm_loop(llm, messages, tools_registry),
+                self._run_llm_loop(llm, messages, tools_registry, stats),
                 timeout=settings.AI_TIMEOUT
+            )
+            logger.info(
+                'LLM loop finished',
+                extra=event(
+                    'LLM_INVOKE', character=self.name, model=model_name, version=version,
+                    elapsed_ms=elapsed_ms(started), depth=stats.depth,
+                    tool_calls=stats.tool_calls, tokens_in=stats.tokens_in,
+                    tokens_out=stats.tokens_out, outcome='ok',
+                ),
             )
         except asyncio.TimeoutError:
             logger.error(
-                f'LLM request timed out after {settings.AI_TIMEOUT}s for {self.name}'
+                'LLM request timed out',
+                extra=event(
+                    'LLM_INVOKE', outcome='timeout', timeout_s=settings.AI_TIMEOUT,
+                    elapsed_ms=elapsed_ms(started),
+                ),
             )
             await replier.reply_message('Чё-то я призадумался и забыл, че хотел сказать...')
-        except Exception as e:
-            logger.error(f'Error invoking LLM for {self.name}: {e}', exc_info=True)
+        except Exception:
+            logger.error(
+                'Error invoking LLM', exc_info=True, extra=event('LLM_INVOKE', outcome='error'),
+            )
             await replier.reply_message('Голова чё-то разболелась, давай потом...')
 
     @classmethod
-    def _get_llm(cls, versions: Sequence[str]) -> BaseChatModel:
+    def _get_llm(cls, versions: Sequence[str]) -> tuple[BaseChatModel, str, str]:
         version = random.choice(versions)  # an A/B test
         rt = langsmith.get_current_run_tree()
         rt.tags.append(version)
-        return ai.get_model(version=version)
+        # Which arm ran is otherwise unrecoverable from the logs -- `LLM_INVOKE` stamps it.
+        model_name = model_manager.get_model_settings('chat', version).get('model')
+        return ai.get_model(version=version), version, model_name
 
     async def _run_llm_loop(
         self,
         llm: BaseChatModel,
         messages: list[BaseMessage],
         tools_registry: ToolRegistry,
+        stats: _LoopStats,
         _depth=1,
     ):
         if _depth > _MAX_LOOP_DEPTH:
-            logger.error(f'LLM loop hard depth cap hit for {self.name}, giving up')
+            logger.error(
+                'LLM loop hard depth cap hit, giving up',
+                extra=event('LLM_LOOP_ABORTED', reason='hard_depth_cap', depth=_depth),
+            )
             return
 
         if _depth > 5:
-            logger.warning(f'LLM loop depth exceeded for {self.name}, returning response')
+            logger.warning(
+                'LLM loop depth exceeded, returning response',
+                extra=event('LLM_LOOP_DEPTH_EXCEEDED', depth=_depth),
+            )
             direct_response_llm = llm.bind_tools(
                 tools_registry.direct_tools, tool_choice='any', parallel_tool_calls=False
             )
@@ -151,9 +198,13 @@ class Character:
             llm_with_tools = llm.bind_tools(tools_registry.tools, tool_choice='any')
             response = await llm_with_tools.ainvoke(messages)
 
+        stats.record(response, _depth)
+
         if not response.tool_calls:
             # shouldn't happen, but still
-            logger.warning('Tool requirement was ignored')
+            logger.warning(
+                'Tool requirement was ignored', extra=event('LLM_TOOL_REQUIREMENT_IGNORED'),
+            )
             return
 
         messages.append(response)
@@ -162,16 +213,22 @@ class Character:
             if tools_registry.is_return_direct(tool_call):
                 if not isinstance(tool_result, ToolFailure):
                     if len(response.tool_calls) > 1:
-                        logger.warning(f'Multiple tools called for direct response')
+                        logger.warning(
+                            'Multiple tools called for direct response',
+                            extra=event('LLM_MULTIPLE_DIRECT_TOOLS', tool=tool_call['name']),
+                        )
                         rt = langsmith.get_current_run_tree()
                         rt.tags.append('multiple_response_called')
 
                     return
 
                 logger.warning(
-                    f'Direct tool {tool_call["name"]} failed: {tool_result.message}'
+                    'Direct tool failed',
+                    extra=event(
+                        'TOOL_DIRECT_FAILED', tool=tool_call['name'], error=tool_result.message,
+                    ),
                 )
 
             messages.append(tool_message)
 
-        await self._run_llm_loop(llm, messages, tools_registry, _depth + 1)
+        await self._run_llm_loop(llm, messages, tools_registry, stats, _depth + 1)

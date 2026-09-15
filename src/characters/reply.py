@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from telegram import Bot, ReplyParameters
 
 from src import settings
-from src.logs import logger
+from src.logs import event, logger
 from src.messages.repository import add_bot_reaction, save_message
 from src.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole
 from src.types import ReactionEmoji
@@ -20,7 +20,10 @@ class Replier:
         self.target_message = target
 
     async def reply_message(self, text: str) -> Message:
-        logger.info(f'Replying to user message with text: {text}')
+        # The full text is chat content, not diagnostic metadata -- it moves to its own
+        # DEBUG line so an INFO-level stream never carries a reply body.
+        logger.info('Replying to user message', extra=event('REPLY_SENT', kind='text', text_len=len(text)))
+        logger.debug('Reply text', extra=event('REPLY_TEXT', text=text))
 
         reply = await self.bot.send_message(
             chat_id=self.chat_id,
@@ -30,7 +33,10 @@ class Replier:
         return await self._save_message(reply.message_id, text)
 
     async def reply_sticker(self, file_id: str, unique_id: str) -> Message:
-        logger.info(f'Replying to user message with sticker: {unique_id}')
+        logger.info(
+            'Replying to user message',
+            extra=event('REPLY_SENT', kind='sticker', sticker_id=unique_id),
+        )
         reply = await self.bot.send_sticker(
             chat_id=self.chat_id,
             reply_parameters=self._get_reply_params(),
@@ -44,7 +50,7 @@ class Replier:
         )
 
     async def reply_reaction(self, emoji: ReactionEmoji, is_big: bool = False):
-        logger.info(f'Setting reaction with emoji: {emoji}')
+        logger.info('Setting reaction', extra=event('REPLY_SENT', kind='reaction', emoji=str(emoji)))
         if not self.target_message or not self.target_message.telegram_id:
             raise ValueError('Target message is not set for reply reaction')
 

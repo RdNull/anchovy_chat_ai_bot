@@ -10,7 +10,7 @@ from src.characters.rate_limit import SlidingWindowRateLimiter
 from src.embeddings.messages import messages_embeddings_client
 from src.embeddings.stickers import StickerSearchResult, stickers_embedding_client
 from src.facts.repository import get_facts
-from src.logs import logger
+from src.logs import elapsed_ms, event, logger
 from src.messages.media.repository import get_recent_sticker_ids
 from src.prompt_manager import prompt_manager
 from src.tools import ToolContext
@@ -30,14 +30,25 @@ Returns:
 @tool(description=SEARCH_MESSAGES_DESCRIPTION)
 async def search_messages(search_query: str, limit: int = 3) -> list[dict]:
     if limit < 0 or limit > 5:
-        logger.warning(f'[TOOL] search_messages call with wrong limit {limit}, defaulting to 3')
+        logger.warning(
+            'Clamping tool argument',
+            extra=event('TOOL_ARG_CLAMPED', tool='search_messages', arg='limit', given=limit, used=3),
+        )
         limit = 3
 
     tool_context: ToolContext = search_messages.metadata['context']
     chat_id = tool_context.chat_id
-    logger.info(f"[TOOL] Searching messages for {search_query}; {limit=}")
+    started = time.monotonic()
     related_messages = await messages_embeddings_client.search(chat_id, search_query, limit=limit)
 
+    logger.info(
+        'Message search finished',
+        extra=event(
+            'TOOL_MESSAGE_SEARCH', query_len=len(search_query), limit=limit,
+            results=len(related_messages), elapsed_ms=elapsed_ms(started),
+            outcome='ok' if related_messages else 'empty',
+        ),
+    )
     return [
         {
             'score': rm.score,
@@ -57,12 +68,22 @@ Args:
 @tool(description=GET_USER_FACT_TOOL_DESCRIPTION)
 async def get_user_facts(nickname: str, limit: int = 5) -> list[dict]:
     if limit < 0 or limit > 20:  # dumb check, but I don't trust AI
-        logger.warning(f"[TOOL] get_user_facts call with wrong limit {limit}, defaulting to 5")
+        logger.warning(
+            'Clamping tool argument',
+            extra=event('TOOL_ARG_CLAMPED', tool='get_user_facts', arg='limit', given=limit, used=5),
+        )
         limit = 5
 
     nickname = nickname.replace('@', '')
+    started = time.monotonic()
     facts = await get_facts(nickname, limit=limit)
-    logger.info(f"[TOOL] Retrieved {len(facts)} facts for {nickname}")
+    logger.info(
+        'User facts retrieved',
+        extra=event(
+            'TOOL_USER_FACTS', nickname=nickname, results=len(facts), limit=limit,
+            elapsed_ms=elapsed_ms(started), outcome='ok' if facts else 'empty',
+        ),
+    )
     return [
         fact.model_dump(include={'text', 'confidence'})
         for fact in facts
@@ -102,14 +123,17 @@ _web_search_limiter = SlidingWindowRateLimiter(settings.WEB_SEARCH_RATE_LIMIT, n
 @tool(description=SEARCH_WEB_DESCRIPTION)
 async def search_web(query: str, limit: int = 2) -> list[str]:
     if limit < 1 or limit > 3:
-        logger.warning(f'[TOOL] search_web call with wrong limit {limit}, defaulting to 2')
+        logger.warning(
+            'Clamping tool argument',
+            extra=event('TOOL_ARG_CLAMPED', tool='search_web', arg='limit', given=limit, used=2),
+        )
         limit = 2
 
     tool_context: ToolContext = search_web.metadata['context']
     chat_id = tool_context.chat_id
 
     if _web_search_limiter.is_exceeded(chat_id):
-        _log_search(chat_id, query, 0, 'rate_limited', 0)
+        _log_search(query, 0, 'rate_limited', 0)
         return _WEB_SEARCH_NOT_FOUND
 
     started = time.monotonic()
@@ -121,19 +145,19 @@ async def search_web(query: str, limit: int = 2) -> list[str]:
             timeout=settings.WEB_SEARCH_TIMEOUT,
         )
     except asyncio.TimeoutError:
-        _log_search(chat_id, query, 0, 'timeout', _elapsed(started))
+        _log_search(query, 0, 'timeout', elapsed_ms(started))
         return _WEB_SEARCH_NOT_FOUND
-    except Exception as e:
-        logger.error(f'[TOOL] search_web failed: {e}', exc_info=True)
-        _log_search(chat_id, query, 0, 'error', _elapsed(started))
+    except Exception:
+        logger.error('search_web failed', exc_info=True, extra=event('TOOL_WEB_SEARCH_FAILED'))
+        _log_search(query, 0, 'error', elapsed_ms(started))
         return _WEB_SEARCH_NOT_FOUND
 
     fragments = _parse_fragments(response, limit)
     if not fragments:
-        _log_search(chat_id, query, 0, 'empty', _elapsed(started))
+        _log_search(query, 0, 'empty', elapsed_ms(started))
         return _WEB_SEARCH_NOT_FOUND
 
-    _log_search(chat_id, query, len(fragments), 'ok', _elapsed(started))
+    _log_search(query, len(fragments), 'ok', elapsed_ms(started))
     return fragments
 
 
@@ -186,15 +210,11 @@ def _content_text(response: AIMessage) -> str:
     return ''
 
 
-def _elapsed(started: float) -> int:
-    return int((time.monotonic() - started) * 1000)
-
-
-def _log_search(chat_id: int, query: str, results: int, outcome: str, elapsed_ms: int) -> None:
+def _log_search(query: str, results: int, outcome: str, elapsed: int) -> None:
     """The unit's only instrument: what the bot looks up, how often, and how it fails."""
     logger.info(
-        f'TOOL_WEB_SEARCH chat_id={chat_id} query={query} results={results} '
-        f'outcome={outcome} elapsed_ms={elapsed_ms}'
+        'Web search finished',
+        extra=event('TOOL_WEB_SEARCH', query=query, results=results, outcome=outcome, elapsed_ms=elapsed),
     )
 
 
@@ -226,8 +246,11 @@ async def find_stickers(queries: list[str] | str) -> list[dict]:
     queries = list(dict.fromkeys(q.strip() for q in queries if q and q.strip()))
     if len(queries) > _MAX_QUERIES:  # dumb check, but I don't trust AI
         logger.warning(
-            f'[TOOL] find_stickers call with {len(queries)} queries, '
-            f'truncating to {_MAX_QUERIES}'
+            'Clamping tool argument',
+            extra=event(
+                'TOOL_ARG_CLAMPED', tool='find_stickers', arg='queries',
+                given=len(queries), used=_MAX_QUERIES,
+            ),
         )
         queries = queries[:_MAX_QUERIES]
 
@@ -262,7 +285,7 @@ async def find_stickers(queries: list[str] | str) -> list[dict]:
         if len(found) >= settings.STICKER_SEARCH_LIMIT:
             break
 
-    _log_sticker_search(chat_id, queries, probes, found, len(fused), _elapsed(started))
+    _log_sticker_search(queries, probes, found, len(fused), elapsed_ms(started))
     return [
         {
             'sticker_id': r.unique_id,
@@ -294,12 +317,11 @@ def _fuse(probes: list[list[str]]) -> list[str]:
 
 
 def _log_sticker_search(
-    chat_id: int,
     queries: list[str],
     probes: list[list[str]],
     found: list[StickerSearchResult],
     fused: int,
-    elapsed_ms: int,
+    elapsed: int,
 ) -> None:
     """The unit's only instrument: what the bot looked for and which probe paid off.
 
@@ -307,11 +329,17 @@ def _log_sticker_search(
     probe returned; `contrib` is how many of the *returned* candidates it supplied.
     Without `contrib`, «did the second probe ever contribute anything» — the only
     question that says whether multi-query was worth adding — is unanswerable.
+    Kept as pipe-joined strings rather than lists, matching the existing analysis
+    workflow built around this line.
     """
     returned = {sticker.unique_id for sticker in found}
     logger.info(
-        f'TOOL_STICKER_SEARCH chat_id={chat_id} queries={" | ".join(queries)} '
-        f'hits={"|".join(str(len(p)) for p in probes)} '
-        f'contrib={"|".join(str(len(returned.intersection(p))) for p in probes)} '
-        f'fused={fused} returned={len(found)} elapsed_ms={elapsed_ms}'
+        'Sticker search finished',
+        extra=event(
+            'TOOL_STICKER_SEARCH',
+            queries=' | '.join(queries),
+            hits='|'.join(str(len(p)) for p in probes),
+            contrib='|'.join(str(len(returned.intersection(p))) for p in probes),
+            query_count=len(queries), fused=fused, returned=len(found), elapsed_ms=elapsed,
+        ),
     )
