@@ -38,6 +38,19 @@ This is deliberately the one place a silent Axiom-side corruption can be introdu
 
 **The conversion.** All 141 `logger.*` call sites in `src/` (plus 3 in `scripts/dns_sync.py`) were converted from an interpolated message to a constant message plus `extra=event(...)`, following a fixed rule set: the message becomes a constant (`summarize count() by body` groups instead of fragmenting); every line gets a `SCREAMING_SNAKE` `<DOMAIN>_<ACTION>[_<OUTCOME>]` event name; `chat_id`/`user_id`/`request_id` come from the bound context and are never re-added as fields; field names are shared across subsystems (`count`, `outcome`, `elapsed_ms`, `reason`, `nick`, `tool`, …) rather than inventing a synonym per call site; types survive (`count=len(x)` not `str(len(x))`, `None` not `"none"`); no dynamic field names (`event('X', **{nick: value})` would mint one Axiom column per chat member); every multi-outcome operation gets a terminal event with `outcome=` from a closed vocabulary (`ok | empty | skipped | disabled | timeout | rate_limited | error | not_found`); and no chat text, tool arguments, LLM output or reply bodies at INFO — moved to a DEBUG companion line (`TOOL_CALL_ARGS`, `REPLY_TEXT`, `MEDIA_DESCRIBE_TEXT`, `MEMORY_EXTRACT_CONTENT`, …) — except four deliberate exceptions kept as-is because each is the subject of a standing investigation: `MEMORY_CHURN_LOST.text`, `MEMORY_DECAY.text`, `MEMORY_ATTRIBUTION_CONFLICT.text`, `TOOL_WEB_SEARCH.query`. Thirteen event names that already existed before this conversion keep those exact names — `MEMORY_CHURN`, `MEMORY_CHURN_LOST`, `MEMORY_DECAY`, `MEMORY_ATTRIBUTION_CONFLICT`, `MEMORY_TRAIT_OVERFLOW`, `TOOL_WEB_SEARCH`, `TOOL_STICKER_SEARCH`, `INITIATIVE_WINDOW`, `STICKER_CORPUS`, `BLACKBOX_TOOL`, `BLACKBOX_NOT_READY`, `BLACKBOX_HTTP`, `DNS_SYNC_FAILED` — they are cited by name in saved analysis.
 
+**`LLM_MULTIPLE_TOOL_CALLS`** (`src/characters/character.py:_run_llm_loop`, renamed from
+`LLM_MULTIPLE_DIRECT_TOOLS` — not one of the thirteen preserved names above, and the
+event had never fired, so the rename cost nothing) fires whenever the model emits more
+than one tool call in a single turn. It carries both `tool` (the direct tool that
+answered — unchanged) and `tools` (every tool name in the batch, in call order,
+`tools=[tc['name'] for tc in response.tool_calls]`) — the first list-valued INFO/WARNING
+field alongside `TOOL_CALL.tool_args`, and the same reasoning applies: tool *names* are
+metadata, not chat text or argument values, so the INFO/WARNING ban on the latter does not
+reach them. `tools` is what lets a query tell "a context tool ran for nothing because a
+direct tool in the same batch already answered" (e.g. `find_stickers` + `answer_text`)
+apart from two direct tools racing (`answer_text` + `set_reaction`) — `tool` alone could
+not distinguish them.
+
 **`scripts/dns_sync.py`** carries its own four-line `JsonFormatter` setup, duplicated on purpose from `src/logs.py` rather than imported: the module's own contract is that it imports nothing from `src` (see its docstring), so it cannot share the helper that builds this for the bot. Its three events (`DNS_SYNC_OK`, `DNS_SYNC_SKIPPED`, `DNS_SYNC_FAILED`) carry `record`/`ip`/`outcome` fields built inline rather than through `event()`, for the same reason — no `src` import to reach the validator with.
 
 **No `defaults={'event': 'UNSET'}` any more.** During the migration the formatter carried that default so an unconverted call site was findable (`attributes.event == 'UNSET'`) instead of producing a null column; it was removed once that query, scoped to `attributes.logger == 'bot'`, returned zero rows against the live dataset. Third-party records (`httpx`, `telegram.ext`, `asyncio`) that never pass their own `extra=` now simply have no `event` field, rather than carrying a placeholder.

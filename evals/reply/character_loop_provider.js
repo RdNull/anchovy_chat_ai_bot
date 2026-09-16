@@ -64,10 +64,16 @@ function extractAnswer(toolCalls) {
         const fn = tc.function || tc;
         const args = parseArgs(fn.arguments);
         if (fn.name === 'answer_text' && args.text) return args.text;
-        if (fn.name === 'set_reaction' && args.emoji) return `[reaction: ${args.emoji}]`;
-        // Registered so a sticker choice reads as a scoreable answer instead of running
-        // the loop out to maxIterations and failing for the wrong reason.
-        if (fn.name === 'send_sticker' && args.sticker_id) return `[sticker: ${args.sticker_id}]`;
+        // Bracket-free on purpose: the `not-regex` defaultTest assert exists to catch the
+        // model leaking the *input* message format ([26-09-15 17:36] nick: …, [sticker: …])
+        // into its reply, so that guard stays global rather than scoped per-case. That means
+        // our own gesture answers can't use brackets either, or they fail the same assert a
+        // real leak would — a `REACTION:`/`STICKER:` sentinel says the same thing without
+        // colliding. `file_unique_id` is Telegram base64url (`A-Za-z0-9_-`), disjoint from
+        // the not-regex character class, so STICKER:<id> can't reintroduce the leak this
+        // assert guards against.
+        if (fn.name === 'set_reaction' && args.emoji) return `REACTION:${args.emoji}`;
+        if (fn.name === 'send_sticker' && args.sticker_id) return `STICKER:${args.sticker_id}`;
     }
     return null;
 }

@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Sasha: я вообще кофе не пью, вредно для сердца"
+    },
+    {
+        "role": "assistant",
+        "content": "ну ну"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Sasha: где мой стакан, это уже третий кофе за час"
+    }
+]

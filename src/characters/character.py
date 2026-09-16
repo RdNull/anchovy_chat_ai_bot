@@ -214,11 +214,15 @@ class Character:
                 if not isinstance(tool_result, ToolFailure):
                     if len(response.tool_calls) > 1:
                         logger.warning(
-                            'Multiple tools called for direct response',
-                            extra=event('LLM_MULTIPLE_DIRECT_TOOLS', tool=tool_call['name']),
+                            'Multiple tools called in one batch',
+                            extra=event(
+                                'LLM_MULTIPLE_TOOL_CALLS',
+                                tool=tool_call['name'],
+                                tools=[tc['name'] for tc in response.tool_calls],
+                            ),
                         )
                         rt = langsmith.get_current_run_tree()
-                        rt.tags.append('multiple_response_called')
+                        rt.tags.append('multiple_tools_called')
 
                     return
 

@@ -44,12 +44,17 @@ If either is missing, ask before proceeding.
 ## Conversion rules
 
 - **Drop the SystemMessage**. The eval already injects the system prompt via
-  `src/prompts/character_setup/v6.j2` — duplicating it in the test breaks
+  `src/prompts/character_setup/v9.j2` — duplicating it in the test breaks
   the prompt rendering.
 - **HumanMessage → `{role: "user", content: <kwargs.content>}`**, preserving
   the original string exactly (timestamps, `[image: ...]`, `[gif: ...]`,
   `[PROCESSING]`, multiline content, etc.). The bot's `ai_format` is already
   baked into the content.
+- **Prefix the last message with `[TARGET] `** (before the timestamp, if any) —
+  v9 only answers the message the fixture points at; without the marker it
+  falls into the unmarked branch ("answer the conversation as a whole"), which
+  is not what most cases are meant to exercise. If the log's last message isn't
+  the one you want answered, mark that one instead and say so when reporting.
 - **AIMessage → `{role: "assistant", content: <kwargs.content>}`**. If the
   AIMessage has tool_calls and empty content, skip it — those represent the
   bot's intermediate context-tool calls, not its final reply.
@@ -101,5 +106,10 @@ remapped, so they can override.
 - Don't modify `whyzzzy.js`, the model YAMLs, the prompt template, or the
   custom provider — those are out of scope for adding a test case.
 - Don't rename existing test directories.
-- Don't try to invent additional `assert:` entries for the test — assertions
-  are shared via `defaultTest:` in `promptfooconfig.yaml`.
+- Don't invent per-test `assert:` entries for an ordinary text case — assertions
+  are shared via `defaultTest:` in `promptfooconfig.yaml`. The one exception is
+  a case specifically testing which answer channel (text/reaction/sticker) or
+  which tool the model picks — those get a `channel-choice` or `tool-choice`
+  `javascript` assert reading `context.metadata.toolsCalled`, following the
+  existing `web_search_*` and `gesture_*`/`sticker_*` cases. Ask before adding
+  one if it's unclear whether the case calls for it.

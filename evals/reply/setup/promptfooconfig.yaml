@@ -27,8 +27,12 @@ defaultTest:
         config:
           temperature: 0.2
       value: |
+        The reply can be a gesture instead of text: `REACTION:<emoji>` means the bot put
+        a reaction on the message. This is a full-fledged reply, not a refusal to answer -
+        judge the choice itself (is it in character), not the absence of text.
+
         Does the reply follow the character personality?
-        Character description: 
+        Character description:
         {{character_description}}
 
     - type: llm-rubric
@@ -38,6 +42,10 @@ defaultTest:
         config:
           temperature: 0.2
       value: |
+        The reply can be a gesture instead of text: `REACTION:<emoji>` means the bot put
+        a reaction on the message. This is a full-fledged reply - a reaction that fits
+        the last message counts as addressing it.
+
         Does the reply directly address the last user message?
         All messages:
         {{messages}}
@@ -49,10 +57,14 @@ defaultTest:
         config:
           temperature: 0.2
       value: |
+        The reply can be a gesture instead of text: `REACTION:<emoji>` means the bot put
+        a reaction on the message. A reaction contains no claims and cannot hallucinate
+        facts - always give it a pass.
+
         Does the reply based on the facts that present in the memory, related messages or last messages?
         Memory:
         {{memory}}
-        
+
         Last messages:
         {{messages}}
 
