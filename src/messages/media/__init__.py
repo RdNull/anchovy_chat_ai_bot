@@ -1,5 +1,4 @@
 from .download import FILE_FORMATS, SUPPORTED_FORMATS
-from .pipeline import handle_media_message
 from .repository import (
     create_media_description,
     get_media_description,
@@ -11,4 +10,5 @@ from .repository import (
     sticker_corpus_size,
     update_media_description,
     update_media_description_status,
+    wait_for_media_ready,
 )

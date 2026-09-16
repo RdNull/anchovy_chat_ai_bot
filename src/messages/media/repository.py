@@ -1,7 +1,9 @@
+import asyncio
 from datetime import datetime, timezone
 
 from bson import ObjectId
 
+from src.logs import event, logger
 from src.models import MediaDescription, MessageMediaStatus, MessageMediaTypes, UserRole
 from src.mongo import media_descriptions, messages
 
@@ -79,6 +81,30 @@ async def get_media_description(description_id: str) -> MediaDescription | None:
 async def get_media_description_by_media_id(media_id: str) -> MediaDescription | None:
     result = await media_descriptions.find_one({'media_id': media_id})
     return _parse_media_description(result) if result else None
+
+
+async def wait_for_media_ready(unique_ids: list[str], timeout: float) -> None:
+    pending = set(unique_ids)
+    deadline = asyncio.get_event_loop().time() + timeout
+
+    while pending:
+        if asyncio.get_event_loop().time() >= deadline:
+            logger.warning(
+                'Media processing timed out, proceeding without descriptions',
+                extra=event('MEDIA_WAIT', outcome='timeout', pending=len(pending)),
+            )
+            return
+
+        for uid in list(pending):
+            description = await get_media_description_by_media_id(uid)
+            if not description:
+                continue
+
+            if description.status.is_finished:
+                pending.discard(uid)
+
+        if pending:
+            await asyncio.sleep(0.5)
 
 
 async def get_media_descriptions_by_hash(content_hash: str) -> MediaDescription | None:

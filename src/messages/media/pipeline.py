@@ -1,4 +1,3 @@
-import asyncio
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -100,30 +99,6 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
     # search when it is flipped on.
     if updated and updated.type == MessageMediaTypes.STICKER:
         await stickers_embedding_client.save_sticker(updated)
-
-
-async def wait_for_media_ready(unique_ids: list[str], timeout: float) -> None:
-    pending = set(unique_ids)
-    deadline = asyncio.get_event_loop().time() + timeout
-
-    while pending:
-        if asyncio.get_event_loop().time() >= deadline:
-            logger.warning(
-                'Media processing timed out, proceeding without descriptions',
-                extra=event('MEDIA_WAIT', outcome='timeout', pending=len(pending)),
-            )
-            return
-
-        for uid in list(pending):
-            description = await get_media_description_by_media_id(uid)
-            if not description:
-                continue
-
-            if description.status.is_finished:
-                pending.discard(uid)
-
-        if pending:
-            await asyncio.sleep(0.5)
 
 
 def _stored_type(
