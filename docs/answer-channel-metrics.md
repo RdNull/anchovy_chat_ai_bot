@@ -79,3 +79,30 @@ Bad number: any row where `tools` contains `find_stickers` (or another context
 tool) alongside a direct tool — that batch paid for a search whose result the
 model never saw, because the loop returns as soon as the first successful
 direct tool lands.
+
+## 5. Sticker repeats - is the bot reusing the same sticker?
+
+`STICKER_RECENT_EXCLUDE` is `0` (`src/settings.py`), which disables repeat
+suppression entirely (`get_recent_sticker_ids` always returns an empty set).
+Raising it is plausible — RRF fusion is deterministic, so similar contexts
+surface similar top candidates — but no measurement supports any particular
+value, and against the current 57-entry corpus an exclusion window could just
+as easily push the model onto worse candidates instead. Watch this query
+before touching the setting.
+
+**Unverified**: Axiom materializes a column on first write, and as of writing
+no sticker has ever been sent in production, so `attributes.sticker_id` does
+not exist as a column yet and this query currently errors. The field name is
+confirmed from `Replier.reply_sticker` (`src/characters/reply.py`), which logs
+`REPLY_SENT kind=sticker sticker_id=<unique_id>` at send time.
+
+```kusto
+['anchovy-bot-logs']
+| where _time > ago(7d) and ['attributes.event'] == 'REPLY_SENT'
+| where ['attributes.kind'] == 'sticker'
+| summarize sends = count() by tostring(['attributes.sticker_id'])
+| sort by sends desc
+```
+
+Bad number: any `sticker_id` with `sends` well above 1 within the window — the
+bot is repeating itself instead of drawing on the corpus.

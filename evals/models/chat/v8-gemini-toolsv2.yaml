@@ -1,5 +1,12 @@
+# EXPERIMENT ARM, not a second source of truth. `v8-gemini.yaml` is kept mirroring
+# production's tool descriptions field-by-field (see `.claude/rules/models.md`); this
+# file deliberately diverges from it on three descriptions (answer_text, set_reaction,
+# send_sticker, find_stickers' empty-result line) to test whether the tool-schema wording
+# itself is the lever on gesture under-use, independent of the prompt-template arm (v10.j2).
+# If this arm wins, mirror the winning descriptions back into `src/characters/tools/` and
+# re-point `v8-gemini.yaml` at them, then delete this file.
 id: ../character_loop_provider.js
-label: "gemini-3.7-flash"
+label: "gemini-3.7-flash tools-v2"
 config:
   model: google/gemini-3.7-flash
   temperature: 0.8
@@ -73,7 +80,7 @@ config:
               Несколько запросов - только если это разные картинки, а не синонимы
           Returns:
               Список кандидатов: sticker_id, emoji, описание, текст на картинке
-              Пустой список - ничего похожего нет, отвечай текстом
+              Пустой список - в этот раз ничего похожего не нашлось
         parameters:
           type: object
           properties:
@@ -89,7 +96,8 @@ config:
       function:
         name: answer_text
         description: |-
-          [answer]: Ответить текстом (включая эмодзи)
+          [answer]: Ответить текстом
+          Основной способ: когда есть что сказать - подкол, вопрос, вброс, факт
         parameters:
           type: object
           properties:
@@ -99,7 +107,9 @@ config:
       function:
         name: set_reaction
         description: |-
-          [answer] Поставить реакцию на сообщение
+          [answer]: Поставить реакцию на сообщение
+          Когда сообщение самодостаточно и текст его только испортит:
+          чужая шутка уже сработала, кто-то спалился, констатация факта
           emoji: ровно один из эмодзи из разрешенного списка
         parameters:
           type: object
@@ -114,6 +124,7 @@ config:
         name: send_sticker
         description: |-
           [answer]: Ответить стикером
+          Когда картинка и есть панчлайн и текстом короче не скажешь
           sticker_id: ровно один id из результатов find_stickers
         parameters:
           type: object

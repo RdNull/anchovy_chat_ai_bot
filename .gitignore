@@ -4,6 +4,7 @@ docker-compose.override.yml
 .pytest_cache
 *.http
 *temp.*
+/Claude outputs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
