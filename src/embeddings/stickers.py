@@ -5,6 +5,7 @@ from uuid import UUID
 from src import settings
 from src.embeddings.client import ChunkData, EmbeddingsClient
 from src.logs import event, logger
+from src.messages.media.repository import get_media_description_by_media_id
 from src.models import MediaDescription, MessageMediaStatus
 
 
@@ -107,13 +108,6 @@ class StickerEmbeddingsClient(EmbeddingsClient):
 
     @staticmethod
     async def _get_description(unique_id: str) -> MediaDescription | None:
-        # Imported here, not at module scope: `src/messages/media/__init__.py` eagerly
-        # imports `pipeline`, which imports this module, so a module-level import would
-        # make the cycle bite whenever `src.embeddings.stickers` is imported first —
-        # the backfill script does exactly that. `facts.py` gets away with the
-        # module-level form only because `src/facts/__init__.py` is empty.
-        from src.messages.media.repository import get_media_description_by_media_id
-
         return await get_media_description_by_media_id(unique_id)
 
     async def drop_sticker(self, unique_id: str) -> None:

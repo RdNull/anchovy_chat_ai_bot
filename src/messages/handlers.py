@@ -12,7 +12,7 @@ from src.characters.repository import CHARACTERS
 from src.log_context import log_context
 from src.logs import event, logger
 from src.models import UpdateMessage
-from .media import handle_media_message
+from .media.pipeline import handle_media_message
 from .parsing import parse_user_message
 from .repository import (
     get_message_by_tg_id, save_message,
