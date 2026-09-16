@@ -76,9 +76,15 @@ Don't rely on the terminal summary (`N passed / N failed`) alone — read the JS
 
 ```js
 const data = require('/tmp/eval-result.json');
+// Rows come back grouped by provider only through `promptIdx` (an index into
+// `data.results.prompts`, in `providers:` declaration order) — `r.provider.label` is not
+// the per-provider-file label from the yaml, it's always the shared `.js` provider path.
 for (const r of data.results.results) {
-  console.log(r.testCase.description, '->', r.response.output);
+  console.log(r.testCase.description, 'promptIdx', r.promptIdx, '->', r.response.output);
   console.log('  toolsCalled:', r.response.metadata?.toolsCalled);   // reply suite only
+  for (const t of r.response.metadata?.reasoningTurns || []) {       // reply suite only
+    console.log('  turn:', t.tools, t.finishReason, t.reasoningTokens, '->', t.reasoning);
+  }
   for (const c of r.gradingResult.componentResults) {
     console.log('  ', c.assertion?.type, c.assertion?.metric, c.score, c.pass);
   }
@@ -90,10 +96,33 @@ for (const r of data.results.results) {
 - `response.metadata.toolsCalled` — reply suite only, from `character_loop_provider.js`:
   every tool name the model invoked, in order. This is what a `channel-choice` or
   `tool-choice` `javascript` assert actually reads (`context.metadata.toolsCalled`).
+- `response.metadata.reasoningTurns` — reply suite only, one entry per loop turn
+  (`tools`, `finishReason`, `reasoningTokens`, `reasoning`, `content`, `args`). Nothing
+  asserts on it; it exists for you to read when a `toolsCalled` result needs an explanation
+  rather than a score — e.g. *why* the model didn't call a tool it was expected to. Check
+  `finishReason` before reading `reasoning` as intent: a turn cut short (not `'tool_calls'`)
+  means `max_tokens` (shared with the thinking budget on a reasoning model) starved the
+  turn, which is a mechanical explanation, not a preference one.
 - `gradingResult.componentResults[]` — one entry per `defaultTest`/per-case assert, each
   with its own `score` (0–1) and `pass` (the suite's pass threshold, not necessarily
   `score === 1`). A `llm-rubric` failing is a model/prompt finding; a `word-count` or
   `not-regex` failing is almost always a fixture or harness problem.
+
+### When the production rubrics can't answer the question
+
+`defaultTest`'s five `llm-rubric` asserts in `reply/characters` are written for *scoring a
+reply*, and some of that wording deliberately flattens gesture cases (a forced `REACTION:`/
+`STICKER:` gets a fixed 0.5 or 1.0 by rubric instruction — see the assert text itself). That
+makes them the wrong tool for a diagnostic question like "did the model even consider this
+tool" — they can't discriminate it, and every rubric call is a paid `gpt-5-mini` request.
+
+For that kind of run, park a scratch `promptfooconfig.<name>.yaml` beside the real one (not
+`promptfooconfig.yaml` itself — promptfoo's config discovery joins the exact filename, so a
+differently-named file is invisible to `-c ./reply/characters` and needs no unwiring before
+merge) with the same prompt/fixtures/provider shape but a `defaultTest.assert` trimmed to
+only the mechanical asserts a `channel-choice`/`tool-choice` question needs — typically just
+the `javascript` assert reading `metadata.toolsCalled`. Delete it once the question resolves,
+alongside any scratch provider yaml it points at.
 
 **Check the case's own comment before treating a red row as a regression.** Several
 suites keep a case deliberately red on purpose — e.g. `reply/characters`'s

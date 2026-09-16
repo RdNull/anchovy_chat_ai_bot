@@ -78,6 +78,28 @@ function extractAnswer(toolCalls) {
     return null;
 }
 
+// OpenRouter normalises upstream thinking into one of two shapes, and which one arrives
+// depends on the provider behind the model: a flat `reasoning` string, or the newer
+// `reasoning_details[]` (`reasoning.text` / `reasoning.summary` / `reasoning.encrypted`).
+// Prefer whichever actually carries text. When neither does, say *why* instead of returning
+// an empty string - "the model returned no reasoning field" and "the model returned one we
+// are not allowed to read" are different findings and only one of them needs a fallback probe.
+// Read-only by design: nothing here is ever pushed back into `messages`, because production
+// doesn't send reasoning back either and changing what the model sees changes the experiment.
+function extractReasoning(message) {
+    const details = Array.isArray(message.reasoning_details) ? message.reasoning_details : [];
+    const readable = details
+        .map((d) => (typeof d.text === 'string' && d.text) || (typeof d.summary === 'string' && d.summary) || '')
+        .filter(Boolean)
+        .join('\n');
+    if (readable) return readable;
+    if (typeof message.reasoning === 'string' && message.reasoning) return message.reasoning;
+    if (details.length) {
+        return `[unreadable reasoning_details: ${details.map((d) => d.type || 'unknown').join(', ')}]`;
+    }
+    return '';
+}
+
 class CharacterLoopProvider {
     constructor({ id, label, config = {} } = {}) {
         if (!config.model) throw new Error('character_loop_provider: config.model is required');
@@ -107,18 +129,41 @@ class CharacterLoopProvider {
         // Which tools actually fired, in order. Surfaced as provider metadata so a
         // `javascript` assert can score the tool choice itself, not just the reply.
         const toolsCalled = [];
+        // One entry per loop turn: what the model was thinking, and which tools that turn
+        // produced. `toolsCalled` is flat across turns - a single turn can batch several
+        // calls - so it cannot be indexed against a per-turn array; the pairing lives inside
+        // each entry instead. Diagnostics only, no assert reads this.
+        const reasoningTurns = [];
 
         for (let i = 0; i < this.maxIterations; i++) {
             const result = await this._chat(apiKey, messages, tokenUsage);
-            if (result.error) return { error: result.error };
+            // Turns already recorded stay recorded: a failure on turn 3 still leaves turns
+            // 1-2 worth reading, and promptfoo keeps `metadata` on a row it marks as errored.
+            if (result.error) return { error: result.error, metadata: { toolsCalled, reasoningTurns } };
 
             const toolCalls = result.message.tool_calls || [];
-            for (const tc of toolCalls) toolsCalled.push((tc.function || tc).name);
+            const turnTools = toolCalls.map((tc) => (tc.function || tc).name);
+            toolsCalled.push(...turnTools);
+            // `max_tokens` is shared with the thinking budget here, so a turn that stops on
+            // `length` - or spends most of its completion tokens before emitting a tool call -
+            // is a mechanical explanation for the tool choice rather than a preference one.
+            reasoningTurns.push({
+                tools: turnTools,
+                finishReason: result.finishReason,
+                reasoningTokens: result.reasoningTokens,
+                reasoning: extractReasoning(result.message),
+                content: result.message.content || '',
+                args: toolCalls.map((tc) => (tc.function || tc).arguments),
+            });
 
             const answer = extractAnswer(toolCalls);
-            if (answer !== null) return { output: answer, tokenUsage, metadata: { toolsCalled } };
+            if (answer !== null) return { output: answer, tokenUsage, metadata: { toolsCalled, reasoningTurns } };
             if (toolCalls.length === 0) {
-                return { output: result.message.content || '', tokenUsage, metadata: { toolsCalled } };
+                return {
+                    output: result.message.content || '',
+                    tokenUsage,
+                    metadata: { toolsCalled, reasoningTurns },
+                };
             }
 
             messages.push({ role: 'assistant', content: result.message.content || null, tool_calls: toolCalls });
@@ -130,7 +175,7 @@ class CharacterLoopProvider {
         return {
             output: '[loop exceeded maxIterations without answer tool call]',
             tokenUsage,
-            metadata: { toolsCalled },
+            metadata: { toolsCalled, reasoningTurns },
         };
     }
 
@@ -159,9 +204,14 @@ class CharacterLoopProvider {
         tokenUsage.completion += usage.completion_tokens || 0;
         tokenUsage.total += usage.total_tokens || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0);
 
-        const message = data.choices?.[0]?.message;
+        const choice = data.choices?.[0];
+        const message = choice?.message;
         if (!message) return { error: `Unexpected response: ${JSON.stringify(data).slice(0, 500)}` };
-        return { message };
+        return {
+            message,
+            finishReason: choice.finish_reason,
+            reasoningTokens: usage.completion_tokens_details?.reasoning_tokens ?? null,
+        };
     }
 
     async _runCallback(toolCall) {
