@@ -230,6 +230,43 @@ def test_message_embedding_text_reply_with_timestamp():
     assert msg.embedding_text == '[26-04-19 15:00] nick (reply: "other| quoted"): hello'
 
 
+# --- Message.response_format ---
+
+def test_message_response_format_plain_text_unchanged():
+    msg = Message(chat_id=1, nickname='nick', role=UserRole.AI, text='ответил')
+    assert msg.response_format == 'ответил'
+
+
+def test_message_response_format_with_media_mirrors_embedding_text():
+    # A bot sticker reply used to render as a blank assistant turn: response_format had
+    # no media branch, unlike embedding_text. It now mirrors embedding_text's, so a bot
+    # turn is never silently dropped from the prompt history.
+    media = MessageMedia(
+        status=MessageMediaStatus.READY,
+        type=MessageMediaTypes.STICKER,
+        description='жаба на руках',
+        ocr_text=None,
+    )
+    msg = Message(chat_id=1, nickname='nick', role=UserRole.AI, text=None, media=media)
+
+    assert 'None' not in msg.response_format
+    assert msg.response_format == ' [sticker: жаба на руках | текст: ]'
+
+
+def test_message_response_format_with_media_and_reactions():
+    media = MessageMedia(
+        status=MessageMediaStatus.READY,
+        type=MessageMediaTypes.STICKER,
+        description='жаба на руках',
+        ocr_text=None,
+    )
+    msg = _msg({'🤡': ['dima']})
+    msg.text = None
+    msg.media = media
+
+    assert msg.response_format == ' [sticker: жаба на руках | текст: ]\n⤷ 🤡 dima'
+
+
 # --- Message._render_reactions ---
 
 import pytest

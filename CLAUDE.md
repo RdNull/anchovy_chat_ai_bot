@@ -142,7 +142,7 @@ Full notes: `src/blackbox/CLAUDE.md`.
 `Message` exposes three text representations:
 - `embedding_text` (property): plain `[ts] nickname: text` format, no reactions. Used by message embeddings and by the `search_messages` tool's results.
 - `ai_format` (property): `embedding_text` + rendered reactions line. Used for user turns in the LLM prompt, and newline-joined as the window memory and fact extraction read (`memory/processors.py`, `facts/processors.py`) — for every message, bot turns included.
-- `response_format` (property): bare `text` + rendered reactions line. Used for bot turns in the LLM prompt history.
+- `response_format` (property): `text` + media (mirroring `embedding_text`'s `[{self.media.ai_format}]` branch) + rendered reactions line. Used for bot turns in the LLM prompt history — without the media branch a bot sticker/gif reply rendered as a blank assistant turn, silently losing that turn from history.
 
 Reactions render via `Message._render_reactions()`: bot (`settings.BOT_NICKNAME`) is always named and sorted first, excluded from the ≤3 collapse threshold; beyond threshold, named reactors get `+K`, unnamed-only gets `×N`. Bot reactions are stored under `settings.BOT_NICKNAME` (not character-qualified).
 

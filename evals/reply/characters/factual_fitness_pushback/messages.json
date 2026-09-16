@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Misha: как скинуть 10 кг и набрать мышцы?"
+    },
+    {
+        "role": "assistant",
+        "content": "хз я не тренер"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Misha: ну реально что делать, дефицит калорий или что"
+    }
+]

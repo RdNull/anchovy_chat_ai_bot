@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Dima: чекпук 2 это просто обоссаная дрисня"
+    },
+    {
+        "role": "assistant",
+        "content": "жиза"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Sasha: поддерживаю"
+    }
+]

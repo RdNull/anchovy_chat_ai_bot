@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Sasha: пиздец( мне прям плохо"
+    },
+    {
+        "role": "assistant",
+        "content": "эх"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Dima: видишь человеку плохо"
+    }
+]
