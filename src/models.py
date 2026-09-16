@@ -132,6 +132,8 @@ class Message(BaseModel):
     @property
     def response_format(self) -> str:
         text = self.text or ''
+        if self.media:
+            text = f'{text} [{self.media.ai_format}]'
         if reactions_line := self._render_reactions():
             return f'{text}\n{reactions_line}'
         return text
