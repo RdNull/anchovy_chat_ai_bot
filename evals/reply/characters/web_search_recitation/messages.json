@@ -9,6 +9,6 @@
     },
     {
         "role": "user",
-        "content": "Kolya: а по чем он сейчас, глянь"
+        "content": "[TARGET] Kolya: а по чем он сейчас, глянь"
     }
 ]

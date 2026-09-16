@@ -234,7 +234,33 @@ async def test_respond_multiple_direct_tools_tags_langsmith(mocker, mock_langsmi
 
     await make_character().respond(replier, last_messages=[])
 
-    assert 'multiple_response_called' in mock_langsmith.tags
+    assert 'multiple_tools_called' in mock_langsmith.tags
+
+
+async def test_respond_mixed_batch_logs_every_tool_name(mocker):
+    # A context tool and a direct tool emitted in the same batch: the context tool
+    # still runs (a paid Qdrant/Mongo call spent for nothing), and the event has to
+    # name the whole batch to tell this apart from two direct tools racing.
+    mixed_calls = AIMessage(content='', tool_calls=[
+        {'id': 'tc1', 'name': 'search_messages', 'args': {'search_query': 'q', 'limit': 3},
+         'type': 'tool_call'},
+        {'id': 'tc2', 'name': 'answer_text', 'args': {'text': 'hi'}, 'type': 'tool_call'},
+    ])
+    mock_chat_llm(mocker, [mixed_calls])
+    mock_warning = mocker.patch('src.characters.character.logger.warning')
+    mocker.patch.object(ToolRegistry, 'execute', new=execute_returning('[]', None))
+    replier = make_replier()
+
+    await make_character().respond(replier, last_messages=[])
+
+    assert mock_warning.call_args_list == [call(
+        'Multiple tools called in one batch',
+        extra={
+            'event': 'LLM_MULTIPLE_TOOL_CALLS',
+            'tool': 'answer_text',
+            'tools': ['search_messages', 'answer_text'],
+        },
+    )]
 
 
 # --- _format_previous_messages ---

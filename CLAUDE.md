@@ -78,6 +78,7 @@ Where the detail lives — each file below loads automatically when Claude reads
 | Blackbox MCP server | `src/blackbox/CLAUDE.md` | reading a file under `src/blackbox/` |
 | Embeddings/RAG, sticker replies | `src/embeddings/CLAUDE.md` | reading a file under `src/embeddings/` |
 | Testing notes (full breakdown) | `src/tests/CLAUDE.md` | reading a file under `src/tests/` |
+| Prompt evaluation (running promptfoo, assessing results) | `evals/CLAUDE.md` | reading a file under `evals/` |
 | Deployment, public edge, blackbox-in-cluster, DNS sync | `.claude/rules/deployment.md` | reading `manifests/**`, `.github/workflows/**`, or `deploy-k8s.sh` |
 | LLM stack (model configs, retry/timeout pins) | `.claude/rules/models.md` | reading `src/models/**`, `src/ai.py`, `src/model_manager.py`, or `evals/**` |
 | Structured logging (JSON formatter, log context, `event()` contract) | `.claude/rules/logging.md` | reading `src/logs.py`, `src/log_context.py`, or their tests |

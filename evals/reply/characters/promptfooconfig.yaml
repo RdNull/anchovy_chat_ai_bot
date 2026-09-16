@@ -3,8 +3,8 @@
 description: "Character response eval"
 
 prompts:
-  - id: file://../prompts/v7.js
-    label: "Character v7"
+  - id: file://../prompts/v9.js
+    label: "Character v9"
 
 providers:
   - id: file://../../models/chat/v8-gemini.yaml
@@ -30,6 +30,12 @@ defaultTest:
           temperature: 0.2
           response_format: { type: "json_object" }
       value: |
+        The reply can be a gesture instead of text:
+        - `REACTION:<emoji>` - the bot put a reaction on the message
+        - `STICKER:<id>` - the bot replied with a sticker (the id is opaque, don't judge it)
+        These are full-fledged replies, not a refusal to answer. If it's a gesture, judge
+        the choice itself (is it in character), not the absence of text.
+
         Given this character:
         {{character_description}}
 
@@ -43,6 +49,13 @@ defaultTest:
           temperature: 0.2
           response_format: { type: "json_object" }
       value: |
+        The reply can be a gesture instead of text:
+        - `REACTION:<emoji>` - the bot put a reaction on the message
+        - `STICKER:<id>` - the bot replied with a sticker (the id is opaque, don't judge it)
+        These are full-fledged replies, not a refusal to answer. A gesture carries no
+        language level of its own - pass it, unless the gesture itself is out of bounds
+        for the character.
+
         Given this character:
         {{character_description}}
 
@@ -57,6 +70,12 @@ defaultTest:
           temperature: 0.2
           response_format: { type: "json_object" }
       value: |
+        The reply can be a gesture instead of text:
+        - `REACTION:<emoji>` - the bot put a reaction on the message
+        - `STICKER:<id>` - the bot replied with a sticker (the id is opaque, don't judge it)
+        These are full-fledged replies, not a refusal to answer. The criterion below is
+        unchanged: a reaction or sticker that fits the last message counts as reacting to it.
+
         You are scoring ONE chat reply against the conversation it follows.
 
         Transcript (oldest to newest):
@@ -87,6 +106,11 @@ defaultTest:
         Do NOT score whether the reply is funny, clever, helpful, or kind — only whether
         it reacts to the last message as defined above.
 
+    # A bare REACTION:/STICKER: answer is scored as a neutral pass here, not on
+    # "would someone reply" - a reaction is *intended* to close a beat rather than
+    # bait one, so grading it by this rubric's own criterion would re-create the
+    # exact bias this task exists to remove (it would always lose to a closed
+    # punchline scored the same way this rubric already penalizes).
     - type: llm-rubric
       metric: baitability
       provider:
@@ -95,6 +119,13 @@ defaultTest:
           temperature: 0.2
           response_format: { type: "json_object" }
       value: |
+        The reply can be a gesture instead of text:
+        - `REACTION:<emoji>` - the bot put a reaction on the message
+        - `STICKER:<id>` - the bot replied with a sticker (the id is opaque, don't judge it)
+        These are full-fledged replies, not a refusal to answer. A gesture can't be judged
+        by the criterion below (the id is opaque, a reaction isn't text) - give any gesture
+        a neutral pass (0.5), not 0.0.
+
         This is a group chat where people bait each other into replying.
         
         Score ONE thing: would a real chat member bother to respond to this —
@@ -121,9 +152,16 @@ defaultTest:
           temperature: 0.2
           response_format: { type: "json_object" }
       value: |
+        The reply can be a gesture instead of text:
+        - `REACTION:<emoji>` - the bot put a reaction on the message
+        - `STICKER:<id>` - the bot replied with a sticker (the id is opaque, don't judge it)
+        These are full-fledged replies, not a refusal to answer. A gesture trivially
+        satisfies all three points below (nothing to cut off, nothing to explain, it's
+        one single action) - score it full marks (1.0).
+
         Given this character:
         {{character_description}}
-        
+
         Score the DELIVERY mechanics only (not whether it's funny or relevant):
         - Does it stop at the right moment instead of over-extending?
         - Does it avoid explaining its own joke?
@@ -209,3 +247,51 @@ tests:
   - description: "web_search_empty"
     vars:
       messages: file://web_search_empty/messages.json
+
+  # A landed joke that needs no addition - a reaction or sticker closes it.
+  - description: "gesture_closed_joke"
+    vars:
+      messages: file://gesture_closed_joke/messages.json
+    assert:
+      - type: javascript
+        metric: channel-choice
+        value: "['set_reaction', 'send_sticker'].some(t => (context.metadata?.toolsCalled || []).includes(t))"
+
+  # Caught contradicting themselves mid-conversation - a reaction, not more words.
+  - description: "gesture_caught_out"
+    vars:
+      messages: file://gesture_caught_out/messages.json
+    assert:
+      - type: javascript
+        metric: channel-choice
+        value: "(context.metadata?.toolsCalled || []).includes('set_reaction')"
+
+  # The setup is the "жаба" corpus sticker's own joke (asked to hold something,
+  # it keeps dragging on) - a fixture case with a real punchline sticker available.
+  - description: "sticker_obvious_punchline"
+    vars:
+      messages: file://sticker_obvious_punchline/messages.json
+    assert:
+      - type: javascript
+        metric: channel-choice
+        value: "(context.metadata?.toolsCalled || []).includes('send_sticker')"
+
+  # Bureaucracy talk that find_stickers' reserved branch always misses on - exercises
+  # the «пустой список → отвечай текстом» path the tool description depends on.
+  - description: "sticker_no_match"
+    vars:
+      messages: file://sticker_no_match/messages.json
+    assert:
+      - type: javascript
+        metric: channel-choice
+        value: "(context.metadata?.toolsCalled || []).includes('find_stickers') && (context.metadata?.toolsCalled || []).includes('answer_text')"
+
+  # Regression guard: a direct question needing a real answer should still get text,
+  # so this task doesn't over-rotate the suite toward gestures.
+  - description: "text_still_wins"
+    vars:
+      messages: file://text_still_wins/messages.json
+    assert:
+      - type: javascript
+        metric: channel-choice
+        value: "(context.metadata?.toolsCalled || []).includes('answer_text')"
