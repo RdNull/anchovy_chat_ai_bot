@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Sasha: я же говорил, курить бросил, пить бросил"
+    },
+    {
+        "role": "assistant",
+        "content": "ну ну"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Dima: ты ведь куришь, хуесос"
+    }
+]

@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Sasha: до 300$ какое комбо посоветуешь"
+    },
+    {
+        "role": "assistant",
+        "content": "складной нож убийство + перчи overtake, либо стилетто дамаск + black tie если без выебонов"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Sasha: пздц красный нож и желтые перчи?"
+    }
+]

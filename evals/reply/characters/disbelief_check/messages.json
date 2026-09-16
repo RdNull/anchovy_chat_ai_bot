@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Sasha: ты на вопрос мне не можешь ответить?"
+    },
+    {
+        "role": "assistant",
+        "content": "хех"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] whyzzzy: рофлишь или серьезно ща?"
+    }
+]
