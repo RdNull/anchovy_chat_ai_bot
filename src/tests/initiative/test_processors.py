@@ -9,7 +9,7 @@ from src.initiative.processors import evaluate_initiative
 from src.memory.models import ChatState, MemoryData, StructuredMemory
 from src.models import Message, UserRole
 
-_TIMESTAMP_PATTERN = re.compile(r'\d{2}-\d{2}-\d{2} \d{2}:\d{2}')
+_TIMESTAMP_PATTERN = re.compile(r'\[Текущее время: \d{2}-\d{2}-\d{2} \d{2}:\d{2}]')
 
 
 def make_character(memory=None):
@@ -223,7 +223,7 @@ async def test_evaluate_initiative_includes_current_time_in_the_header(mocker):
     await evaluate_initiative(make_character(), [], [make_message()])
 
     prompt = rendered_system_prompt(llm)
-    assert _TIMESTAMP_PATTERN.search(prompt.splitlines()[0])
+    assert _TIMESTAMP_PATTERN.search(prompt)
 
 
 # --- out-of-range target_index gets its own log line, distinct from a genuine null ---
