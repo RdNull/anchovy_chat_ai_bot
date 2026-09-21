@@ -1,8 +1,10 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 from src import settings
 from src.initiative.models import InitiativeVerdict
 from src.initiative.policies import decide, pre_check, split_at_gap
+from src.initiative.repository import mark_initiative_replied, save_initiative_run
 from src.messages.repository import save_message
 from src.models import Message, UserRole
 
@@ -151,6 +153,38 @@ async def test_pre_check_passes_when_cooldown_and_gap_satisfied(mocker):
     messages = [make_message()]
 
     assert await pre_check(222, messages) is True
+
+
+# --- pre_check: daily limit (last gate, after the other four) ---
+
+async def _seed_replied_run(chat_id=222):
+    run_id = await save_initiative_run(chat_id, last_message_time=datetime.now(timezone.utc))
+    await mark_initiative_replied(run_id)
+
+
+async def test_pre_check_passes_under_the_daily_limit(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch.object(settings, 'INITIATIVE_DAILY_LIMIT', 3)
+    for _ in range(2):
+        await _seed_replied_run()
+
+    assert await pre_check(222, [make_message()]) is True
+
+
+async def test_pre_check_fails_at_the_daily_limit(mocker, caplog):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch.object(settings, 'INITIATIVE_DAILY_LIMIT', 3)
+    for _ in range(3):
+        await _seed_replied_run()
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        result = await pre_check(222, [make_message()])
+
+    assert result is False
+    daily_limit_records = [r for r in caplog.records if getattr(r, 'reason', None) == 'daily_limit']
+    assert len(daily_limit_records) == 1
+    assert daily_limit_records[0].count == 3
+    assert daily_limit_records[0].limit == 3
 
 
 # --- decide ---

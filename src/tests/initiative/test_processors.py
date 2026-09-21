@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 from src.characters.character import Character
@@ -21,8 +21,8 @@ def make_character(memory=None):
     return character
 
 
-def make_message(chat_id=1, role=UserRole.USER, text='hi', nickname='user1'):
-    return Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
+def make_message(chat_id=1, role=UserRole.USER, text='hi', nickname='user1', created_at=None):
+    return Message(chat_id=chat_id, role=role, text=text, nickname=nickname, created_at=created_at)
 
 
 def mock_initiative_llm(mocker, decision: InitiativeDecision):
@@ -112,6 +112,58 @@ async def test_evaluate_initiative_target_index_never_addresses_context(mocker):
     result = await evaluate_initiative(make_character(), context, candidates)
 
     assert result.target_message is candidates[0]
+
+
+# --- target_distance / target_age_s: omitted without a target, else distance from
+# the window's newest candidate and age against it. target_index alone counts from
+# the oldest candidate, so it can't tell a stale target from a large window apart. ---
+
+async def test_evaluate_initiative_logs_zero_distance_and_age_for_the_newest_candidate(
+    mocker, caplog,
+):
+    now = datetime.now(timezone.utc)
+    candidates = [
+        make_message(text='older', created_at=now - timedelta(minutes=5)),
+        make_message(text='newest', created_at=now),
+    ]
+    mock_initiative_llm(mocker, InitiativeDecision(score=0.7, target_index=2, reason='r'))
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await evaluate_initiative(make_character(), [], candidates)
+
+    record = next(r for r in caplog.records if getattr(r, 'event', None) == 'INITIATIVE_EVALUATE')
+    assert record.target_distance == 0
+    assert record.target_age_s == 0
+
+
+async def test_evaluate_initiative_logs_distance_and_age_for_a_middle_candidate(mocker, caplog):
+    now = datetime.now(timezone.utc)
+    candidates = [
+        make_message(text='c1', created_at=now - timedelta(minutes=10)),
+        make_message(text='c2', created_at=now - timedelta(minutes=4)),
+        make_message(text='c3', created_at=now),
+    ]
+    mock_initiative_llm(mocker, InitiativeDecision(score=0.7, target_index=2, reason='r'))
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await evaluate_initiative(make_character(), [], candidates)
+
+    record = next(r for r in caplog.records if getattr(r, 'event', None) == 'INITIATIVE_EVALUATE')
+    # 3 candidates, target at index 2 -> one candidate newer than it.
+    assert record.target_distance == 1
+    assert record.target_age_s == 240
+
+
+async def test_evaluate_initiative_omits_distance_and_age_without_a_target(mocker, caplog):
+    candidates = [make_message()]
+    mock_initiative_llm(mocker, InitiativeDecision(score=0.3, target_index=None, reason='r'))
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await evaluate_initiative(make_character(), [], candidates)
+
+    record = next(r for r in caplog.records if getattr(r, 'event', None) == 'INITIATIVE_EVALUATE')
+    assert not hasattr(record, 'target_distance')
+    assert not hasattr(record, 'target_age_s')
 
 
 # --- LLM failure ---

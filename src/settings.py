@@ -61,6 +61,10 @@ class _Settings(BaseSettings):
     INITIATIVE_SCORE_THRESHOLD: float = 0.6
     INITIATIVE_COOLDOWN_MINUTES: float = 0
     INITIATIVE_MIN_GAP_MESSAGES: int = 1
+    # Max initiative sends per chat in any rolling 24h — the deterministic budget the
+    # judge is not. >= 1: turning sends off is INITIATIVE_ENABLED's job, and 0 here
+    # would be a second, silent kill switch.
+    INITIATIVE_DAILY_LIMIT: int = Field(default=3, ge=1)
 
     # The answering character's context window, and nothing else. It used to double
     # as both triggers above, which made every memory cycle fire at the reply
@@ -185,6 +189,7 @@ INITIATIVE_GAP_MINUTES = _s.INITIATIVE_GAP_MINUTES
 INITIATIVE_SCORE_THRESHOLD = _s.INITIATIVE_SCORE_THRESHOLD
 INITIATIVE_COOLDOWN_MINUTES = _s.INITIATIVE_COOLDOWN_MINUTES
 INITIATIVE_MIN_GAP_MESSAGES = _s.INITIATIVE_MIN_GAP_MESSAGES
+INITIATIVE_DAILY_LIMIT = _s.INITIATIVE_DAILY_LIMIT
 LAST_MESSAGES_SIZE = _s.LAST_MESSAGES_SIZE
 LAST_MESSAGES_MIN_SIZE = _s.LAST_MESSAGES_MIN_SIZE
 EMBEDDINGS_MIN_SIZE = _s.EMBEDDINGS_MIN_SIZE

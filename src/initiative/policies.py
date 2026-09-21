@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from src import settings
 from src.initiative.models import InitiativeVerdict
+from src.initiative.repository import count_replied_last_24h
 from src.logs import event, logger
 from src.messages.repository import get_last_message, get_messages_count_since
 from src.models import Message, UserRole
@@ -61,6 +62,21 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
                 extra=event('INITIATIVE_SKIPPED', reason='gap_too_small', count=user_messages_count),
             )
             return False
+
+    # Last gate, after the other four, so their skip-reason counts stay comparable.
+    # Runs before the claim: a capped chat costs no LLM call and does not advance
+    # the watermark, like the gates above it. The two-claims-in-flight race exists
+    # for the cooldown too and is ignored here.
+    replied_count = await count_replied_last_24h(chat_id)
+    if replied_count >= settings.INITIATIVE_DAILY_LIMIT:
+        logger.info(
+            'Skipping initiative reply',
+            extra=event(
+                'INITIATIVE_SKIPPED', reason='daily_limit', count=replied_count,
+                limit=settings.INITIATIVE_DAILY_LIMIT,
+            ),
+        )
+        return False
 
     return True
 

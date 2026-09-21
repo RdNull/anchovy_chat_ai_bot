@@ -85,12 +85,26 @@ async def evaluate_initiative(
             text=target_message.embedding_text if target_message else None,
         ),
     )
+    # Distance/age from the window's newest message: target_index alone counts from
+    # the candidates' oldest, so on its own it can't tell a stale target from a large
+    # window. Omitted when there is no target — `candidates[-1]` is only safe because
+    # a resolved target_message implies a non-empty candidates list. Also omitted
+    # when a `created_at` is missing (not a real-traffic case, but true of hand-built
+    # test messages), since target_age_s has nothing to measure against then.
+    target_fields = {}
+    if target_message and target_message.created_at and candidates[-1].created_at:
+        target_fields = {
+            'target_distance': len(candidates) - target_index,
+            'target_age_s': int(
+                (candidates[-1].created_at - target_message.created_at).total_seconds()
+            ),
+        }
     logger.info(
         'Initiative evaluation result',
         extra=event(
             'INITIATIVE_EVALUATE', outcome='ok', score=evaluation_result.score,
             reason=evaluation_result.reason, target_index=evaluation_result.target_index,
-            elapsed_ms=elapsed_ms(started),
+            elapsed_ms=elapsed_ms(started), **target_fields,
         ),
     )
     return InitiativeVerdict(
