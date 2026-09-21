@@ -10,6 +10,10 @@ class InitiativeRun(BaseModel):
     chat_id: int
     last_message_time: datetime
     created_at: datetime
+    # Stamped at decision time (before the reply is actually dispatched) by the send
+    # path only — the dry-run and below-threshold branches leave this unset. That is
+    # what count_replied_last_24h counts against INITIATIVE_DAILY_LIMIT.
+    replied_at: datetime | None = None
 
 
 class InitiativeDecision(BaseModel):

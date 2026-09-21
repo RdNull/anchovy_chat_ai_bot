@@ -7,6 +7,7 @@ from telegram.constants import ChatAction
 from src import settings
 from src.initiative import handlers
 from src.initiative.models import InitiativeVerdict
+from src.initiative.repository import get_last_initiative_run
 from src.messages.repository import save_message
 from src.models import Message, UserRole
 
@@ -119,7 +120,10 @@ def _mock_full_pass(mocker, score=0.9):
     mocker.patch(
         'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[make_message()])
     )
-    mocker.patch('src.initiative.handlers.save_initiative_run', new_callable=AsyncMock)
+    mocker.patch(
+        'src.initiative.handlers.save_initiative_run', AsyncMock(return_value='run-id')
+    )
+    mocker.patch('src.initiative.handlers.mark_initiative_replied', new_callable=AsyncMock)
     mocker.patch('src.initiative.handlers.pre_check', AsyncMock(return_value=True))
     mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=None))
     character = MagicMock()
@@ -138,17 +142,23 @@ async def test_run_initiative_checks_schedules_reply_on_full_pass(mocker):
     mock_run_reply = mocker.patch(
         'src.initiative.handlers._run_initiative_reply', new_callable=AsyncMock
     )
+    mock_mark_replied = handlers.mark_initiative_replied
 
     await handlers.run_initiative_checks(222)
     await asyncio.sleep(0)  # let the created task actually run
 
     assert mock_run_reply.call_count == 1
     assert mock_run_reply.call_args == call(chat_id=222, character=character, evaluation=evaluation)
+    # Stamped before the task is spawned — the send path reserves the day's slot at
+    # decision time, using the run id the claim returned.
+    assert mock_mark_replied.call_count == 1
+    assert mock_mark_replied.call_args == call('run-id')
 
 
 async def test_run_initiative_checks_dry_run_when_initiative_disabled(mocker):
     # INITIATIVE_ENABLED off doesn't skip the pipeline — it runs and logs its verdict
-    # (dry run), it just doesn't schedule an actual reply.
+    # (dry run), it just doesn't schedule an actual reply, and it doesn't stamp a send
+    # that never happened.
     mocker.patch.object(settings, 'INITIATIVE_ENABLED', False)
     _mock_full_pass(mocker)
     mock_run_reply = mocker.patch(
@@ -160,6 +170,7 @@ async def test_run_initiative_checks_dry_run_when_initiative_disabled(mocker):
 
     assert mock_run_reply.call_count == 0
     assert mock_create_task.call_count == 0
+    assert handlers.mark_initiative_replied.call_count == 0
 
 
 # --- _get_messages: cold start vs. resuming from a watermark ---
@@ -287,11 +298,29 @@ async def test_claim_window_does_not_advance_watermark_when_pre_check_fails_afte
         'src.initiative.handlers.save_initiative_run', new_callable=AsyncMock
     )
 
-    context, candidates = await handlers._claim_window(222)
+    claim = await handlers._claim_window(222)
 
-    assert context == []
-    assert candidates == []
+    assert claim.context == []
+    assert claim.candidates == []
+    assert claim.run_id is None
     assert mock_save_run.call_count == 0
+
+
+async def test_claim_window_returns_the_claimed_run_id_on_success(mocker):
+    # The send path needs this id to stamp `replied_at` on the exact run it claimed.
+    mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch('src.initiative.handlers.get_last_initiative_run', AsyncMock(return_value=None))
+    mocker.patch(
+        'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[make_message()])
+    )
+
+    claim = await handlers._claim_window(222)
+
+    assert claim.candidates != []
+    assert claim.run_id is not None
+    saved = await get_last_initiative_run(222)
+    assert saved.id == claim.run_id
 
 
 # --- _run_initiative_reply ---

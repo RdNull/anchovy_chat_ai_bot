@@ -43,6 +43,7 @@ def test_triggers_are_re_exported_at_module_level():
     assert settings.INITIATIVE_TRIGGER_SIZE == settings._s.INITIATIVE_TRIGGER_SIZE
     assert settings.INITIATIVE_CONTEXT_SIZE == settings._s.INITIATIVE_CONTEXT_SIZE
     assert settings.INITIATIVE_GAP_MINUTES == settings._s.INITIATIVE_GAP_MINUTES
+    assert settings.INITIATIVE_DAILY_LIMIT == settings._s.INITIATIVE_DAILY_LIMIT
 
 
 # --- _fetch_caps_exceed_triggers ---
@@ -118,3 +119,9 @@ def test_initiative_gap_minutes_must_be_positive():
         _Settings(INITIATIVE_GAP_MINUTES=0)
     with pytest.raises(ValidationError):
         _Settings(INITIATIVE_GAP_MINUTES=-5)
+
+
+def test_initiative_daily_limit_must_be_at_least_one():
+    # 0 would be a second, silent kill switch — INITIATIVE_ENABLED already owns that job.
+    with pytest.raises(ValidationError):
+        _Settings(INITIATIVE_DAILY_LIMIT=0)

@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime
 
 from telegram.constants import ChatAction
@@ -9,7 +10,9 @@ from src.characters.reply import Replier
 from src.initiative.models import InitiativeVerdict
 from src.initiative.policies import decide, pre_check, split_at_gap
 from src.initiative.processors import evaluate_initiative
-from src.initiative.repository import get_last_initiative_run, save_initiative_run
+from src.initiative.repository import (
+    get_last_initiative_run, mark_initiative_replied, save_initiative_run,
+)
 from src.logs import event, logger
 from src.memory.repository import get_last_memory
 from src.messages.repository import fetch_last_messages
@@ -30,13 +33,13 @@ async def run_initiative_checks(chat_id: int):
         return
 
     logger.debug('Running initiative checks', extra=event('INITIATIVE_CHECK_START'))
-    context, candidates = await _claim_window(chat_id)
-    if not candidates:
+    claim = await _claim_window(chat_id)
+    if not claim.candidates:
         return
 
     last_memory = await get_last_memory(chat_id)
     character: Character = await get_chat_character(chat_id=chat_id, memory=last_memory)
-    evaluation = await evaluate_initiative(character, context, candidates)
+    evaluation = await evaluate_initiative(character, claim.context, claim.candidates)
     if not await decide(evaluation):
         logger.info(
             'Initiative run skipped',
@@ -54,17 +57,34 @@ async def run_initiative_checks(chat_id: int):
         )
         return
 
+    # Stamped before the task is spawned, not inside it: this reserves the day's slot
+    # at decision time and keeps the daily-cap gate simple, and it avoids threading a
+    # run id into a detached task for a write that has nothing to do with the reply.
+    await mark_initiative_replied(claim.run_id)
+
     asyncio.create_task(
         _run_initiative_reply(chat_id=chat_id, character=character, evaluation=evaluation)
     )
 
 
-async def _claim_window(chat_id: int) -> tuple[list[Message], list[Message]]:
+@dataclass
+class ClaimedWindow:
+    """What one `_claim_window` call hands back to its caller.
+
+    `run_id` is the claimed run document's id, used by the send path to stamp
+    `replied_at`; it is `None` exactly when `candidates` is empty (pre-checks said no).
+    """
+    context: list[Message]
+    candidates: list[Message]
+    run_id: str | None
+
+
+async def _claim_window(chat_id: int) -> ClaimedWindow:
     """Reads the pending window and advances the watermark under a single lock.
 
-    Returns `(context, candidates)`, or `([], [])` when the pre-checks say no. The
-    gap split runs before `pre_check`, so `TRIGGER_SIZE` counts messages in one live
-    conversation rather than messages since the last judgment.
+    Returns an empty `ClaimedWindow` when the pre-checks say no. The gap split runs
+    before `pre_check`, so `TRIGGER_SIZE` counts messages in one live conversation
+    rather than messages since the last judgment.
     """
     async with INITIATIVE_RUN_LOCK:
         last_initiative_run = await get_last_initiative_run(chat_id)
@@ -74,15 +94,15 @@ async def _claim_window(chat_id: int) -> tuple[list[Message], list[Message]]:
 
         if not await pre_check(chat_id, candidates):
             logger.info('Initiative run pre-checks failed', extra=event('INITIATIVE_PRECHECK_FAILED'))
-            return [], []
+            return ClaimedWindow(context=[], candidates=[], run_id=None)
 
         logger.info(
             'Triggering initiative run',
             extra=event('INITIATIVE_CLAIMED', candidates=len(candidates)),
         )
-        await save_initiative_run(chat_id, last_message_time=candidates[-1].created_at)
+        run_id = await save_initiative_run(chat_id, last_message_time=candidates[-1].created_at)
 
-    return context, candidates
+    return ClaimedWindow(context=context, candidates=candidates, run_id=run_id)
 
 
 async def _get_messages(chat_id: int, watermark: datetime | None) -> list[Message]:
