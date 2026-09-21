@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Specs
+- Specs and implementation reports live in `docs/specs/`. Never create spec, design or report files anywhere else.
+- To implement a spec, use the `implement-spec` skill.
+
 ## Commands
 
 ### Run the bot
