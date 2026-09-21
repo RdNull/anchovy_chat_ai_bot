@@ -17,22 +17,38 @@ from a large window.
 | `src/settings.py` | `INITIATIVE_DAILY_LIMIT: int = Field(default=3, ge=1)`, module re-export |
 | `manifests/configmap.yaml`, `.github/workflows/deploy.yml` | wire the new var through, same pattern as the other eight `INITIATIVE_*` |
 | `src/initiative/models.py` | `InitiativeRun.replied_at: datetime \| None = None` |
-| `src/initiative/repository.py` | `save_initiative_run` now returns the inserted id (`str`); new `mark_initiative_replied(run_id)` and `count_replied_last_24h(chat_id)` |
-| `src/initiative/policies.py` | `pre_check` gets a fifth, last gate: `daily_limit` |
-| `src/initiative/handlers.py` | `_claim_window` returns `(context, candidates, run_id)`; `run_initiative_checks` stamps `replied_at` right before `create_task` |
+| `src/initiative/repository.py` | `save_initiative_run` now returns the inserted id (`str`); new `mark_initiative_replied(run_id)` and `count_replied_since(chat_id, window)` |
+| `src/initiative/policies.py` | `pre_check` gets a fifth, last gate: `daily_limit`, checked with a 24h `_DAILY_LIMIT_WINDOW` passed into `count_replied_since` |
+| `src/initiative/handlers.py` | `_claim_window` returns a `ClaimedWindow` dataclass (`context`, `candidates`, `run_id`); `run_initiative_checks` stamps `replied_at` right before `create_task` |
 | `src/initiative/processors.py` | `INITIATIVE_EVALUATE` gains `target_distance` / `target_age_s`, omitted without a target |
 | `src/initiative/CLAUDE.md`, root `CLAUDE.md` | updated for the new gate, the new run field, the new log fields |
 | tests | `src/tests/initiative/*`, `src/tests/test_settings.py` |
 
-Full suite: `docker compose exec bot pytest` → **628 passed**. Targeted run
-(`src/tests/initiative src/tests/test_settings.py src/tests/test_deploy_config.py`) → **90 passed**.
+Full suite: `docker compose exec bot pytest` → **629 passed**. Targeted run
+(`src/tests/initiative src/tests/test_settings.py src/tests/test_deploy_config.py`) → **91 passed**.
+
+## Review round
+
+Two inline comments from @RdNull on the initial version, both addressed:
+
+- **`src/initiative/handlers.py:93`** — "3 return variables is too much." `_claim_window` returned a bare
+  `tuple[list[Message], list[Message], str | None]`; it now returns a small `@dataclass ClaimedWindow`
+  (`context`, `candidates`, `run_id`), matching the project's existing convention for transient in-process
+  structures (`ToolContext`/`ToolFailure` in `src/tools.py`, `ChunkData` in `src/embeddings/client.py` —
+  plain dataclasses, not pydantic models, since these never round-trip through Mongo or an LLM). Call sites
+  read `claim.context` / `claim.candidates` / `claim.run_id`.
+- **`src/initiative/repository.py:46`** — "let's make it universal and pass 24 hours as a parameter."
+  `count_replied_last_24h(chat_id)` is now `count_replied_since(chat_id, window: timedelta)`, a plain
+  rolling-window count with no cap-specific meaning baked in. The 24h figure moved to the one caller that
+  needs it — `policies.py:_DAILY_LIMIT_WINDOW = timedelta(hours=24)` — so the repository function is
+  reusable for any window a future caller wants.
 
 ## How the claimed run id reaches the send path
 
 `_claim_window` already builds and saves the run document inside `INITIATIVE_RUN_LOCK`; it now also
-returns the id `save_initiative_run` hands back from `insert_one`. `run_initiative_checks` carries that id
-as a local (`context, candidates, run_id = await _claim_window(chat_id)`) through the evaluation and
-decision steps and calls `await mark_initiative_replied(run_id)` immediately before
+returns the id `save_initiative_run` hands back from `insert_one`, as part of the `ClaimedWindow` it
+returns. `run_initiative_checks` holds that as `claim = await _claim_window(chat_id)` through the
+evaluation and decision steps and calls `await mark_initiative_replied(claim.run_id)` immediately before
 `asyncio.create_task(_run_initiative_reply(...))` — not inside `_run_initiative_reply` itself.
 
 Two reasons for that placement, both from the task's own framing ("stamping at decision time... reserves
@@ -68,7 +84,7 @@ against the test database, through the project's real `JsonFormatter` (`src/logs
 `INITIATIVE_DAILY_LIMIT=3`:
 
 ```json
-{"level": "INFO", "logger": "bot", "module": "policies", "line": 72, "msg": "Skipping initiative reply", "event": "INITIATIVE_SKIPPED", "reason": "daily_limit", "count": 3, "limit": 3}
+{"level": "INFO", "logger": "bot", "module": "policies", "line": 77, "msg": "Skipping initiative reply", "event": "INITIATIVE_SKIPPED", "reason": "daily_limit", "count": 3, "limit": 3}
 ```
 
 **`INITIATIVE_EVALUATE`** with the new fields — 3 candidates, target resolved to the middle one

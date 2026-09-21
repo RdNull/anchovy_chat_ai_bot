@@ -298,11 +298,11 @@ async def test_claim_window_does_not_advance_watermark_when_pre_check_fails_afte
         'src.initiative.handlers.save_initiative_run', new_callable=AsyncMock
     )
 
-    context, candidates, run_id = await handlers._claim_window(222)
+    claim = await handlers._claim_window(222)
 
-    assert context == []
-    assert candidates == []
-    assert run_id is None
+    assert claim.context == []
+    assert claim.candidates == []
+    assert claim.run_id is None
     assert mock_save_run.call_count == 0
 
 
@@ -315,12 +315,12 @@ async def test_claim_window_returns_the_claimed_run_id_on_success(mocker):
         'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[make_message()])
     )
 
-    _, candidates, run_id = await handlers._claim_window(222)
+    claim = await handlers._claim_window(222)
 
-    assert candidates != []
-    assert run_id is not None
+    assert claim.candidates != []
+    assert claim.run_id is not None
     saved = await get_last_initiative_run(222)
-    assert saved.id == run_id
+    assert saved.id == claim.run_id
 
 
 # --- _run_initiative_reply ---

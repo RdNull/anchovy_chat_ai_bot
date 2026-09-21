@@ -29,7 +29,7 @@ async def save_initiative_run(chat_id: int, last_message_time: datetime) -> str:
 
 
 async def mark_initiative_replied(run_id: str) -> None:
-    """Stamps the claimed run as sent — the record `count_replied_last_24h` counts.
+    """Stamps the claimed run as sent — the record `count_replied_since` counts.
 
     Called from the send path only, before the reply is actually dispatched: it
     reserves the day's slot rather than confirming delivery, which is what keeps the
@@ -43,8 +43,8 @@ async def mark_initiative_replied(run_id: str) -> None:
     )
 
 
-async def count_replied_last_24h(chat_id: int) -> int:
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
+async def count_replied_since(chat_id: int, window: timedelta) -> int:
+    since = datetime.now(timezone.utc) - window
     return await db.initiative_runs.count_documents(
         {'chat_id': chat_id, 'replied_at': {'$gte': since.timestamp()}}
     )

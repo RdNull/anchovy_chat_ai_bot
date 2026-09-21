@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from src import mongo
 from src.initiative.repository import (
-    count_replied_last_24h, get_last_initiative_run, mark_initiative_replied,
+    count_replied_since, get_last_initiative_run, mark_initiative_replied,
     save_initiative_run,
 )
 
@@ -61,7 +61,7 @@ async def test_save_initiative_run_returns_a_usable_id():
     assert result.replied_at is not None
 
 
-# --- mark_initiative_replied / count_replied_last_24h ---
+# --- mark_initiative_replied / count_replied_since ---
 
 async def test_mark_initiative_replied_stamps_the_run():
     run_id = await save_initiative_run(222, last_message_time=datetime.now(timezone.utc))
@@ -72,13 +72,13 @@ async def test_mark_initiative_replied_stamps_the_run():
     assert result.replied_at is not None
 
 
-async def test_count_replied_last_24h_counts_only_replied_runs_for_this_chat():
+async def test_count_replied_since_counts_only_replied_runs_for_this_chat_within_the_window():
     now = datetime.now(timezone.utc)
     # Never sent — no replied_at.
     await mongo.initiative_runs.insert_one({
         'chat_id': 222, 'last_message_time': now.timestamp(), 'created_at': now.timestamp(),
     })
-    # Sent, but more than 24h ago.
+    # Sent, but before the window.
     stale = now - timedelta(hours=25)
     await mongo.initiative_runs.insert_one({
         'chat_id': 222, 'last_message_time': stale.timestamp(), 'created_at': stale.timestamp(),
@@ -95,8 +95,22 @@ async def test_count_replied_last_24h_counts_only_replied_runs_for_this_chat():
         'replied_at': now.timestamp(),
     })
 
-    assert await count_replied_last_24h(222) == 1
+    assert await count_replied_since(222, timedelta(hours=24)) == 1
 
 
-async def test_count_replied_last_24h_is_zero_with_no_runs():
-    assert await count_replied_last_24h(222) == 0
+async def test_count_replied_since_respects_a_different_window():
+    # The window is a parameter, not a baked-in constant — a run just outside a 1h
+    # window must not count even though it would count against the 24h one above.
+    now = datetime.now(timezone.utc)
+    two_hours_ago = now - timedelta(hours=2)
+    await mongo.initiative_runs.insert_one({
+        'chat_id': 222, 'last_message_time': two_hours_ago.timestamp(),
+        'created_at': two_hours_ago.timestamp(), 'replied_at': two_hours_ago.timestamp(),
+    })
+
+    assert await count_replied_since(222, timedelta(hours=1)) == 0
+    assert await count_replied_since(222, timedelta(hours=24)) == 1
+
+
+async def test_count_replied_since_is_zero_with_no_runs():
+    assert await count_replied_since(222, timedelta(hours=24)) == 0
