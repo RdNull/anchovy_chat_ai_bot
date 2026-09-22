@@ -5,6 +5,7 @@ docker-compose.override.yml
 *.http
 *temp.*
 /Claude outputs
+/docs/specs/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

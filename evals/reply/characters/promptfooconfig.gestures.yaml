@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+#
+# Rubric-free gesture probe: does the character reach for a reaction on the six
+# real gesture fixtures, without a judge flattening the channel choice the way
+# the production rubrics in promptfooconfig.yaml do. Distinct filename on purpose
+# (see evals/CLAUDE.md "When the production rubrics can't answer the question") -
+# invisible to `-c ./reply/characters`, no unwiring needed. Kept in the repo
+# because stage 2 (stickers) reuses it.
+
+description: "Elzhan gesture probe (no asserts)"
+
+prompts:
+  - id: file://../prompts/v10.js
+    label: "Character v10"
+
+providers:
+  - id: file://../../models/chat/v8-gemini.yaml
+
+defaultTest:
+  vars:
+    character_description: file://whyzzzy.js
+    bot_nickname: AnchovyAiBot
+
+tests:
+  # gesture-class
+  - description: "disbelief_check"
+    vars:
+      messages: file://disbelief_check/messages.json
+
+  - description: "mockery_own_lie"
+    vars:
+      messages: file://mockery_own_lie/messages.json
+
+  - description: "peer_agreement"
+    vars:
+      messages: file://peer_agreement/messages.json
+
+  - description: "secondhand_pain"
+    vars:
+      messages: file://secondhand_pain/messages.json
+
+  # text-required
+  - description: "factual_combo_followup"
+    vars:
+      messages: file://factual_combo_followup/messages.json
+
+  - description: "factual_fitness_pushback"
+    vars:
+      messages: file://factual_fitness_pushback/messages.json

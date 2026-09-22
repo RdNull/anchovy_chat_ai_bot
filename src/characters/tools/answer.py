@@ -1,7 +1,6 @@
 from langchain_core.tools import tool
 from telegram.error import BadRequest
 
-from src.const import ALLOWED_REACTIONS
 from src.embeddings.stickers import stickers_embedding_client
 from src.logs import event, logger
 from src.messages.media.repository import get_sendable_file_id
@@ -29,12 +28,30 @@ emoji: ровно один из эмодзи из разрешенного сп�
 
 
 @tool(description=SET_REACTION_DESCRIPTION, return_direct=True)
-async def set_reaction(emoji: ReactionEmoji) -> None:
-    if emoji not in ALLOWED_REACTIONS:
-        raise ValueError(f'Invalid reaction: {emoji}')  # maybe log only?
-
+async def set_reaction(emoji: ReactionEmoji) -> ToolFailure | None:
+    # No `if emoji not in ALLOWED_REACTIONS` guard here: `emoji`'s `Literal` type
+    # (src/types.py) makes pydantic validate tool-call args against the allowed set
+    # before this body ever runs, so an off-enum value never reaches it. That failure
+    # is caught in `ToolRegistry.execute` (src/tools.py) instead, as a `ValidationError`.
     tool_context: ToolContext = set_reaction.metadata['context']
-    await tool_context.replier.reply_reaction(emoji, is_big=True)
+
+    try:
+        sent = await tool_context.replier.reply_reaction(emoji, is_big=True)
+    except BadRequest:
+        # Only BadRequest: a network blip must surface as an error rather than quietly
+        # swallowing a reaction that would otherwise have gone through.
+        logger.warning(
+            'set_reaction failed', exc_info=True,
+            extra=event('TOOL_REACTION_SET', outcome='error', emoji=emoji),
+        )
+        return ToolFailure('не получилось поставить реакцию')
+
+    if not sent:
+        logger.warning(
+            'set_reaction rejected',
+            extra=event('TOOL_REACTION_SET', outcome='error', emoji=emoji),
+        )
+        return ToolFailure('не получилось поставить реакцию')
 
 SEND_STICKER_DESCRIPTION = '''
 [answer]: Ответить стикером

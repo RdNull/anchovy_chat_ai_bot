@@ -517,6 +517,14 @@ def test_system_message_carries_the_sticker_mechanics():
     assert 'send_sticker' in content
 
 
+def test_system_message_names_the_bot_nickname():
+    # Without its own nickname in the prompt the model can't recognise its own
+    # past reactions in rendered history.
+    content = make_character().system_message.content
+
+    assert settings.BOT_NICKNAME in content
+
+
 def test_system_message_without_memory_has_no_memory_section():
     character = make_character()
     character.memory = None

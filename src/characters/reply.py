@@ -49,8 +49,7 @@ class Replier:
             ),
         )
 
-    async def reply_reaction(self, emoji: ReactionEmoji, is_big: bool = False):
-        logger.info('Setting reaction', extra=event('REPLY_SENT', kind='reaction', emoji=str(emoji)))
+    async def reply_reaction(self, emoji: ReactionEmoji, is_big: bool = False) -> bool:
         if not self.target_message or not self.target_message.telegram_id:
             raise ValueError('Target message is not set for reply reaction')
 
@@ -61,9 +60,13 @@ class Replier:
             is_big=is_big
         )
         if not result:
-            raise ValueError(f'Failed to set reaction with emoji {emoji}')
+            return False
 
+        # Logged only on confirmed delivery -- otherwise a rejected reaction would
+        # still count as sent in the REPLY_SENT Axiom metric.
+        logger.info('Setting reaction', extra=event('REPLY_SENT', kind='reaction', emoji=str(emoji)))
         await add_bot_reaction(self.target_message, settings.BOT_NICKNAME, str(emoji))
+        return True
 
     def _get_reply_params(self) -> ReplyParameters | None:
         if self.target_message and self.target_message.telegram_id:
