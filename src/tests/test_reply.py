@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -126,13 +127,45 @@ async def test_reply_reaction_calls_set_reaction(make_bot):
     )
 
 
-async def test_reply_reaction_raises_when_result_is_false(make_bot):
+async def test_reply_reaction_returns_false_and_does_not_raise_when_result_is_false(make_bot):
     replier = make_replier(make_bot)
     replier.target_message.telegram_id = 1
+    await save_message(replier.target_message)
     replier.bot.set_message_reaction = AsyncMock(return_value=False)
 
-    with pytest.raises(ValueError, match='Failed to set reaction'):
+    result = await replier.reply_reaction('🤡')
+
+    assert result is False
+
+
+async def test_reply_reaction_rejected_by_telegram_does_not_log_reply_sent(make_bot, caplog):
+    # A Telegram rejection must not count as sent in the REPLY_SENT Axiom metric.
+    replier = make_replier(make_bot)
+    replier.target_message.telegram_id = 1
+    await save_message(replier.target_message)
+    replier.bot.set_message_reaction = AsyncMock(return_value=False)
+
+    with caplog.at_level(logging.INFO, logger='bot'):
         await replier.reply_reaction('🤡')
+
+    reply_sent_records = [r for r in caplog.records if getattr(r, 'event', None) == 'REPLY_SENT']
+    assert reply_sent_records == []
+    updated = await get_message_by_tg_id(222, 1)
+    assert updated.reactions == {}
+
+
+async def test_reply_reaction_success_logs_reply_sent(make_bot, caplog):
+    replier = make_replier(make_bot)
+    replier.target_message.telegram_id = 1
+    await save_message(replier.target_message)
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        result = await replier.reply_reaction('🤡')
+
+    assert result is True
+    record = next(r for r in caplog.records if getattr(r, 'event', None) == 'REPLY_SENT')
+    assert record.kind == 'reaction'
+    assert record.emoji == '🤡'
 
 
 async def test_reply_reaction_raises_when_target_has_no_telegram_id(make_bot):

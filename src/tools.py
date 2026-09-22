@@ -4,6 +4,7 @@ from typing import Iterable
 
 from langchain_core.messages import ToolCall, ToolMessage
 from langchain_core.tools import BaseTool
+from pydantic import ValidationError
 
 from src.characters.reply import Replier
 from src.logs import elapsed_ms, event, logger
@@ -62,7 +63,16 @@ class ToolRegistry:
         started = time.monotonic()
         outcome = 'error'
         try:
-            tool_result = await tool.ainvoke(tool_call['args'])
+            try:
+                tool_result = await tool.ainvoke(tool_call['args'])
+            except ValidationError:
+                # A tool's args are validated against its schema before its body ever
+                # runs -- e.g. `set_reaction`'s `emoji` is a `Literal` of the allowed
+                # set (src/types.py), so a hallucinated value raises here, not inside
+                # the tool. Without this the turn would die silently instead of giving
+                # the model another turn, same as an unhandled `ToolFailure`.
+                tool_result = self._handle_invalid_args(name, tool_call)
+
             outcome = 'error' if isinstance(tool_result, ToolFailure) else 'ok'
 
             return ToolMessage(
@@ -77,6 +87,18 @@ class ToolRegistry:
                     outcome=outcome, direct=tool.return_direct,
                 ),
             )
+
+    @staticmethod
+    def _handle_invalid_args(name: str, tool_call: ToolCall) -> ToolFailure:
+        if name == 'set_reaction':
+            emoji = tool_call['args'].get('emoji')
+            logger.warning(
+                'Invalid reaction emoji',
+                extra=event('TOOL_REACTION_SET', outcome='invalid_emoji', emoji=emoji),
+            )
+            return ToolFailure('недопустимая реакция')
+
+        return ToolFailure('некорректные аргументы')
 
     def is_return_direct(self, tool_call: ToolCall) -> bool:
         tool = self._get_tool(tool_call)

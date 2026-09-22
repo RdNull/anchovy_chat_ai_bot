@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -154,6 +155,27 @@ async def test_tool_registry_execute_unknown_tool():
         await registry.execute(tool_call)
 
 
+async def test_tool_registry_execute_converts_schema_validation_error_to_tool_failure(caplog):
+    # emoji's Literal type (src/types.py) makes pydantic reject an off-enum value
+    # before set_reaction's own body ever runs -- this must not kill the turn.
+    mock_replier = MagicMock()
+    mock_replier.reply_reaction = AsyncMock()
+    context = ToolContext(chat_id=1, replier=mock_replier)
+    registry = ToolRegistry(context_tools=[], direct_tools=[set_reaction], context=context)
+
+    tool_call = {'name': 'set_reaction', 'args': {'emoji': '🍕'}, 'id': 'call_789'}
+
+    with caplog.at_level(logging.WARNING, logger='bot'):
+        tool_message, tool_result = await registry.execute(tool_call)
+
+    assert isinstance(tool_result, ToolFailure)
+    assert isinstance(tool_message, ToolMessage)
+    assert mock_replier.reply_reaction.call_count == 0
+    record = next(r for r in caplog.records if getattr(r, 'event', None) == 'TOOL_REACTION_SET')
+    assert record.outcome == 'invalid_emoji'
+    assert record.emoji == '🍕'
+
+
 async def test_tool_registry_execute_logging(mocker):
     mock_tool = MagicMock()
     mock_tool.name = 'test_tool'
@@ -236,15 +258,55 @@ async def test_answer_text_tool_skips_empty_text():
 
 async def test_set_reaction_tool_calls_replier():
     mock_replier = MagicMock()
-    mock_replier.reply_reaction = AsyncMock()
+    mock_replier.reply_reaction = AsyncMock(return_value=True)
     context = ToolContext(chat_id=1, replier=mock_replier)
     set_reaction.metadata = {'context': context}
 
-    await set_reaction.ainvoke({'emoji': '🤡'})
+    result = await set_reaction.ainvoke({'emoji': '🤡'})
 
+    assert result is None
     assert mock_replier.reply_reaction.call_count == 1
     assert mock_replier.reply_reaction.call_args[0][0] == '🤡'
     assert mock_replier.reply_reaction.call_args[1]['is_big'] is True
+
+
+async def test_set_reaction_bad_request_fails_and_logs_error(caplog):
+    mock_replier = MagicMock()
+    mock_replier.reply_reaction = AsyncMock(side_effect=BadRequest('REACTION_INVALID'))
+    context = ToolContext(chat_id=1, replier=mock_replier)
+    set_reaction.metadata = {'context': context}
+
+    with caplog.at_level(logging.WARNING, logger='bot'):
+        result = await set_reaction.ainvoke({'emoji': '🤡'})
+
+    assert isinstance(result, ToolFailure)
+    record = next(r for r in caplog.records if getattr(r, 'event', None) == 'TOOL_REACTION_SET')
+    assert record.outcome == 'error'
+    assert record.emoji == '🤡'
+
+
+async def test_set_reaction_falsy_result_fails_and_logs_error(caplog):
+    mock_replier = MagicMock()
+    mock_replier.reply_reaction = AsyncMock(return_value=False)
+    context = ToolContext(chat_id=1, replier=mock_replier)
+    set_reaction.metadata = {'context': context}
+
+    with caplog.at_level(logging.WARNING, logger='bot'):
+        result = await set_reaction.ainvoke({'emoji': '🤡'})
+
+    assert isinstance(result, ToolFailure)
+    record = next(r for r in caplog.records if getattr(r, 'event', None) == 'TOOL_REACTION_SET')
+    assert record.outcome == 'error'
+
+
+async def test_set_reaction_network_error_propagates():
+    mock_replier = MagicMock()
+    mock_replier.reply_reaction = AsyncMock(side_effect=RuntimeError('network blip'))
+    context = ToolContext(chat_id=1, replier=mock_replier)
+    set_reaction.metadata = {'context': context}
+
+    with pytest.raises(RuntimeError, match='network blip'):
+        await set_reaction.ainvoke({'emoji': '🤡'})
 
 
 async def test_search_web_returns_fragments(mocker):

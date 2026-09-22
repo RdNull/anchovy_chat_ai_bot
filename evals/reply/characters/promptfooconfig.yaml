@@ -3,8 +3,8 @@
 description: "Character response eval"
 
 prompts:
-  - id: file://../prompts/v9.js
-    label: "Character v9"
+  - id: file://../prompts/v10.js
+    label: "Character v10"
 
 providers:
   - id: file://../../models/chat/v8-gemini.yaml
@@ -12,6 +12,7 @@ providers:
 defaultTest:
   vars:
     character_description: file://whyzzzy.js
+    bot_nickname: AnchovyAiBot
   assert:
     # response must be between 1 and 20 words long
     - type: word-count
