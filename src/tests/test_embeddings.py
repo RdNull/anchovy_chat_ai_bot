@@ -146,7 +146,7 @@ async def test_embeddings_client_search(mocker):
         version=1,
         score=0.9,
         payload={
-            'message_ids': [m.id for m in saved_messages],
+            'message_ids': [str(m.id) for m in saved_messages],
             'chat_id': 123,
         }
     )
@@ -163,7 +163,7 @@ async def test_embeddings_client_search(mocker):
     assert len(results) == 1
     assert isinstance(results[0], RelatedMessagesData)
     assert results[0].score == 0.9
-    assert {m.id for m in results[0].messages} == {m.id for m in saved_messages}
+    assert {m.id for m in results[0].messages} == {str(m.id) for m in saved_messages}
     assert {m.text for m in results[0].messages} == {'text 1', 'text 2'}
 
 
@@ -171,7 +171,7 @@ async def test_update_chat_embeddings(mocker):
     mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
 
     # Mock DB
-    mock_db = mocker.patch('src.embeddings.handlers.db')
+    mock_db = mocker.patch('src.embeddings.repository.db')
 
     # No last task
     mock_db.embedding_tasks.find_one = AsyncMock(return_value=None)

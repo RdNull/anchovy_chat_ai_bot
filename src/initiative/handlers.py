@@ -21,11 +21,11 @@ from src.messages.repository import fetch_last_messages
 from src.messages.utils import send_chat_action
 from src.running_app import get_bot
 
-# `run_context_checks` is a detached task per message, so the watermark's
-# read-then-write is not atomic on its own: two messages arriving together would both
-# read the same watermark, claim the same window and answer it twice. Module-level and
-# shared by every chat, like `CHAT_CONTEXT_LOCK` — the critical section is short and
-# ends before the LLM call.
+# `run_followups` is a detached task per message, so the watermark's read-then-write
+# is not atomic on its own: two messages arriving together would both read the same
+# watermark, claim the same window and answer it twice. Module-level and shared by
+# every chat, like `memory.handlers.MEMORY_UPDATE_LOCK` — the critical section is
+# short and ends before the LLM call.
 INITIATIVE_RUN_LOCK = asyncio.Lock()
 
 

@@ -1,34 +1,39 @@
 import asyncio
 import time
-from datetime import datetime, timezone
 
-from src import mongo as db, settings
+from src import settings
 from src.embeddings.messages import messages_embeddings_client
+from src.embeddings.repository import get_last_embedding_task, save_embedding_task
 from src.logs import elapsed_ms, event, logger
-from src.messages.repository import get_messages
-from src.embeddings.models import EmbeddingTask, RelatedMessagesData
-from src.messages.models import Message
+from src.messages.repository import get_messages, get_messages_count, get_messages_count_since
 
-# `run_context_checks` is a detached task per message, so the watermark's
-# read-then-write is not atomic on its own: concurrent calls would all read the same
-# checkpoint and each pay for the same embedding pass (observed at 8x in prod).
-# Module-level and shared by every chat, like CHAT_CONTEXT_LOCK, and held across the
+# The read-then-write watermark below is not atomic on its own: `run_followups` is a
+# detached task per message, so concurrent calls would all read the same checkpoint
+# and each pay for the same embedding pass (observed at 8x in prod). Module-level and
+# shared by every chat, like `memory.handlers.MEMORY_UPDATE_LOCK`, and held across the
 # whole body rather than released before the save: a failed Qdrant save must leave
 # the watermark unadvanced so the window is retried, not lost.
 EMBEDDING_TASK_LOCK = asyncio.Lock()
 
 
-async def search_related_messages(user_message: Message) -> list[RelatedMessagesData]:
-    query = user_message.text
-    if user_message.media:
-        query = f'{query}|{user_message.media.description}|{user_message.media.ocr_text}'
+async def run_embedding_checks(chat_id: int):
+    last_embeddings_task = await get_last_embedding_task(chat_id)
+    if last_embeddings_task:
+        messages_count = await get_messages_count_since(
+            chat_id, last_embeddings_task.last_message_time.timestamp()
+        )
+    else:
+        messages_count = await get_messages_count(chat_id)
 
-    if len(query) < 5:  # no need to spend time on spam messages
-        return []
-
-    return await messages_embeddings_client.search(
-        chat_id=user_message.chat_id, query=query, limit=settings.EMBEDDINGS_SEARCH_MAX_SIZE
-    )
+    if messages_count >= settings.EMBEDDINGS_TRIGGER_SIZE:
+        logger.info(
+            'Triggering periodic embedding update',
+            extra=event(
+                'EMBEDDING_TRIGGERED', count=messages_count,
+                trigger_size=settings.EMBEDDINGS_TRIGGER_SIZE,
+            ),
+        )
+        await update_chat_embeddings(chat_id)
 
 
 async def update_chat_embeddings(chat_id: int):
@@ -70,24 +75,3 @@ async def update_chat_embeddings(chat_id: int):
                 'Error updating embeddings', exc_info=True,
                 extra=event('EMBEDDING_UPDATE', outcome='error'),
             )
-
-
-async def get_last_embedding_task(chat_id: int) -> EmbeddingTask | None:
-    logger.debug('Getting embedding task', extra=event('EMBEDDING_TASK_FETCH'))
-    embedding_task = await db.embedding_tasks.find_one(
-        {'chat_id': chat_id}, sort=[('created_at', -1)]
-    )
-    if not embedding_task:
-        return None
-
-    return EmbeddingTask(**embedding_task)
-
-
-async def save_embedding_task(chat_id: int, last_message_time: datetime):
-    logger.debug('Saving embedding task', extra=event('EMBEDDING_TASK_SAVED'))
-    data = {
-        'chat_id': chat_id,
-        'last_message_time': last_message_time.timestamp(),
-        'created_at': datetime.now(timezone.utc).timestamp()
-    }
-    await db.embedding_tasks.insert_one(data)

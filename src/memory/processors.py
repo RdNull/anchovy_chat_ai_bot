@@ -1,11 +1,9 @@
-import time
-
 from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
 from src import ai, settings
 from src.base import format_ts
-from src.logs import elapsed_ms, event, logger
+from src.logs import event, logger
 from src.messages.models import Message
 from src.model_manager import model_manager
 from src.memory.decay import (
@@ -24,8 +22,13 @@ from src.memory.decay import (
 from src.memory.dedup import resolve_attribution_conflicts
 from src.memory.keys import RECENT_FIELD
 from src.memory.models import MemoryData, StructuredMemory
-from src.memory.repository import save_memory
 from src.prompt_manager import prompt_manager
+
+# Read once at import rather than per call. `memory/handlers.py` reuses both for
+# the terminal `MEMORY_EXTRACT` event, since the handler is the one that knows
+# whether the `save_memory` that follows this call actually landed.
+MEMORY_MODEL_VERSION = 'v3-cheap'
+MEMORY_MODEL_NAME = model_manager.get_model_settings('memory', MEMORY_MODEL_VERSION).get('model')
 
 
 def _prompt_memory(current: MemoryData | None) -> str:
@@ -115,19 +118,15 @@ async def extract_memory(
     chat_id: int,
     current_memory: MemoryData | None,
     new_messages: list[Message],
-):
-    if not settings.ENABLE_MEMORY_PROCESSING:
-        await save_memory(chat_id, StructuredMemory())
-        logger.info(
-            'Memory processing disabled, saved empty memory',
-            extra=event('MEMORY_EXTRACT', outcome='disabled'),
-        )
-        return
+) -> MemoryData | None:
+    """Runs the extraction LLM call and returns the snapshot to save.
 
-    started = time.monotonic()
-    version = 'v3-cheap'
-    model_name = model_manager.get_model_settings('memory', version).get('model')
-    llm = ai.get_memory_model(version=version)
+    Pure: never writes. `src/memory/handlers.py` owns the `ENABLE_MEMORY_PROCESSING`
+    gate, the `save_memory` call, and the terminal `MEMORY_EXTRACT` `ok`/`error`
+    event — this function only logs the `empty` outcome, since that one describes
+    the extraction itself rather than the save that follows it.
+    """
+    llm = ai.get_memory_model(version=MEMORY_MODEL_VERSION)
     model_with_structure = llm.with_structured_output(StructuredMemory)
 
     formatted_messages = '\n'.join([m.ai_format for m in new_messages])
@@ -148,7 +147,7 @@ async def extract_memory(
     ])
     if not updated_memory:
         logger.error('No memory extracted', extra=event('MEMORY_EXTRACT', outcome='empty'))
-        return
+        return None
 
     guard_records = resolve_attribution_conflicts(
         updated_memory, current_memory.content if current_memory else None
@@ -188,23 +187,4 @@ async def extract_memory(
     )
     _log_churn(churn)
 
-    try:
-        await save_memory(chat_id, updated_memory, decay, created_at=watermark)
-        logger.info(
-            'Memory updated and saved',
-            extra=event(
-                'MEMORY_EXTRACT', outcome='ok', elapsed_ms=elapsed_ms(started),
-                model=model_name, version=version, window=len(new_messages),
-            ),
-        )
-    except Exception:
-        logger.error(
-            'Failed to parse memory JSON', exc_info=True,
-            extra=event('MEMORY_EXTRACT', outcome='error'),
-        )
-        # The raw model output is chat-derived content, not diagnostic metadata -- kept at
-        # DEBUG rather than shipped at ERROR.
-        logger.debug(
-            'Memory extraction content',
-            extra=event('MEMORY_EXTRACT_CONTENT', content=str(updated_memory)),
-        )
+    return MemoryData(chat_id=chat_id, created_at=watermark, content=updated_memory, decay=decay)

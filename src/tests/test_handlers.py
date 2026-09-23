@@ -215,7 +215,7 @@ async def test_parse_user_message_with_animation_is_not_a_sticker(make_update):
 
 async def test_handle_conversation_pushes_to_history(make_update, make_context, mocker):
     mocker.patch(
-        'src.messages.handlers.run_context_checks', new_callable=AsyncMock
+        'src.messages.handlers.run_followups', new_callable=AsyncMock
     )
     update = make_update(chat_id=222)
 
@@ -230,7 +230,7 @@ async def test_handle_conversation_pushes_to_history(make_update, make_context, 
 
 async def test_generate_answer_full_flow(make_update, make_context, make_bot, mock_llm, mocker):
     mocker.patch(
-        'src.messages.response.run_context_checks', new_callable=AsyncMock
+        'src.messages.response.run_followups', new_callable=AsyncMock
     )
     bot = make_bot()
     mocker.patch('src.messages.response.get_bot', return_value=bot)
@@ -311,7 +311,7 @@ async def test_handle_conversation_dispatches_pipeline_for_described_media(
     # A sticker the group has sent before comes back READY from the description row.
     # Gating dispatch on PENDING would skip the pipeline entirely and leave
     # `_backfill_sticker` unreachable on the path most stickers arrive by.
-    mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
+    mocker.patch('src.messages.handlers.run_followups', new_callable=AsyncMock)
     mock_handle_media = mocker.patch(
         'src.messages.handlers.handle_media_message', new_callable=AsyncMock
     )
@@ -350,7 +350,7 @@ async def test_handle_conversation_no_message_returns_early(make_context, mocker
 # --- handle_conversation with pending media ---
 
 async def test_handle_conversation_creates_media_task(make_update, make_context, mocker):
-    mocker.patch('src.messages.handlers.run_context_checks', new_callable=AsyncMock)
+    mocker.patch('src.messages.handlers.run_followups', new_callable=AsyncMock)
     mock_handle_media = mocker.patch(
         'src.messages.handlers.handle_media_message', new_callable=AsyncMock
     )
