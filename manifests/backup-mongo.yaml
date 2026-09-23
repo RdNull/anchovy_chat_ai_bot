@@ -57,8 +57,14 @@ spec:
                   ls -lh /backup
               resources:
                 requests:
+                  # The dump is a few MB and finishes in seconds; 128Mi was oversized enough
+                  # that it rarely fit the node's ~100-140Mi steady-state headroom (see
+                  # deployment.md's node arithmetic), so the pod sat Pending at its 03:17 UTC
+                  # schedule until a deploy transiently freed memory (bot Recreate, or the
+                  # unconditional otel-collector restart) — that's what made the Linode
+                  # volume-attach notification look deploy-triggered instead of nightly.
                   cpu: 25m
-                  memory: 128Mi
+                  memory: 48Mi
               volumeMounts:
                 - name: mongo-backup
                   mountPath: /backup
