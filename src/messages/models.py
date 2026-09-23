@@ -1,20 +1,12 @@
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, ClassVar
 
-from pydantic import BaseModel as _BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import Field
 
 from src import settings
-from src.const import TIMEZONE_ALMATY
-
-MongoId = Annotated[str, BeforeValidator(lambda x: str(x))]
-
-
-class BaseModel(_BaseModel):
-    model_config = ConfigDict(coerce_numbers_to_str=True, arbitrary_types_allowed=True)
+from src.base import BaseModel, MongoId, format_ts
 
 
 class UserRole(str, Enum):
@@ -22,23 +14,10 @@ class UserRole(str, Enum):
     AI = 'ai'
 
 
-TIMESTAMP_FORMAT = '%y-%m-%d %H:%M'
-
-
-def format_ts(value: datetime) -> str:
-    """Renders a timestamp the way every prompt in this project expects it.
-
-    The single producer of the `ГГ-ММ-ДД ЧЧ:ММ` format the memory prompt documents.
-    `src/memory/decay.py` stamps `DecayRecord.born` through this same helper, so a
-    sidecar age and a message timestamp can never drift apart.
-    """
-    return value.astimezone(TIMEZONE_ALMATY).strftime(TIMESTAMP_FORMAT)
-
-
 class MessageMediaTypes(str, Enum):
     IMAGE = 'image'
     GIF = 'gif'
-    # Never produced by `messages/media/download.py`, which types by file extension and
+    # Never produced by `src/media/download.py`, which types by file extension and
     # cannot tell a `.webp` sticker from a `.webp` photo. Set from Telegram's own
     # metadata at parse time; see `messages/parsing.py:_mark_sticker`.
     STICKER = 'sticker'
@@ -169,80 +148,3 @@ class Message(BaseModel):
 class UpdateMessage(BaseModel):
     id: MongoId
     text: str
-
-
-class MediaDetectionData(BaseModel):
-    format: str
-    type: ClassVar[MessageMediaTypes]
-
-    @property
-    def content_hash(self):
-        raise NotImplementedError()
-
-
-class ImageDetectionData(MediaDetectionData):
-    content: str
-    type: ClassVar[MessageMediaTypes] = MessageMediaTypes.IMAGE
-
-    @property
-    def content_hash(self):
-        return hashlib.md5(self.content.encode('utf-8')).hexdigest()
-
-
-class AnimationDetectionData(MediaDetectionData):
-    content: bytes
-    type: ClassVar[MessageMediaTypes] = MessageMediaTypes.GIF
-
-    @property
-    def content_hash(self):
-        return hashlib.md5(self.content).hexdigest()
-
-
-class MediaDescription(BaseModel):
-    id: MongoId | None = Field(default=None, alias='_id')
-    media_id: str | None = None  # holds a `file_unique_id`, NOT a sendable `file_id`
-    description: str
-    ocr_text: str | None = None
-    type: MessageMediaTypes
-    status: MessageMediaStatus = MessageMediaStatus.PROCESSING
-    sticker_emoji: str | None = None
-    # When `status` last changed. None on a row written before this field existed —
-    # treated as stale rather than raising, so a legacy PROCESSING row is retried
-    # instead of polled forever.
-    updated_at: datetime | None = None
-
-
-class MediaDescriptionData(BaseModel):
-    description: str
-    ocr_text: str | None = None
-
-
-class EmbeddingTask(BaseModel):
-    id: MongoId | None = Field(default=None, alias='_id')
-    chat_id: int
-    last_message_time: datetime
-    created_at: datetime
-
-
-class RelatedMessagesData(BaseModel):
-    messages: list[Message]
-    score: float
-
-
-class UserFact(BaseModel):
-    id: MongoId | None = Field(default=None, alias='_id')
-    nickname: str
-    text: str
-    confidence: float
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-
-class ExtractedFact(BaseModel):
-    nickname: str
-    text: str
-    confidence: float
-
-
-class ExtractedFacts(BaseModel):
-    facts: list[ExtractedFact]

@@ -4,19 +4,19 @@ from unittest.mock import AsyncMock, MagicMock, call
 from telegram import Sticker
 
 from src import settings
-from src.characters.repository import CHARACTERS
+from src.characters.registry import CHARACTERS
 from src.chat_settings import repository as chat_settings_repository
 from src.messages import handlers
 from src.messages.media import create_media_description
+from src.messages.models import (
+    Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UpdateMessage,
+    UserRole,
+)
 from src.messages.parsing import _get_message_medium
 from src.messages.repository import (
     get_messages, save_message,
 )
 from src.messages.response import fetch_last_messages
-from src.models import (
-    Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UpdateMessage,
-    UserRole,
-)
 
 
 # --- /start ---

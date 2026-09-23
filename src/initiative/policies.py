@@ -5,7 +5,7 @@ from src.initiative.models import InitiativeVerdict
 from src.initiative.repository import count_replied_since
 from src.logs import event, logger
 from src.messages.repository import get_last_message, get_messages_count_since
-from src.models import Message, UserRole
+from src.messages.models import Message, UserRole
 
 # The daily cap's window. A parameter on the repository function rather than baked
 # into it, so a rolling window of any length is a call away — this is just the one

@@ -8,7 +8,7 @@ from src.memory.decay import (
 from src.memory.dedup import ConflictRecord
 from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInfo, StructuredMemory
 from src.memory.processors import _prompt_memory
-from src.models import format_ts
+from src.base import format_ts
 
 NOW = '26-05-01 18:00'
 YESTERDAY = '26-04-30 18:00'

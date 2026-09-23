@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from bson import ObjectId
 
 from src.logs import event, logger
-from src.models import MediaDescription, MessageMediaStatus, MessageMediaTypes, UserRole
+from src.media.models import MediaDescription
+from src.messages.models import MessageMediaStatus, MessageMediaTypes, UserRole
 from src.mongo import media_descriptions, messages
 
 

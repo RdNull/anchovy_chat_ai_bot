@@ -6,7 +6,7 @@ import pytest
 from src import settings
 from src.characters.reply import Replier
 from src.messages.repository import get_message_by_tg_id, get_messages, save_message
-from src.models import Message, UserRole
+from src.messages.models import Message, UserRole
 
 _NOT_SET = object()
 

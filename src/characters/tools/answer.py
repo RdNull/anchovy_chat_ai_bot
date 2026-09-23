@@ -4,7 +4,7 @@ from telegram.error import BadRequest
 from src.embeddings.stickers import stickers_embedding_client
 from src.logs import event, logger
 from src.messages.media.repository import get_sendable_file_id
-from src.tools import ToolContext, ToolFailure
+from src.characters.tools.registry import ToolContext, ToolFailure
 from src.types import ReactionEmoji
 
 ANSWER_TEXT_DESCRIPTION = '''
@@ -32,7 +32,8 @@ async def set_reaction(emoji: ReactionEmoji) -> ToolFailure | None:
     # No `if emoji not in ALLOWED_REACTIONS` guard here: `emoji`'s `Literal` type
     # (src/types.py) makes pydantic validate tool-call args against the allowed set
     # before this body ever runs, so an off-enum value never reaches it. That failure
-    # is caught in `ToolRegistry.execute` (src/tools.py) instead, as a `ValidationError`.
+    # is caught in `ToolRegistry.execute` (src/characters/tools/registry.py) instead, as a
+    # `ValidationError`.
     tool_context: ToolContext = set_reaction.metadata['context']
 
     try:

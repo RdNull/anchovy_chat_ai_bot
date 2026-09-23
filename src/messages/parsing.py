@@ -1,7 +1,7 @@
 from telegram import Message as TgMessage, PhotoSize, Sticker
 from telegram._files._basemedium import _BaseMedium
 
-from src.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole
+from src.messages.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole
 from .repository import get_message_media_data
 
 

@@ -4,7 +4,7 @@ from bson import ObjectId
 
 from src import mongo
 from src.logs import event, logger
-from src.models import UserFact
+from src.facts.models import UserFact
 
 
 async def get_facts(nickname: str, limit: int = 5) -> list[UserFact]:

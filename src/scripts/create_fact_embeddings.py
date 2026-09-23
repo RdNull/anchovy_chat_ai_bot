@@ -6,7 +6,7 @@ import time
 from src.embeddings.facts import facts_embedding_client
 from src.log_context import push_log_context
 from src.logs import elapsed_ms, event, logger
-from src.models import UserFact
+from src.facts.models import UserFact
 from src import mongo
 
 parser = argparse.ArgumentParser(description='Backfill embeddings for user facts in DB.')

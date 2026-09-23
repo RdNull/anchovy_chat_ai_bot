@@ -36,9 +36,9 @@ the most damage.
 from datetime import datetime, timezone
 
 from src import settings
+from src.base import BaseModel
 from src.memory.keys import RECENT_FIELD, TRAITS_FIELD, normalize
 from src.memory.models import Decay, DecayRecord, StructuredMemory
-from src.models import BaseModel
 
 BIRTH = 'birth'
 CARRY = 'carry'

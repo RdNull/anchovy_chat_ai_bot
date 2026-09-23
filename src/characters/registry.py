@@ -5,7 +5,7 @@ import yaml
 
 from src import settings
 from src.characters.character import Character
-from src.models import RelatedMessagesData
+from src.chat_settings import repository as chat_settings_repository
 from src.memory.models import MemoryData
 
 CHARACTERS = {}
@@ -29,9 +29,21 @@ for path in Path(settings.CHARACTERS_DIRECTORY).rglob('*.yaml'):
 def get_character(
     character_name: str = None,
     memory: MemoryData | None = None,
-    related_messages: list[RelatedMessagesData] | None = None
 ) -> Character:
     character = CHARACTERS[character_name or random.choice(list(CHARACTERS.keys()))]
     character.memory = memory
-    character.related_messages = related_messages
+    return character
+
+
+async def set_chat_character(chat_id: int, character_code: str) -> None:
+    await chat_settings_repository.set_character_code(chat_id, character_code)
+
+
+async def get_chat_character(
+    chat_id: int,
+    memory: MemoryData | None = None,
+):
+    character_code = await chat_settings_repository.get_character_code(chat_id)
+    character = get_character(character_code, memory=memory)
+    await set_chat_character(chat_id, character.code)
     return character

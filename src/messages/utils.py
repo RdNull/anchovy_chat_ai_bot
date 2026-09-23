@@ -6,11 +6,7 @@ from telegram.constants import ChatAction
 from telegram.ext import (ContextTypes, filters)
 
 from src import settings
-from src.characters.repository import get_character
-from src.chat_settings import repository as chat_settings_repository
 from src.logs import event, logger
-from src.memory.models import MemoryData
-from src.models import RelatedMessagesData
 from src.running_app import get_bot
 
 
@@ -22,25 +18,6 @@ class ReplyToBotFilter(filters.MessageFilter):
             message.reply_to_message.from_user.is_bot and
             message.reply_to_message.from_user.username == settings.BOT_NICKNAME
         )
-
-
-async def set_chat_character(chat_id: int, character_code: str) -> None:
-    await chat_settings_repository.set_character_code(chat_id, character_code)
-
-
-async def get_chat_character(
-    chat_id: int,
-    memory: MemoryData | None = None,
-    related_messages: list[RelatedMessagesData] | None = None,
-):
-    character_code = await chat_settings_repository.get_character_code(chat_id)
-    character = get_character(
-        character_code,
-        memory=memory,
-        related_messages=related_messages,
-    )
-    await set_chat_character(chat_id, character.code)
-    return character
 
 
 def escape_markdown_v2(text: str) -> str:

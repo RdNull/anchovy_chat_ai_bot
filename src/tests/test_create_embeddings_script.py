@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from src.messages.media import create_media_description
-from src.models import Message, MessageMediaStatus, MessageMediaTypes, UserRole
+from src.messages.models import Message, MessageMediaStatus, MessageMediaTypes, UserRole
 from src.scripts.create_embeddings import create_embeddings
 from src.scripts.create_sticker_embeddings import create_sticker_embeddings
 

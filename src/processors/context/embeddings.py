@@ -6,7 +6,8 @@ from src import mongo as db, settings
 from src.embeddings.messages import messages_embeddings_client
 from src.logs import elapsed_ms, event, logger
 from src.messages.repository import get_messages
-from src.models import EmbeddingTask, Message, RelatedMessagesData
+from src.embeddings.models import EmbeddingTask, RelatedMessagesData
+from src.messages.models import Message
 
 # `run_context_checks` is a detached task per message, so the watermark's
 # read-then-write is not atomic on its own: concurrent calls would all read the same

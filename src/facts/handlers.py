@@ -4,7 +4,7 @@ from src import mongo
 from src.embeddings.facts import facts_embedding_client
 from src.facts.repository import create_fact, update_fact
 from src.logs import event, logger
-from src.models import UserFact
+from src.facts.models import UserFact
 
 
 async def upsert_fact(nickname: str, text: str, confidence: float) -> None:

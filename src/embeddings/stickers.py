@@ -6,7 +6,8 @@ from src import settings
 from src.embeddings.client import ChunkData, EmbeddingsClient
 from src.logs import event, logger
 from src.messages.media.repository import get_media_description_by_media_id
-from src.models import MediaDescription, MessageMediaStatus
+from src.media.models import MediaDescription
+from src.messages.models import MessageMediaStatus
 
 
 @dataclass

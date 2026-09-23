@@ -6,14 +6,15 @@ from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 from src import settings
+from src.characters.character import Character
+from src.characters.registry import get_chat_character
+from src.characters.reply import Replier
 from src.logs import elapsed_ms, event, logger
 from src.memory.repository import get_last_memory
 from src.running_app import get_bot
 from .parsing import parse_user_message
 from .repository import fetch_last_messages, save_message
-from .utils import get_chat_character, send_action
-from ..characters.character import Character
-from ..characters.reply import Replier
+from .utils import send_action
 from ..processors.context.handlers import run_context_checks
 
 

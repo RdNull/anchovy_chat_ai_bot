@@ -5,7 +5,8 @@ from src import settings
 from src.embeddings.client import ChunkData, EmbeddingsClient
 from src.logs import event, logger
 from src.messages.repository import get_messages_by_ids
-from src.models import Message, RelatedMessagesData
+from src.embeddings.models import RelatedMessagesData
+from src.messages.models import Message
 
 
 def chunk_messages(messages: list[Message], window=8, overlap=3) -> list[ChunkData]:

@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.models import AnimationDetectionData, ImageDetectionData, MediaDescriptionData
+from src.media.models import AnimationDetectionData, ImageDetectionData, MediaDescriptionData
 from src.processors.media.animation import (
     _extract_gif_frames, _extract_tgs_frames,
     _extract_video_frames, _image_to_base64, _resize_frame_if_needed, describe_animation,

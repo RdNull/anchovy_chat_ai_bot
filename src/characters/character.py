@@ -10,16 +10,16 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langsmith import traceable
 
 from src import ai, settings
+from src.characters import tools
+from src.characters.reply import Replier
+from src.characters.tools.registry import ToolContext, ToolFailure, ToolRegistry
 from src.logs import elapsed_ms, event, logger
 from src.memory.models import MemoryData
+from src.messages.models import Message, UserRole
 from src.model_manager import model_manager
-from src.models import Message, RelatedMessagesData, UserRole
 from src.prompt_manager import prompt_manager
-from . import tools
-from .rate_limit import SlidingWindowRateLimiter
-from .reply import Replier
-from ..settings import CHAT_RATE_LIMIT
-from ..tools import ToolContext, ToolFailure, ToolRegistry
+from src.rate_limit import SlidingWindowRateLimiter
+from src.settings import CHAT_RATE_LIMIT
 
 # The `_depth > 5` branch below terminates only because a direct tool always returned.
 # Now that one can fail and hand the model another turn, a send that fails every time
@@ -82,7 +82,6 @@ def _get_tools_registry(replier: Replier) -> ToolRegistry:
 
 class Character:
     memory: MemoryData | None = None
-    related_messages: list[RelatedMessagesData] | None = None
 
     def __init__(
         self,
@@ -106,7 +105,6 @@ class Character:
             version='v10',
             character_description=self.style_prompt,
             memory=self.memory.prompt_format() if self.memory else None,
-            related_messages=self.related_messages or None,
             bot_nickname=settings.BOT_NICKNAME,
         )
         return SystemMessage(setup_prompt)

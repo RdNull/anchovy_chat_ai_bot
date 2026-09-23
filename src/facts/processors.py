@@ -8,7 +8,8 @@ from langsmith import traceable
 from src import ai
 from src.facts.handlers import upsert_fact
 from src.logs import elapsed_ms, event, logger
-from src.models import ExtractedFacts, Message
+from src.facts.models import ExtractedFacts
+from src.messages.models import Message
 from src.prompt_manager import prompt_manager
 
 

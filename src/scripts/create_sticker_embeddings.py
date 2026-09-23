@@ -6,7 +6,7 @@ from src.embeddings.stickers import stickers_embedding_client
 from src.log_context import push_log_context
 from src.logs import elapsed_ms, event, logger
 from src.messages.media.repository import _parse_media_description
-from src.models import MessageMediaStatus, MessageMediaTypes
+from src.messages.models import MessageMediaStatus, MessageMediaTypes
 from src import mongo
 
 parser = argparse.ArgumentParser(description='Generate embeddings for stickers in DB.')

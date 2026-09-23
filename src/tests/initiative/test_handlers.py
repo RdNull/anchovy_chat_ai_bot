@@ -9,7 +9,7 @@ from src.initiative import handlers
 from src.initiative.models import InitiativeVerdict
 from src.initiative.repository import get_last_initiative_run
 from src.messages.repository import save_message
-from src.models import Message, UserRole
+from src.messages.models import Message, UserRole
 
 
 def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1', created_at=None):

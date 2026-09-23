@@ -4,7 +4,9 @@ from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
 from src import ai, settings
+from src.base import format_ts
 from src.logs import elapsed_ms, event, logger
+from src.messages.models import Message
 from src.model_manager import model_manager
 from src.memory.decay import (
     BIRTH,
@@ -23,7 +25,6 @@ from src.memory.dedup import resolve_attribution_conflicts
 from src.memory.keys import RECENT_FIELD
 from src.memory.models import MemoryData, StructuredMemory
 from src.memory.repository import save_memory
-from src.models import Message, format_ts
 from src.prompt_manager import prompt_manager
 
 

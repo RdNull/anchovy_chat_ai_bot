@@ -6,10 +6,11 @@ from telegram.ext import ContextTypes
 from src import settings
 from src.embeddings.stickers import stickers_embedding_client
 from src.logs import elapsed_ms, event, logger
-from src.models import (
+from src.media.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescription, MediaDescriptionData,
-    MediaDetectionData, Message, MessageMediaStatus, MessageMediaTypes,
+    MediaDetectionData,
 )
+from src.messages.models import Message, MessageMediaStatus, MessageMediaTypes
 from src.processors.media.animation import describe_animation
 from src.processors.media.image import describe_image
 from .download import get_message_media
