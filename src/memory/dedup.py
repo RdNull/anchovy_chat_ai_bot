@@ -1,8 +1,8 @@
 from collections import defaultdict
 
-from src.base import BaseModel
 from src.memory.keys import RECENT_FIELD, TRAITS_FIELD, entry_keys, normalize
 from src.memory.models import StructuredMemory
+from src.models import BaseModel
 
 TRAITS_RECENT_OVERLAP = 'traits_recent_overlap'
 INCUMBENT_WINS = 'incumbent_wins'

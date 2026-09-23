@@ -2,7 +2,6 @@ from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
 from src import ai, settings
-from src.base import format_ts
 from src.logs import event, logger
 from src.messages.models import Message
 from src.model_manager import model_manager
@@ -23,6 +22,7 @@ from src.memory.dedup import resolve_attribution_conflicts
 from src.memory.keys import RECENT_FIELD
 from src.memory.models import MemoryData, StructuredMemory
 from src.prompt_manager import prompt_manager
+from src.utils import format_ts
 
 # Read once at import rather than per call. `memory/handlers.py` reuses both for
 # the terminal `MEMORY_EXTRACT` event, since the handler is the one that knows

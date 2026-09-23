@@ -2,9 +2,10 @@ from datetime import datetime
 
 from pydantic import Field
 
-from src.base import BaseModel, TIMESTAMP_FORMAT
 from src.const import TIMEZONE_ALMATY
 from src.memory.keys import normalize
+from src.models import BaseModel
+from src.utils import TIMESTAMP_FORMAT
 
 WEEK_DAYS = 7
 

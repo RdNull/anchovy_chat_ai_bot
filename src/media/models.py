@@ -6,8 +6,8 @@ from typing import ClassVar
 
 from pydantic import Field
 
-from src.base import BaseModel, MongoId
 from src.messages.models import MessageMediaStatus, MessageMediaTypes
+from src.models import BaseModel, MongoId
 
 
 class MediaDetectionData(BaseModel):

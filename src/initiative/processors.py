@@ -8,9 +8,9 @@ from src import ai, settings
 from src.characters.character import Character
 from src.initiative.models import InitiativeDecision, InitiativeVerdict
 from src.logs import elapsed_ms, event, logger
-from src.base import format_ts
 from src.messages.models import Message
 from src.prompt_manager import prompt_manager
+from src.utils import format_ts
 
 
 @traceable

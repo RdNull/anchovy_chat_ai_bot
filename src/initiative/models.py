@@ -2,8 +2,8 @@ from datetime import datetime
 
 from pydantic import Field
 
-from src.base import BaseModel, MongoId
 from src.messages.models import Message
+from src.models import BaseModel, MongoId
 
 
 class InitiativeRun(BaseModel):

@@ -6,7 +6,8 @@ from enum import Enum
 from pydantic import Field
 
 from src import settings
-from src.base import BaseModel, MongoId, format_ts
+from src.models import BaseModel, MongoId
+from src.utils import format_ts
 
 
 class UserRole(str, Enum):
