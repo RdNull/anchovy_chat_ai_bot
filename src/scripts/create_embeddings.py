@@ -1,4 +1,5 @@
 """Backfill message embeddings for a chat, with optional start date filter."""
+
 import argparse
 import asyncio
 from datetime import datetime, timedelta, timezone

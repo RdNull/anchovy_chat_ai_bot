@@ -18,6 +18,7 @@ class StickerSearchResult:
     query embeddings are not calibrated against each other — keeping the field would
     invite exactly the score-sorted merge that fusion exists to avoid.
     """
+
     unique_id: str
     emoji: str | None
     description: str
@@ -50,7 +51,9 @@ class StickerEmbeddingsClient(EmbeddingsClient):
             logger.info(
                 'Nothing to embed for sticker, skipping',
                 extra=event(
-                    'STICKER_EMBED_SKIPPED', reason='nothing_to_embed', media_id=description.media_id,
+                    'STICKER_EMBED_SKIPPED',
+                    reason='nothing_to_embed',
+                    media_id=description.media_id,
                 ),
             )
             return
@@ -59,20 +62,24 @@ class StickerEmbeddingsClient(EmbeddingsClient):
             logger.info(
                 'Sticker not ready, skipping',
                 extra=event(
-                    'STICKER_EMBED_SKIPPED', reason='not_ready', media_id=description.media_id,
+                    'STICKER_EMBED_SKIPPED',
+                    reason='not_ready',
+                    media_id=description.media_id,
                 ),
             )
             return
 
         # The payload carries identity only. The sendable `file_id` is resolved from
         # `messages` at send time, so a re-issued id never needs a reindex.
-        await self._save([
-            ChunkData(
-                chunk_id=_point_id(description.media_id),
-                payload=text,
-                metadata={'unique_id': description.media_id},
-            )
-        ])
+        await self._save(
+            [
+                ChunkData(
+                    chunk_id=_point_id(description.media_id),
+                    payload=text,
+                    metadata={'unique_id': description.media_id},
+                )
+            ]
+        )
 
     async def search_sticker_ids(self, query: str, limit: int) -> list[str]:
         """One probe's ranked identities, most relevant first.
@@ -82,7 +89,9 @@ class StickerEmbeddingsClient(EmbeddingsClient):
         returned it and once more for every candidate the fusion then discards.
         """
         search_results = await self._search(
-            query, limit=limit, score_threshold=settings.STICKER_SCORE_THRESHOLD,
+            query,
+            limit=limit,
+            score_threshold=settings.STICKER_SCORE_THRESHOLD,
         )
 
         found = []

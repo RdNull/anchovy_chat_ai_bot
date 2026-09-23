@@ -24,14 +24,16 @@ class ToolFailure:
     Without this the loop would treat a failed send as a delivered answer and the bot
     would say nothing at all.
     """
+
     message: str
+
 
 class ToolRegistry:
     def __init__(
         self,
         context_tools: Iterable[BaseTool],
         direct_tools: Iterable[BaseTool],
-        context: ToolContext
+        context: ToolContext,
     ):
         self.context_tools = tuple(context_tools)
         self.direct_tools = tuple(direct_tools)
@@ -75,16 +77,16 @@ class ToolRegistry:
 
             outcome = 'error' if isinstance(tool_result, ToolFailure) else 'ok'
 
-            return ToolMessage(
-                tool_call_id=tool_call['id'],
-                content=str(tool_result)
-            ), tool_result
+            return ToolMessage(tool_call_id=tool_call['id'], content=str(tool_result)), tool_result
         finally:
             logger.info(
                 'Tool call finished',
                 extra=event(
-                    'TOOL_CALL_DONE', tool=name, elapsed_ms=elapsed_ms(started),
-                    outcome=outcome, direct=tool.return_direct,
+                    'TOOL_CALL_DONE',
+                    tool=name,
+                    elapsed_ms=elapsed_ms(started),
+                    outcome=outcome,
+                    direct=tool.return_direct,
                 ),
             )
 
@@ -107,6 +109,6 @@ class ToolRegistry:
     def _get_tool(self, tool_call: ToolCall) -> BaseTool:
         tool: BaseTool | None = self._tool_by_name.get(tool_call['name'])
         if not tool:
-            raise ValueError(f'Unknown tool: {tool_call['name']}')
+            raise ValueError(f'Unknown tool: {tool_call["name"]}')
 
         return tool

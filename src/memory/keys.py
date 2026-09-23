@@ -44,8 +44,7 @@ def normalize(text: str) -> str:
     """
     lowered = NICK_PATTERN.sub(' ', text.lower()).replace('ё', 'е')
     stripped = ''.join(
-        char if char.isspace() or unicodedata.category(char)[0] in 'LN' else ' '
-        for char in lowered
+        char if char.isspace() or unicodedata.category(char)[0] in 'LN' else ' ' for char in lowered
     )
     return ' '.join(stripped.split())
 

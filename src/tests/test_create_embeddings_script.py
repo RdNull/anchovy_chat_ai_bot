@@ -17,24 +17,19 @@ async def test_create_embeddings_loop(mocker):
     # Mock history returns
     msg1 = Message(
         chat_id=chat_id,
-        nickname="u1",
+        nickname='u1',
         role=UserRole.USER,
-        text="hi",
-        created_at=start_date + timedelta(minutes=1)
+        text='hi',
+        created_at=start_date + timedelta(minutes=1),
     )
 
     # First call returns 20 messages (to trigger loop continuation)
     # Second call returns 0 messages (to stop loop)
-    mock_history = mocker.patch("src.scripts.create_embeddings.get_messages", AsyncMock())
-    mock_history.side_effect = [
-        [msg1] * 20,
-        []
-    ]
+    mock_history = mocker.patch('src.scripts.create_embeddings.get_messages', AsyncMock())
+    mock_history.side_effect = [[msg1] * 20, []]
 
-    mock_embeddings = mocker.patch(
-        "src.scripts.create_embeddings.messages_embeddings_client.save"
-    )
-    mock_save_task = mocker.patch("src.scripts.create_embeddings.save_embedding_task")
+    mock_embeddings = mocker.patch('src.scripts.create_embeddings.messages_embeddings_client.save')
+    mock_save_task = mocker.patch('src.scripts.create_embeddings.save_embedding_task')
 
     await create_embeddings(chat_id, start_date)
 
@@ -47,12 +42,9 @@ async def test_create_embeddings_loop(mocker):
 @pytest.mark.asyncio
 async def test_create_embeddings_empty_history(mocker):
     mock_history = mocker.patch(
-        "src.scripts.create_embeddings.get_messages",
-        AsyncMock(return_value=[])
+        'src.scripts.create_embeddings.get_messages', AsyncMock(return_value=[])
     )
-    mock_embeddings = mocker.patch(
-        "src.scripts.create_embeddings.messages_embeddings_client.save"
-    )
+    mock_embeddings = mocker.patch('src.scripts.create_embeddings.messages_embeddings_client.save')
 
     await create_embeddings(123, datetime.now(timezone.utc))
 
@@ -62,8 +54,11 @@ async def test_create_embeddings_empty_history(mocker):
 
 # --- create_sticker_embeddings ---
 
+
 async def seed_sticker(
-    unique_id, type=MessageMediaTypes.STICKER, status=MessageMediaStatus.READY,
+    unique_id,
+    type=MessageMediaTypes.STICKER,
+    status=MessageMediaStatus.READY,
 ):
     await create_media_description(
         media_id=unique_id,

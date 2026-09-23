@@ -68,9 +68,14 @@ def _log_churn(churn: list) -> None:
     logger.info(
         'Memory churn',
         extra=event(
-            'MEMORY_CHURN', nicks=len({r.nick for r in churn}), carried=counts[CARRY],
-            added=counts[BIRTH], vanished=counts[VANISH], lost_recent=lost_recent,
-            promoted=counts[PROMOTE], promote_candidates=counts[PROMOTE_CANDIDATE],
+            'MEMORY_CHURN',
+            nicks=len({r.nick for r in churn}),
+            carried=counts[CARRY],
+            added=counts[BIRTH],
+            vanished=counts[VANISH],
+            lost_recent=lost_recent,
+            promoted=counts[PROMOTE],
+            promote_candidates=counts[PROMOTE_CANDIDATE],
         ),
     )
     for record in churn:
@@ -78,7 +83,10 @@ def _log_churn(churn: list) -> None:
             logger.info(
                 'Memory entry lost to churn',
                 extra=event(
-                    'MEMORY_CHURN_LOST', nick=record.nick, field=record.field, text=record.text,
+                    'MEMORY_CHURN_LOST',
+                    nick=record.nick,
+                    field=record.field,
+                    text=record.text,
                 ),
             )
 
@@ -89,8 +97,12 @@ def _log_evictions(evictions: list) -> None:
         logger.info(
             'Memory eviction',
             extra=event(
-                'MEMORY_DECAY', nick=record.nick, field=record.field, action=action,
-                reason=record.reason, text=record.text,
+                'MEMORY_DECAY',
+                nick=record.nick,
+                field=record.field,
+                action=action,
+                reason=record.reason,
+                text=record.text,
             ),
         )
 
@@ -142,9 +154,9 @@ async def extract_memory(
         context_window=settings.LAST_MESSAGES_SIZE,
     )
 
-    updated_memory: StructuredMemory = await model_with_structure.ainvoke([
-        SystemMessage(content=system_prompt)
-    ])
+    updated_memory: StructuredMemory = await model_with_structure.ainvoke(
+        [SystemMessage(content=system_prompt)]
+    )
     if not updated_memory:
         logger.error('No memory extracted', extra=event('MEMORY_EXTRACT', outcome='empty'))
         return None
@@ -158,8 +170,13 @@ async def extract_memory(
         logger.info(
             'Attribution conflict',
             extra=event(
-                'MEMORY_ATTRIBUTION_CONFLICT', action=action, reason=record.reason,
-                owner=record.owner, kept=kept, field=record.field, text=record.text,
+                'MEMORY_ATTRIBUTION_CONFLICT',
+                action=action,
+                reason=record.reason,
+                owner=record.owner,
+                kept=kept,
+                field=record.field,
+                text=record.text,
             ),
         )
 

@@ -58,14 +58,16 @@ def _drop_traits_recent_overlap(updated: StructuredMemory) -> list[ConflictRecor
                 kept.append(entry)
                 continue
 
-            drops.append(ConflictRecord(
-                text=entry,
-                owner=nick,
-                field=RECENT_FIELD,
-                kept_owner=nick,
-                reason=TRAITS_RECENT_OVERLAP,
-                removed=True,
-            ))
+            drops.append(
+                ConflictRecord(
+                    text=entry,
+                    owner=nick,
+                    field=RECENT_FIELD,
+                    kept_owner=nick,
+                    reason=TRAITS_RECENT_OVERLAP,
+                    removed=True,
+                )
+            )
         info.recent = kept
     return drops
 
@@ -125,14 +127,16 @@ def _filter_entries(
             continue
 
         kept_owner, reason, removes = resolution
-        records.append(ConflictRecord(
-            text=entry,
-            owner=nick,
-            field=field,
-            kept_owner=kept_owner,
-            reason=reason,
-            removed=removes,
-        ))
+        records.append(
+            ConflictRecord(
+                text=entry,
+                owner=nick,
+                field=field,
+                kept_owner=kept_owner,
+                reason=reason,
+                removed=removes,
+            )
+        )
         if not removes:
             kept.append(entry)
     return kept, records

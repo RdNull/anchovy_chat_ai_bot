@@ -32,6 +32,7 @@ class _LoopStats:
     """Accumulates across every recursive turn of `_run_llm_loop`, for the one `LLM_INVOKE`
     line logged when the whole loop finishes — model spend and latency are otherwise
     invisible outside LangSmith."""
+
     depth: int = 0
     tool_calls: int = 0
     tokens_in: int = 0
@@ -127,36 +128,47 @@ class Character:
 
         tools_registry = _get_tools_registry(replier)
         logger.debug(
-            'Invoking LLM', extra=event('LLM_INVOKE_START', character=self.name, messages=len(messages)),
+            'Invoking LLM',
+            extra=event('LLM_INVOKE_START', character=self.name, messages=len(messages)),
         )
         stats = _LoopStats()
         started = time.monotonic()
         try:
             await asyncio.wait_for(
                 self._run_llm_loop(llm, messages, tools_registry, stats),
-                timeout=settings.AI_TIMEOUT
+                timeout=settings.AI_TIMEOUT,
             )
             logger.info(
                 'LLM loop finished',
                 extra=event(
-                    'LLM_INVOKE', character=self.name, model=model_name, version=version,
-                    elapsed_ms=elapsed_ms(started), depth=stats.depth,
-                    tool_calls=stats.tool_calls, tokens_in=stats.tokens_in,
-                    tokens_out=stats.tokens_out, outcome='ok',
+                    'LLM_INVOKE',
+                    character=self.name,
+                    model=model_name,
+                    version=version,
+                    elapsed_ms=elapsed_ms(started),
+                    depth=stats.depth,
+                    tool_calls=stats.tool_calls,
+                    tokens_in=stats.tokens_in,
+                    tokens_out=stats.tokens_out,
+                    outcome='ok',
                 ),
             )
         except asyncio.TimeoutError:
             logger.error(
                 'LLM request timed out',
                 extra=event(
-                    'LLM_INVOKE', outcome='timeout', timeout_s=settings.AI_TIMEOUT,
+                    'LLM_INVOKE',
+                    outcome='timeout',
+                    timeout_s=settings.AI_TIMEOUT,
                     elapsed_ms=elapsed_ms(started),
                 ),
             )
             await replier.reply_message('Чё-то я призадумался и забыл, че хотел сказать...')
         except Exception:
             logger.error(
-                'Error invoking LLM', exc_info=True, extra=event('LLM_INVOKE', outcome='error'),
+                'Error invoking LLM',
+                exc_info=True,
+                extra=event('LLM_INVOKE', outcome='error'),
             )
             await replier.reply_message('Голова чё-то разболелась, давай потом...')
 
@@ -202,7 +214,8 @@ class Character:
         if not response.tool_calls:
             # shouldn't happen, but still
             logger.warning(
-                'Tool requirement was ignored', extra=event('LLM_TOOL_REQUIREMENT_IGNORED'),
+                'Tool requirement was ignored',
+                extra=event('LLM_TOOL_REQUIREMENT_IGNORED'),
             )
             return
 
@@ -228,7 +241,9 @@ class Character:
                 logger.warning(
                     'Direct tool failed',
                     extra=event(
-                        'TOOL_DIRECT_FAILED', tool=tool_call['name'], error=tool_result.message,
+                        'TOOL_DIRECT_FAILED',
+                        tool=tool_call['name'],
+                        error=tool_result.message,
                     ),
                 )
 

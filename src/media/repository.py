@@ -18,16 +18,18 @@ async def create_media_description(
     status: MessageMediaStatus = MessageMediaStatus.PENDING,
     sticker_emoji: str | None = None,
 ):
-    result = await media_descriptions.insert_one({
-        'hash': content_hash or None,
-        'description': description or None,
-        'ocr_text': ocr_text or None,
-        'media_id': media_id,
-        'type': type.value,
-        'status': status.value,
-        'sticker_emoji': sticker_emoji,
-        'updated_at': datetime.now(timezone.utc).timestamp(),
-    })
+    result = await media_descriptions.insert_one(
+        {
+            'hash': content_hash or None,
+            'description': description or None,
+            'ocr_text': ocr_text or None,
+            'media_id': media_id,
+            'type': type.value,
+            'status': status.value,
+            'sticker_emoji': sticker_emoji,
+            'updated_at': datetime.now(timezone.utc).timestamp(),
+        }
+    )
     return await get_media_description(result.inserted_id)
 
 
@@ -56,7 +58,8 @@ async def update_media_description(
 
 
 async def mark_as_sticker(
-    description_id: str, sticker_emoji: str | None,
+    description_id: str,
+    sticker_emoji: str | None,
 ) -> MediaDescription | None:
     """Retypes an existing row as a sticker.
 
@@ -66,10 +69,12 @@ async def mark_as_sticker(
     """
     await media_descriptions.update_one(
         {'_id': ObjectId(description_id)},
-        {'$set': {
-            'type': MessageMediaTypes.STICKER.value,
-            'sticker_emoji': sticker_emoji,
-        }},
+        {
+            '$set': {
+                'type': MessageMediaTypes.STICKER.value,
+                'sticker_emoji': sticker_emoji,
+            }
+        },
     )
     return await get_media_description(description_id)
 
@@ -116,10 +121,12 @@ async def get_media_descriptions_by_hash(content_hash: str) -> MediaDescription 
 async def update_media_description_status(description_id: str, status: MessageMediaStatus):
     await media_descriptions.update_one(
         {'_id': ObjectId(description_id)},
-        {'$set': {
-            'status': status.value,
-            'updated_at': datetime.now(timezone.utc).timestamp(),
-        }}
+        {
+            '$set': {
+                'status': status.value,
+                'updated_at': datetime.now(timezone.utc).timestamp(),
+            }
+        },
     )
 
 
@@ -131,7 +138,8 @@ async def get_sendable_file_id(unique_id: str) -> str | None:
     Reads the newest carrier so a re-issued `file_id` wins over a stale one.
     """
     doc = await messages.find_one(
-        {'media_unique_id': unique_id}, sort=[('created_at', -1)],
+        {'media_unique_id': unique_id},
+        sort=[('created_at', -1)],
     )
     return doc.get('media_id') if doc else None
 
@@ -175,6 +183,7 @@ def parse_media_description(data: dict) -> MediaDescription:
         sticker_emoji=data.get('sticker_emoji'),
         updated_at=(
             datetime.fromtimestamp(ts, tz=timezone.utc)
-            if (ts := data.get('updated_at')) is not None else None
+            if (ts := data.get('updated_at')) is not None
+            else None
         ),
     )

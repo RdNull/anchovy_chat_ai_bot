@@ -12,9 +12,12 @@ async def run_fact_decay():
         try:
             await decay_all_facts()
             logger.info(
-                'Scheduled task finished', extra=event('TASK_DONE', elapsed_ms=elapsed_ms(started)),
+                'Scheduled task finished',
+                extra=event('TASK_DONE', elapsed_ms=elapsed_ms(started)),
             )
         except Exception:
             logger.error(
-                'Failed to run fact decay', exc_info=True, extra=event('TASK_FAILED'),
+                'Failed to run fact decay',
+                exc_info=True,
+                extra=event('TASK_FAILED'),
             )

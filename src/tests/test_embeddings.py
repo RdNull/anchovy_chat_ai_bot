@@ -10,12 +10,19 @@ from src.embeddings.handlers import update_chat_embeddings
 from src.embeddings.messages import MessageEmbeddingsClient, chunk_messages
 from src.embeddings.models import RelatedMessagesData
 from src.embeddings.stickers import (
-    StickerEmbeddingsClient, StickerSearchResult, _point_id, sticker_embedding_text,
+    StickerEmbeddingsClient,
+    StickerSearchResult,
+    _point_id,
+    sticker_embedding_text,
 )
 from src.facts.models import UserFact
 from src.media.models import MediaDescription
 from src.messages.models import (
-    Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UserRole,
+    Message,
+    MessageMedia,
+    MessageMediaStatus,
+    MessageMediaTypes,
+    UserRole,
 )
 from src.messages.repository import save_message
 
@@ -51,7 +58,7 @@ def create_mock_message(mid, text, chat_id=123, nickname='user'):
         role=UserRole.USER,
         text=text,
         nickname=nickname,
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
 
 
@@ -148,7 +155,7 @@ async def test_embeddings_client_search(mocker):
         payload={
             'message_ids': [str(m.id) for m in saved_messages],
             'chat_id': 123,
-        }
+        },
     )
     mock_response = QueryResponse(points=[mock_scored_point])
     mock_qdrant.query_points = AsyncMock(return_value=mock_response)
@@ -206,27 +213,21 @@ async def test_get_embedding_vectors_api(mocker):
     client = MessageEmbeddingsClient('test', 'test_model', 128)
 
     mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "data": [{"embedding": [0.5] * 128}]
-    }
+    mock_response.json.return_value = {'data': [{'embedding': [0.5] * 128}]}
     mock_response.raise_for_status = MagicMock()
 
     mocker.patch.object(client.api_client, 'post', AsyncMock(return_value=mock_response))
 
-    result = await client._get_embedding_vectors("test text")
+    result = await client._get_embedding_vectors('test text')
 
     assert result == [0.5] * 128
     assert client.api_client.post.call_count == 1
     assert client.api_client.post.call_args == call(
         '/embeddings',
-        json={
-            "model": "test_model",
-            "input": "test text",
-            "encoding_format": "float"
-        }
+        json={'model': 'test_model', 'input': 'test text', 'encoding_format': 'float'},
     )
     # cache
-    await client._get_embedding_vectors("test text")
+    await client._get_embedding_vectors('test text')
     assert client.api_client.post.call_count == 1
     assert client.embeddings_cache.misses == 1
     assert client.embeddings_cache.hits == 1
@@ -243,8 +244,13 @@ async def test_facts_embedding_client_save_fact(mocker):
     client = FactsEmbeddingClient('facts', 'test_model', 128)
     client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
 
-    fact = UserFact(_id='abc123', nickname='bob', text='likes pizza', confidence=0.8,
-                    created_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    fact = UserFact(
+        _id='abc123',
+        nickname='bob',
+        text='likes pizza',
+        confidence=0.8,
+        created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
 
     await client.save_fact(fact)
 
@@ -261,10 +267,13 @@ async def test_facts_embedding_client_save_fact(mocker):
 
 
 async def test_facts_embedding_client_search_facts_empty(mocker):
-    mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=MagicMock(
-        collection_exists=AsyncMock(return_value=True),
-        query_points=AsyncMock(return_value=QueryResponse(points=[]))
-    ))
+    mocker.patch(
+        'src.embeddings.client.AsyncQdrantClient',
+        return_value=MagicMock(
+            collection_exists=AsyncMock(return_value=True),
+            query_points=AsyncMock(return_value=QueryResponse(points=[])),
+        ),
+    )
 
     client = FactsEmbeddingClient('facts', 'test_model', 128)
     client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
@@ -303,6 +312,7 @@ async def test_facts_embedding_client_search_facts(mocker):
 
 # --- sticker_embedding_text ---
 
+
 def test_sticker_embedding_text_puts_emoji_first():
     text = sticker_embedding_text(make_description(ocr_text='ЛОЛ'))
 
@@ -316,12 +326,14 @@ def test_sticker_embedding_text_drops_missing_parts():
 
 # --- _point_id ---
 
+
 def test_point_id_is_stable_for_the_same_unique_id():
     assert _point_id('abc') == _point_id('abc')
     assert _point_id('abc') != _point_id('abd')
 
 
 # --- save_sticker ---
+
 
 async def test_save_sticker_indexes_identity_only(mocker):
     qdrant = MagicMock(
@@ -375,6 +387,7 @@ async def test_save_sticker_twice_upserts_one_point(mocker):
 
 # --- search_sticker_ids ---
 
+
 def make_sticker_qdrant(points):
     return MagicMock(
         collection_exists=AsyncMock(return_value=True),
@@ -393,9 +406,13 @@ async def test_search_sticker_ids_empty_collection_returns_empty(mocker):
 
 
 async def test_search_sticker_ids_returns_identities_in_score_order(mocker):
-    qdrant = make_sticker_qdrant([
-        make_point('mid', 0.5), make_point('best', 0.9), make_point('worst', 0.3),
-    ])
+    qdrant = make_sticker_qdrant(
+        [
+            make_point('mid', 0.5),
+            make_point('best', 0.9),
+            make_point('worst', 0.3),
+        ]
+    )
     client = make_sticker_client(mocker, qdrant)
 
     assert await client.search_sticker_ids('кот', limit=5) == ['best', 'mid', 'worst']
@@ -414,10 +431,12 @@ async def test_search_sticker_ids_does_not_read_mongo(mocker):
 
 
 async def test_search_sticker_ids_skips_points_without_identity(mocker):
-    qdrant = make_sticker_qdrant([
-        ScoredPoint(id='p1', version=1, score=0.9, payload={}),
-        make_point('ok', 0.8),
-    ])
+    qdrant = make_sticker_qdrant(
+        [
+            ScoredPoint(id='p1', version=1, score=0.9, payload={}),
+            make_point('ok', 0.8),
+        ]
+    )
     client = make_sticker_client(mocker, qdrant)
 
     assert await client.search_sticker_ids('кот', limit=5) == ['ok']
@@ -435,10 +454,12 @@ async def test_search_sticker_ids_uses_the_configured_threshold(mocker):
 
 # --- get_sticker ---
 
+
 async def test_get_sticker_returns_the_hydrated_row(mocker):
     client = make_sticker_client(mocker, make_sticker_qdrant([]))
     mocker.patch.object(
-        StickerEmbeddingsClient, '_get_description',
+        StickerEmbeddingsClient,
+        '_get_description',
         AsyncMock(return_value=make_description(ocr_text='ЛОЛ')),
     )
 
@@ -455,7 +476,9 @@ async def test_get_sticker_returns_none_for_a_missing_row(mocker):
     # A point can outlive its description.
     client = make_sticker_client(mocker, make_sticker_qdrant([]))
     mocker.patch.object(
-        StickerEmbeddingsClient, '_get_description', AsyncMock(return_value=None),
+        StickerEmbeddingsClient,
+        '_get_description',
+        AsyncMock(return_value=None),
     )
 
     assert await client.get_sticker('gone') is None
@@ -464,7 +487,8 @@ async def test_get_sticker_returns_none_for_a_missing_row(mocker):
 async def test_get_sticker_returns_none_for_a_row_that_regressed(mocker):
     client = make_sticker_client(mocker, make_sticker_qdrant([]))
     mocker.patch.object(
-        StickerEmbeddingsClient, '_get_description',
+        StickerEmbeddingsClient,
+        '_get_description',
         AsyncMock(return_value=make_description('pending', status=MessageMediaStatus.PENDING)),
     )
 
@@ -472,6 +496,7 @@ async def test_get_sticker_returns_none_for_a_row_that_regressed(mocker):
 
 
 # --- drop_sticker ---
+
 
 async def test_drop_sticker_removes_the_point_for_that_unique_id(mocker):
     qdrant = MagicMock(collection_exists=AsyncMock(return_value=True), delete=AsyncMock())

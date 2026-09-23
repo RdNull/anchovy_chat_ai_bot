@@ -24,13 +24,15 @@ async def save_message(message: Message):
         'nickname': message.nickname,
         'media_id': message.media.media_id if message.media else None,
         'media_unique_id': message.media.unique_id if message.media else None,
-        'created_at': datetime.now(timezone.utc).timestamp()
+        'created_at': datetime.now(timezone.utc).timestamp(),
     }
     if message.reply:
-        reply_doc = await mongo.messages.find_one({
-            'chat_id': chat_id,
-            'telegram_id': message.reply.telegram_id,
-        })
+        reply_doc = await mongo.messages.find_one(
+            {
+                'chat_id': chat_id,
+                'telegram_id': message.reply.telegram_id,
+            }
+        )
         if reply_doc:
             data['reply_id'] = reply_doc['_id']
 
@@ -72,7 +74,8 @@ async def update_message(update_message_data: UpdateMessage):
     logger.info(
         'Message edited',
         extra=event(
-            'MESSAGE_EDITED', message_id=update_message_data.id,
+            'MESSAGE_EDITED',
+            message_id=update_message_data.id,
             text_len=len(update_message_data.text),
         ),
     )
@@ -81,9 +84,9 @@ async def update_message(update_message_data: UpdateMessage):
         return
 
     await mongo.messages.update_one(
-        {'_id': ObjectId(update_message_data.id)},
-        {'$set': update_payload}
+        {'_id': ObjectId(update_message_data.id)}, {'$set': update_payload}
     )
+
 
 async def get_messages(
     chat_id: int,
@@ -125,7 +128,8 @@ async def get_messages(
     logger.debug(
         'Fetching history',
         extra=event(
-            'DB_MESSAGES_FETCH', size=size,
+            'DB_MESSAGES_FETCH',
+            size=size,
             from_date=from_date.isoformat() if from_date else None,
             to_date=to_date.isoformat() if to_date else None,
             sort_order=sort_order,
@@ -149,42 +153,36 @@ async def get_messages(
     if sort_order == -1:
         records.reverse()
 
-    return [
-        await _parse_message_record(record)
-        for record in records
-    ]
+    return [await _parse_message_record(record) for record in records]
 
 
 async def get_messages_by_ids(
-    ids: Iterable[str], size: int = 100, sort_order: int = -1,
+    ids: Iterable[str],
+    size: int = 100,
+    sort_order: int = -1,
 ) -> list[Message]:
     ids = list(ids)
     logger.debug(
-        'Fetching messages by id', extra=event('DB_MESSAGES_FETCH_BY_ID', count=len(ids), size=size),
+        'Fetching messages by id',
+        extra=event('DB_MESSAGES_FETCH_BY_ID', count=len(ids), size=size),
     )
     search_query = {'_id': {'$in': [ObjectId(id_str) for id_str in ids]}}
 
     cursor = mongo.messages.find(search_query).sort('created_at', sort_order).limit(size)
     messages = await cursor.to_list(length=size)
-    return [
-        await _parse_message_record(message)
-        for message in messages
-    ]
+    return [await _parse_message_record(message) for message in messages]
 
 
 async def fetch_last_messages(chat_id: int, size: int, **kwargs) -> list[Message]:
     last_messages = await get_messages(chat_id, size=size, **kwargs)
     pending_media_ids = [
-        m.media.unique_id
-        for m in last_messages
-        if m.media and m.media.status.is_pending
+        m.media.unique_id for m in last_messages if m.media and m.media.status.is_pending
     ]
     if not pending_media_ids:
         return last_messages
 
     await wait_for_media_ready(
-        pending_media_ids,
-        timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
+        pending_media_ids, timeout=settings.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
     )
     return await get_messages(chat_id, size=size, **kwargs)
 
@@ -194,10 +192,12 @@ async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None
         'Fetching message by telegram id',
         extra=event('DB_MESSAGE_FETCH_BY_TG_ID', telegram_id=telegram_id),
     )
-    message = await mongo.messages.find_one({
-        'chat_id': chat_id,
-        'telegram_id': telegram_id,
-    })
+    message = await mongo.messages.find_one(
+        {
+            'chat_id': chat_id,
+            'telegram_id': telegram_id,
+        }
+    )
     if not message:
         return None
 
@@ -206,7 +206,8 @@ async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None
 
 async def get_last_message(chat_id: int, role: UserRole | None = None) -> Message | None:
     logger.debug(
-        'Fetching last message', extra=event('DB_LAST_MESSAGE_FETCH', role=role.value if role else None),
+        'Fetching last message',
+        extra=event('DB_LAST_MESSAGE_FETCH', role=role.value if role else None),
     )
     query = {'chat_id': chat_id}
     if role:
@@ -220,7 +221,9 @@ async def get_last_message(chat_id: int, role: UserRole | None = None) -> Messag
 
 
 async def get_messages_count_since(
-    chat_id: int, timestamp: float, role: UserRole | None = None,
+    chat_id: int,
+    timestamp: float,
+    role: UserRole | None = None,
 ) -> int:
     logger.debug('Counting messages', extra=event('DB_MESSAGES_COUNT', since=timestamp))
     query = {'chat_id': chat_id, 'created_at': {'$gt': timestamp}}

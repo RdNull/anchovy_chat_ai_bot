@@ -12,7 +12,9 @@ from src.initiative.models import InitiativeVerdict
 from src.initiative.policies import decide, pre_check, split_at_gap
 from src.initiative.processors import evaluate_initiative
 from src.initiative.repository import (
-    get_last_initiative_run, mark_initiative_replied, save_initiative_run,
+    get_last_initiative_run,
+    mark_initiative_replied,
+    save_initiative_run,
 )
 from src.logs import event, logger
 from src.memory.repository import get_last_memory
@@ -45,7 +47,9 @@ async def run_initiative_checks(chat_id: int):
         logger.info(
             'Initiative run skipped',
             extra=event(
-                'INITIATIVE_SKIPPED', reason='below_threshold', score=evaluation.score,
+                'INITIATIVE_SKIPPED',
+                reason='below_threshold',
+                score=evaluation.score,
                 threshold=settings.INITIATIVE_SCORE_THRESHOLD,
             ),
         )
@@ -75,6 +79,7 @@ class ClaimedWindow:
     `run_id` is the claimed run document's id, used by the send path to stamp
     `replied_at`; it is `None` exactly when `candidates` is empty (pre-checks said no).
     """
+
     context: list[Message]
     candidates: list[Message]
     run_id: str | None
@@ -94,7 +99,9 @@ async def _claim_window(chat_id: int) -> ClaimedWindow:
         context, candidates = _split_window(chat_id, sequence, watermark)
 
         if not await pre_check(chat_id, candidates):
-            logger.info('Initiative run pre-checks failed', extra=event('INITIATIVE_PRECHECK_FAILED'))
+            logger.info(
+                'Initiative run pre-checks failed', extra=event('INITIATIVE_PRECHECK_FAILED')
+            )
             return ClaimedWindow(context=[], candidates=[], run_id=None)
 
         logger.info(
@@ -136,7 +143,9 @@ async def _get_messages(chat_id: int, watermark: datetime | None) -> list[Messag
 
 
 def _split_window(
-    _chat_id: int, sequence: list[Message], watermark: datetime | None,
+    _chat_id: int,
+    sequence: list[Message],
+    watermark: datetime | None,
 ) -> tuple[list[Message], list[Message]]:
     """Cuts `sequence` at its newest large gap, then re-partitions around the watermark.
 
@@ -164,15 +173,20 @@ def _split_window(
     logger.info(
         'Initiative window built',
         extra=event(
-            'INITIATIVE_WINDOW', fetched=len(sequence), cut_gap_minutes=cut_gap_minutes,
-            context_count=len(context), candidate_count=len(candidates),
+            'INITIATIVE_WINDOW',
+            fetched=len(sequence),
+            cut_gap_minutes=cut_gap_minutes,
+            context_count=len(context),
+            candidate_count=len(candidates),
         ),
     )
     return context, candidates
 
 
 async def _run_initiative_reply(
-    chat_id: int, character: Character, evaluation: InitiativeVerdict,
+    chat_id: int,
+    character: Character,
+    evaluation: InitiativeVerdict,
 ):
     logger.info('Initiative run triggered', extra=event('INITIATIVE_REPLY_SENT'))
     await send_chat_action(chat_id, ChatAction.TYPING)

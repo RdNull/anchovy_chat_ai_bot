@@ -91,14 +91,20 @@ def sync(kube: httpx.Client, linode: httpx.Client, domain: str, record_name: str
     if is_private(node_ip):
         logger.error(
             'DNS sync refused',
-            extra={'event': 'DNS_SYNC_SKIPPED', 'record': fqdn, 'ip': node_ip, 'outcome': 'refused'},
+            extra={
+                'event': 'DNS_SYNC_SKIPPED',
+                'record': fqdn,
+                'ip': node_ip,
+                'outcome': 'refused',
+            },
         )
         raise DnsSyncError(f'refusing to point {fqdn} at private address {node_ip}')
 
     action = 'unchanged'
     if node_ip != record_ip:
         linode.put(
-            f'/domains/{domain_id}/records/{record["id"]}', json={'target': node_ip},
+            f'/domains/{domain_id}/records/{record["id"]}',
+            json={'target': node_ip},
         ).raise_for_status()
         action = 'updated'
 
@@ -153,9 +159,14 @@ def _domain_id(linode: httpx.Client, domain: str) -> int:
 
 def _a_record(linode: httpx.Client, domain_id: int, name: str) -> dict[str, Any]:
     """The one A record named `name`. Every other record is left alone, and none is deleted."""
-    page = linode.get(
-        f'/domains/{domain_id}/records', params={'page_size': 500},
-    ).raise_for_status().json()
+    page = (
+        linode.get(
+            f'/domains/{domain_id}/records',
+            params={'page_size': 500},
+        )
+        .raise_for_status()
+        .json()
+    )
     if page.get('pages', 1) > 1:
         raise DnsSyncError(f'domain {domain_id} has more than one page of records')
 
@@ -172,8 +183,11 @@ if __name__ == '__main__':
     _formatter = JsonFormatter(
         '%(levelname)s %(name)s %(module)s %(lineno)d %(message)s',
         rename_fields={
-            'levelname': 'level', 'name': 'logger', 'lineno': 'line',
-            'message': 'msg', 'exc_info': 'stack',
+            'levelname': 'level',
+            'name': 'logger',
+            'lineno': 'line',
+            'message': 'msg',
+            'exc_info': 'stack',
         },
         json_ensure_ascii=False,
         json_default=repr,

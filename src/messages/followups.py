@@ -16,7 +16,8 @@ async def run_followups(chat_id: int):
         await run_initiative_checks(chat_id)
     except Exception:
         logger.error(
-            'Error running initiative checks', exc_info=True,
+            'Error running initiative checks',
+            exc_info=True,
             extra=event('INITIATIVE_CHECK', outcome='error'),
         )
 

@@ -39,9 +39,7 @@ def mock_web_search_model(mocker, content='обрывок', chat_id=123):
         model.ainvoke = AsyncMock(side_effect=content)
     else:
         model.ainvoke = AsyncMock(return_value=AIMessage(content=content))
-    mocker.patch(
-        'src.characters.tools.context.ai.get_web_search_model', return_value=model
-    )
+    mocker.patch('src.characters.tools.context.ai.get_web_search_model', return_value=model)
     return model
 
 
@@ -54,13 +52,13 @@ async def test_search_messages_tool(mocker):
         nickname='bob',
         role=UserRole.USER,
         text='hello world',
-        created_at=datetime.now()
+        created_at=datetime.now(),
     )
 
     related = [RelatedMessagesData(messages=[msg], score=0.9)]
     mock_search = mocker.patch(
         'src.characters.tools.context.messages_embeddings_client.search',
-        AsyncMock(return_value=related)
+        AsyncMock(return_value=related),
     )
 
     result = await search_messages.ainvoke({'search_query': 'test query', 'limit': 2})
@@ -77,8 +75,7 @@ async def test_search_messages_tool_limit_validation(mocker):
     search_messages.metadata = {'context': context}
 
     mock_search = mocker.patch(
-        'src.characters.tools.context.messages_embeddings_client.search',
-        AsyncMock(return_value=[])
+        'src.characters.tools.context.messages_embeddings_client.search', AsyncMock(return_value=[])
     )
 
     await search_messages.ainvoke({'search_query': 'test', 'limit': 10})
@@ -91,18 +88,15 @@ async def test_search_messages_tool_limit_validation(mocker):
 async def test_get_user_facts_tool(mocker):
     facts = [
         UserFact(nickname='bob', text='likes pizza', confidence=0.9),
-        UserFact(nickname='bob', text='is tall', confidence=0.7)
+        UserFact(nickname='bob', text='is tall', confidence=0.7),
     ]
-    mock_get = mocker.patch(
-        'src.characters.tools.context.get_facts',
-        AsyncMock(return_value=facts)
-    )
+    mock_get = mocker.patch('src.characters.tools.context.get_facts', AsyncMock(return_value=facts))
 
     result = await get_user_facts.ainvoke({'nickname': '@bob', 'limit': 10})
 
     assert result == [
         {'text': 'likes pizza', 'confidence': 0.9},
-        {'text': 'is tall', 'confidence': 0.7}
+        {'text': 'is tall', 'confidence': 0.7},
     ]
     assert mock_get.call_count == 1
     assert mock_get.call_args == call('bob', limit=10)
@@ -126,11 +120,7 @@ async def test_tool_registry_execute_success(mocker):
     context = make_context()
     registry = ToolRegistry(context_tools=[mock_tool], direct_tools=[], context=context)
 
-    tool_call = {
-        'name': 'test_tool',
-        'args': {'arg1': 'val1'},
-        'id': 'call_123'
-    }
+    tool_call = {'name': 'test_tool', 'args': {'arg1': 'val1'}, 'id': 'call_123'}
 
     tool_message, tool_result = await registry.execute(tool_call)
 
@@ -147,11 +137,7 @@ async def test_tool_registry_execute_unknown_tool():
     context = make_context()
     registry = ToolRegistry(context_tools=[], direct_tools=[], context=context)
 
-    tool_call = {
-        'name': 'unknown_tool',
-        'args': {},
-        'id': 'call_456'
-    }
+    tool_call = {'name': 'unknown_tool', 'args': {}, 'id': 'call_456'}
 
     with pytest.raises(ValueError, match='Unknown tool: unknown_tool'):
         await registry.execute(tool_call)
@@ -189,19 +175,17 @@ async def test_tool_registry_execute_logging(mocker):
     context = make_context()
     registry = ToolRegistry(context_tools=[mock_tool], direct_tools=[], context=context)
 
-    tool_call = {
-        'name': 'test_tool',
-        'args': {'p': 1},
-        'id': 'id1'
-    }
+    tool_call = {'name': 'test_tool', 'args': {'p': 1}, 'id': 'id1'}
 
     await registry.execute(tool_call)
 
     # Argument names only at INFO, never the values -- tool arguments can carry raw chat
     # intent (a search query, say).
     assert mock_logger.info.call_count == 2
-    call_extra, done_extra = mock_logger.info.call_args_list[0].kwargs['extra'], \
-        mock_logger.info.call_args_list[1].kwargs['extra']
+    call_extra, done_extra = (
+        mock_logger.info.call_args_list[0].kwargs['extra'],
+        mock_logger.info.call_args_list[1].kwargs['extra'],
+    )
     assert call_extra == {'event': 'TOOL_CALL', 'tool': 'test_tool', 'tool_args': ['p']}
     assert done_extra['event'] == 'TOOL_CALL_DONE'
     assert done_extra['tool'] == 'test_tool'
@@ -224,8 +208,9 @@ async def test_tool_registry_is_return_direct_for_direct_tool():
 
 async def test_tool_registry_is_return_direct_for_context_tool():
     context = make_context()
-    registry = ToolRegistry(context_tools=[search_messages_direct], direct_tools=[],
-                            context=context)
+    registry = ToolRegistry(
+        context_tools=[search_messages_direct], direct_tools=[], context=context
+    )
 
     tool_call = {'name': 'search_messages', 'args': {'search_query': 'x', 'limit': 1}, 'id': 'tc2'}
     assert registry.is_return_direct(tool_call) is False
@@ -529,6 +514,7 @@ async def test_search_web_not_found_voids_trailing_commentary(mocker):
 
 # --- find_stickers ---
 
+
 def make_hit(unique_id):
     return StickerSearchResult(
         unique_id=unique_id,
@@ -545,7 +531,8 @@ def stub_sticker_search(mocker, probes, excluded=frozenset()):
     """
     find_stickers.metadata = {'context': make_context()}
     mocker.patch(
-        'src.characters.tools.context.get_recent_sticker_ids', return_value=set(excluded),
+        'src.characters.tools.context.get_recent_sticker_ids',
+        return_value=set(excluded),
     )
     mock_search = mocker.patch(
         'src.characters.tools.context.stickers_embedding_client.search_sticker_ids',
@@ -563,12 +550,14 @@ async def test_find_stickers_returns_the_four_key_shape(mocker):
 
     result = await find_stickers.ainvoke({'queries': ['кот']})
 
-    assert result == [{
-        'sticker_id': 'uid1',
-        'emoji': '🔥',
-        'description': 'описание uid1',
-        'text': 'ЛОЛ',
-    }]
+    assert result == [
+        {
+            'sticker_id': 'uid1',
+            'emoji': '🔥',
+            'description': 'описание uid1',
+            'text': 'ЛОЛ',
+        }
+    ]
 
 
 async def test_find_stickers_accepts_a_bare_string(mocker):
@@ -603,8 +592,11 @@ async def test_find_stickers_clamps_the_query_count(mocker):
     assert [c[0][0] for c in mock_search.call_args_list] == ['q1', 'q2', 'q3']
     extra = mock_logger.warning.call_args.kwargs['extra']
     assert extra == {
-        'event': 'TOOL_ARG_CLAMPED', 'tool': 'find_stickers', 'arg': 'queries',
-        'given': 5, 'used': 3,
+        'event': 'TOOL_ARG_CLAMPED',
+        'tool': 'find_stickers',
+        'arg': 'queries',
+        'given': 5,
+        'used': 3,
     }
 
 
@@ -701,6 +693,7 @@ async def test_find_stickers_logs_per_probe_hits_and_contribution(mocker):
 
 # --- send_sticker ---
 
+
 def make_sticker_replier():
     replier = MagicMock()
     replier.reply_sticker = AsyncMock()
@@ -711,11 +704,10 @@ def make_sticker_replier():
 async def test_send_sticker_sends_the_resolved_file_id(mocker):
     replier = make_sticker_replier()
     mocker.patch(
-        'src.characters.tools.answer.get_sendable_file_id', return_value='SENDABLE_FILE_ID',
+        'src.characters.tools.answer.get_sendable_file_id',
+        return_value='SENDABLE_FILE_ID',
     )
-    mock_drop = mocker.patch(
-        'src.characters.tools.answer.stickers_embedding_client.drop_sticker'
-    )
+    mock_drop = mocker.patch('src.characters.tools.answer.stickers_embedding_client.drop_sticker')
 
     result = await send_sticker.ainvoke({'sticker_id': 'sticker_uid'})
 
@@ -728,9 +720,7 @@ async def test_send_sticker_sends_the_resolved_file_id(mocker):
 async def test_send_sticker_unknown_id_evicts_and_never_sends(mocker):
     replier = make_sticker_replier()
     mocker.patch('src.characters.tools.answer.get_sendable_file_id', return_value=None)
-    mock_drop = mocker.patch(
-        'src.characters.tools.answer.stickers_embedding_client.drop_sticker'
-    )
+    mock_drop = mocker.patch('src.characters.tools.answer.stickers_embedding_client.drop_sticker')
 
     result = await send_sticker.ainvoke({'sticker_id': 'sticker_uid'})
 
@@ -744,11 +734,10 @@ async def test_send_sticker_bad_request_evicts_and_reports_failure(mocker):
     replier = make_sticker_replier()
     replier.reply_sticker = AsyncMock(side_effect=BadRequest('wrong file identifier'))
     mocker.patch(
-        'src.characters.tools.answer.get_sendable_file_id', return_value='SENDABLE_FILE_ID',
+        'src.characters.tools.answer.get_sendable_file_id',
+        return_value='SENDABLE_FILE_ID',
     )
-    mock_drop = mocker.patch(
-        'src.characters.tools.answer.stickers_embedding_client.drop_sticker'
-    )
+    mock_drop = mocker.patch('src.characters.tools.answer.stickers_embedding_client.drop_sticker')
 
     result = await send_sticker.ainvoke({'sticker_id': 'sticker_uid'})
 
@@ -761,11 +750,10 @@ async def test_send_sticker_non_bad_request_propagates_without_evicting(mocker):
     replier = make_sticker_replier()
     replier.reply_sticker = AsyncMock(side_effect=RuntimeError('network blip'))
     mocker.patch(
-        'src.characters.tools.answer.get_sendable_file_id', return_value='SENDABLE_FILE_ID',
+        'src.characters.tools.answer.get_sendable_file_id',
+        return_value='SENDABLE_FILE_ID',
     )
-    mock_drop = mocker.patch(
-        'src.characters.tools.answer.stickers_embedding_client.drop_sticker'
-    )
+    mock_drop = mocker.patch('src.characters.tools.answer.stickers_embedding_client.drop_sticker')
 
     with pytest.raises(RuntimeError, match='network blip'):
         await send_sticker.ainvoke({'sticker_id': 'sticker_uid'})

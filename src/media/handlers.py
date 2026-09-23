@@ -8,7 +8,10 @@ from src.embeddings.stickers import stickers_embedding_client
 from src.logs import elapsed_ms, event, logger
 from src.media.download import get_message_media
 from src.media.models import (
-    AnimationDetectionData, ImageDetectionData, MediaDescription, MediaDescriptionData,
+    AnimationDetectionData,
+    ImageDetectionData,
+    MediaDescription,
+    MediaDescriptionData,
     MediaDetectionData,
 )
 from src.media.processors.animation import describe_animation
@@ -64,7 +67,8 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
                 logger.debug(
                     'Cached media description text',
                     extra=event(
-                        'MEDIA_DESCRIPTION_TEXT', description=media_description.description,
+                        'MEDIA_DESCRIPTION_TEXT',
+                        description=media_description.description,
                     ),
                 )
                 return
@@ -103,7 +107,8 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
 
 
 def _stored_type(
-    message: Message, media_detection_data: MediaDetectionData,
+    message: Message,
+    media_detection_data: MediaDetectionData,
 ) -> MessageMediaTypes:
     """The label the row carries, which is not the decoder that produced it.
 
@@ -118,7 +123,8 @@ def _stored_type(
 
 
 async def _backfill_sticker(
-    message: Message, media_description: MediaDescription,
+    message: Message,
+    media_description: MediaDescription,
 ) -> MediaDescription:
     """Retypes and indexes a sticker whose row predates the sticker unit.
 
@@ -180,8 +186,11 @@ async def _generate_media_description(
         logger.info(
             'Media description generated',
             extra=event(
-                'MEDIA_DESCRIBE', kind='image', media_id=message.media.media_id,
-                elapsed_ms=elapsed_ms(started), outcome='ok' if result else 'error',
+                'MEDIA_DESCRIBE',
+                kind='image',
+                media_id=message.media.media_id,
+                elapsed_ms=elapsed_ms(started),
+                outcome='ok' if result else 'error',
             ),
         )
         return result
@@ -191,8 +200,11 @@ async def _generate_media_description(
         logger.info(
             'Media description generated',
             extra=event(
-                'MEDIA_DESCRIBE', kind='animation', media_id=message.media.media_id,
-                elapsed_ms=elapsed_ms(started), outcome='ok' if result else 'error',
+                'MEDIA_DESCRIBE',
+                kind='animation',
+                media_id=message.media.media_id,
+                elapsed_ms=elapsed_ms(started),
+                outcome='ok' if result else 'error',
             ),
         )
         return result

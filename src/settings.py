@@ -157,9 +157,7 @@ class _Settings(BaseSettings):
         if self.MESSAGES_EMBEDDINGS_MAX_SIZE < self.EMBEDDINGS_TRIGGER_SIZE:
             raise ValueError('MESSAGES_EMBEDDINGS_MAX_SIZE must be >= EMBEDDINGS_TRIGGER_SIZE')
         if self.INITIATIVE_RUN_MESSAGES_MAX_SIZE < self.INITIATIVE_TRIGGER_SIZE:
-            raise ValueError(
-                'INITIATIVE_RUN_MESSAGES_MAX_SIZE must be >= INITIATIVE_TRIGGER_SIZE'
-            )
+            raise ValueError('INITIATIVE_RUN_MESSAGES_MAX_SIZE must be >= INITIATIVE_TRIGGER_SIZE')
         return self
 
 

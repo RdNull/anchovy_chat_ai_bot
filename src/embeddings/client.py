@@ -7,9 +7,12 @@ from httpx import AsyncClient
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.grpc import VectorParams
 from qdrant_client.http.models import (
-    FieldCondition, Filter, MatchValue, QueryResponse,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    QueryResponse,
 )
-from qdrant_client.models import (Distance, PointStruct, VectorParams)
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from src import settings
 from src.logs import event, logger
@@ -35,10 +38,13 @@ class EmbeddingsClient:
         self.model_name = model_name
         self.vector_size = vector_size
         self.qdrant_client: AsyncQdrantClient = AsyncQdrantClient(QDRANT_URL)
-        self.api_client = AsyncClient(base_url=settings.OPENROUTER_API_URL, headers={
-            'Authorization': f'Bearer {settings.OPENROUTER_API_KEY}',
-            'Content-Type': 'application/json',
-        })
+        self.api_client = AsyncClient(
+            base_url=settings.OPENROUTER_API_URL,
+            headers={
+                'Authorization': f'Bearer {settings.OPENROUTER_API_KEY}',
+                'Content-Type': 'application/json',
+            },
+        )
         self.embeddings_cache = AsyncCache(maxsize=128)
 
     async def _check_collection(self):
@@ -47,10 +53,7 @@ class EmbeddingsClient:
 
         await self.qdrant_client.create_collection(
             collection_name=self.collection_name,
-            vectors_config=VectorParams(
-                size=self.vector_size,
-                distance=Distance.COSINE
-            ),
+            vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE),
         )
 
     async def _save(self, chunks: list[ChunkData]):
@@ -65,14 +68,16 @@ class EmbeddingsClient:
                         vector=embedding,
                         payload=chunk.metadata,
                     )
-                ]
+                ],
             )
             logger.debug(
                 'Saved embedding chunk',
                 extra=event('EMBEDDING_CHUNK_SAVED', chunk_id=str(chunk.chunk_id)),
             )
 
-    async def _search(self, query: str, limit=5, score_threshold=0.2,  **filters) -> list[EmbeddingSearchDataItem]:
+    async def _search(
+        self, query: str, limit=5, score_threshold=0.2, **filters
+    ) -> list[EmbeddingSearchDataItem]:
         await self._check_collection()
         search_embedding = await self._get_embedding_vectors(query)
 
@@ -83,12 +88,10 @@ class EmbeddingsClient:
             score_threshold=score_threshold,
             query_filter=Filter(
                 must=[
-                    FieldCondition(
-                        key=filter_key,
-                        match=MatchValue(value=value)
-                    ) for filter_key, value in filters.items()
+                    FieldCondition(key=filter_key, match=MatchValue(value=value))
+                    for filter_key, value in filters.items()
                 ]
-            )
+            ),
         )
         return [
             EmbeddingSearchDataItem(payload=p.payload or {}, score=p.score)
@@ -99,11 +102,8 @@ class EmbeddingsClient:
         async def _run_embedding_request():
             response = await self.api_client.post(
                 '/embeddings',
-                json={
-                    'model': self.model_name,
-                    'input': text,
-                    'encoding_format': 'float'
-                })
+                json={'model': self.model_name, 'input': text, 'encoding_format': 'float'},
+            )
 
             response.raise_for_status()
             data = response.json()

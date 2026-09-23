@@ -26,6 +26,7 @@ def mock_facts_llm(mocker, return_value=None):
 
 # --- save_fact ---
 
+
 async def test_save_fact_persists_fields():
     fact = await create_fact(nickname='alice', text='likes coffee', confidence=0.9)
 
@@ -47,6 +48,7 @@ async def test_save_fact_sets_updated_at():
 
 
 # --- get_facts ---
+
 
 async def test_get_facts_returns_saved():
     await create_fact('alice', 'likes coffee', 0.9)
@@ -93,6 +95,7 @@ async def test_get_facts_unknown_user_returns_empty():
 
 # --- get_fact_by_id ---
 
+
 async def test_get_fact_by_id_returns_fact():
     fact = await create_fact('alice', 'likes coffee', 0.9)
 
@@ -113,6 +116,7 @@ async def test_get_fact_by_id_returns_none_for_unknown_id():
 
 # --- update_fact ---
 
+
 async def test_update_fact_refreshes_updated_at():
     fact = await create_fact('alice', 'likes coffee', 0.8)
     stored_before = await mongo.facts.find_one({'_id': ObjectId(fact.id)})
@@ -128,6 +132,7 @@ async def test_update_fact_refreshes_updated_at():
 
 
 # --- upsert_fact ---
+
 
 async def test_upsert_fact_creates_new_when_no_similar(mocker):
     mocker.patch('src.embeddings.facts.facts_embedding_client.search_facts', return_value=[])
@@ -146,8 +151,7 @@ async def test_upsert_fact_creates_new_when_no_similar(mocker):
 
 async def test_upsert_fact_skips_low_confidence(mocker):
     mock_search = mocker.patch(
-        'src.embeddings.facts.facts_embedding_client.search_facts',
-        return_value=[]
+        'src.embeddings.facts.facts_embedding_client.search_facts', return_value=[]
     )
     mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
 
@@ -160,9 +164,7 @@ async def test_upsert_fact_skips_low_confidence(mocker):
 
 
 async def test_upsert_fact_strips_at_prefix(mocker):
-    mocker.patch(
-        'src.embeddings.facts.facts_embedding_client.search_facts', return_value=[]
-    )
+    mocker.patch('src.embeddings.facts.facts_embedding_client.search_facts', return_value=[])
     mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
 
     await upsert_fact('@alice', 'likes coffee', 0.8)
@@ -181,9 +183,7 @@ async def test_upsert_fact_reinforces_existing_higher_confidence(mocker):
     existing = await create_fact('alice', 'likes coffee', 0.9)
     similar = FactsSearchResult(fact=existing, score=0.85)
 
-    mocker.patch(
-        'src.embeddings.facts.facts_embedding_client.search_facts', return_value=[similar]
-    )
+    mocker.patch('src.embeddings.facts.facts_embedding_client.search_facts', return_value=[similar])
     mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
 
     await upsert_fact('alice', 'loves coffee', 0.7)
@@ -200,9 +200,7 @@ async def test_upsert_fact_updates_existing_lower_confidence(mocker):
     existing = await create_fact('alice', 'likes coffee', 0.6)
     similar = FactsSearchResult(fact=existing, score=0.85)
 
-    mocker.patch(
-        'src.embeddings.facts.facts_embedding_client.search_facts', return_value=[similar]
-    )
+    mocker.patch('src.embeddings.facts.facts_embedding_client.search_facts', return_value=[similar])
     mock_save = mocker.patch('src.embeddings.facts.facts_embedding_client.save_fact')
 
     await upsert_fact('alice', 'loves coffee', 0.9)
@@ -215,15 +213,18 @@ async def test_upsert_fact_updates_existing_lower_confidence(mocker):
 
 # --- decay_all_facts ---
 
+
 async def test_decay_reduces_confidence_for_stale_facts():
     old_ts = (datetime.now(timezone.utc) - timedelta(weeks=2)).timestamp()
-    await mongo.facts.insert_one({
-        'nickname': 'alice',
-        'text': 'likes coffee',
-        'confidence': 0.8,
-        'created_at': old_ts,
-        'updated_at': old_ts,
-    })
+    await mongo.facts.insert_one(
+        {
+            'nickname': 'alice',
+            'text': 'likes coffee',
+            'confidence': 0.8,
+            'created_at': old_ts,
+            'updated_at': old_ts,
+        }
+    )
 
     await decay_all_facts()
 
@@ -234,13 +235,15 @@ async def test_decay_reduces_confidence_for_stale_facts():
 
 async def test_decay_deletes_fact_when_confidence_reaches_zero():
     old_ts = (datetime.now(timezone.utc) - timedelta(weeks=2)).timestamp()
-    await mongo.facts.insert_one({
-        'nickname': 'alice',
-        'text': 'old fact',
-        'confidence': 0.1,
-        'created_at': old_ts,
-        'updated_at': old_ts,
-    })
+    await mongo.facts.insert_one(
+        {
+            'nickname': 'alice',
+            'text': 'old fact',
+            'confidence': 0.1,
+            'created_at': old_ts,
+            'updated_at': old_ts,
+        }
+    )
 
     await decay_all_facts()
 
@@ -250,13 +253,15 @@ async def test_decay_deletes_fact_when_confidence_reaches_zero():
 
 async def test_decay_skips_recently_updated_facts():
     recent_ts = datetime.now(timezone.utc).timestamp()
-    await mongo.facts.insert_one({
-        'nickname': 'alice',
-        'text': 'fresh fact',
-        'confidence': 0.8,
-        'created_at': recent_ts,
-        'updated_at': recent_ts,
-    })
+    await mongo.facts.insert_one(
+        {
+            'nickname': 'alice',
+            'text': 'fresh fact',
+            'confidence': 0.8,
+            'created_at': recent_ts,
+            'updated_at': recent_ts,
+        }
+    )
 
     await decay_all_facts()
 
@@ -267,12 +272,14 @@ async def test_decay_skips_recently_updated_facts():
 
 async def test_decay_falls_back_to_created_at_when_no_updated_at():
     old_ts = (datetime.now(timezone.utc) - timedelta(weeks=2)).timestamp()
-    await mongo.facts.insert_one({
-        'nickname': 'alice',
-        'text': 'legacy fact',
-        'confidence': 0.8,
-        'created_at': old_ts,
-    })
+    await mongo.facts.insert_one(
+        {
+            'nickname': 'alice',
+            'text': 'legacy fact',
+            'confidence': 0.8,
+            'created_at': old_ts,
+        }
+    )
 
     await decay_all_facts()
 
@@ -282,6 +289,7 @@ async def test_decay_falls_back_to_created_at_when_no_updated_at():
 
 
 # --- UserFact model validation ---
+
 
 def test_user_fact_model_validate_decimal_confidence():
     data = {
@@ -297,12 +305,14 @@ def test_user_fact_model_validate_decimal_confidence():
 
 
 async def test_get_facts_handles_decimal128_stored_in_mongo():
-    await mongo.facts.insert_one({
-        'nickname': 'alice',
-        'text': 'likes coffee',
-        'confidence': Decimal128('0.9'),
-        'created_at': datetime.now(timezone.utc).timestamp(),
-    })
+    await mongo.facts.insert_one(
+        {
+            'nickname': 'alice',
+            'text': 'likes coffee',
+            'confidence': Decimal128('0.9'),
+            'created_at': datetime.now(timezone.utc).timestamp(),
+        }
+    )
     facts = await get_facts('alice')
     assert len(facts) == 1
     assert isinstance(facts[0].confidence, float)
@@ -311,11 +321,14 @@ async def test_get_facts_handles_decimal128_stored_in_mongo():
 
 # --- extract_facts (processor) ---
 
+
 async def test_extract_facts_returns_parsed_facts(mocker):
-    facts = ExtractedFacts(facts=[
-        ExtractedFact(nickname='alice', text='likes coffee', confidence=0.9),
-        ExtractedFact(nickname='bob', text='hates mornings', confidence=0.7),
-    ])
+    facts = ExtractedFacts(
+        facts=[
+            ExtractedFact(nickname='alice', text='likes coffee', confidence=0.9),
+            ExtractedFact(nickname='bob', text='hates mornings', confidence=0.7),
+        ]
+    )
     mock_facts_llm(mocker, return_value=facts)
 
     result = await extract_facts([make_message()])
@@ -347,11 +360,14 @@ async def test_extract_facts_raises_on_llm_failure(mocker):
 
 # --- update_user_facts (handler) ---
 
+
 async def test_update_user_facts_upserts_each_fact(mocker):
-    facts = ExtractedFacts(facts=[
-        ExtractedFact(nickname='alice', text='likes coffee', confidence=0.9),
-        ExtractedFact(nickname='bob', text='hates mornings', confidence=0.7),
-    ])
+    facts = ExtractedFacts(
+        facts=[
+            ExtractedFact(nickname='alice', text='likes coffee', confidence=0.9),
+            ExtractedFact(nickname='bob', text='hates mornings', confidence=0.7),
+        ]
+    )
     mock_facts_llm(mocker, return_value=facts)
     mock_upsert = mocker.patch('src.facts.handlers.upsert_fact')
 

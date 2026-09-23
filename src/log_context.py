@@ -17,6 +17,7 @@ does not identify every message it touched, only the one that scheduled the run.
 No import from `src` here: `src/logs.py` is a leaf module imported by almost every other
 module in the project, and this module is imported by `src/logs.py` in turn.
 """
+
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar

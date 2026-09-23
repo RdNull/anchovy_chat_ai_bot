@@ -5,6 +5,7 @@ credential was written to the pod log on every API call the bot made. The token 
 a lazy `%s` argument rather than inside the format string, which is the detail that makes
 this worth a test: a filter that rewrites `record.msg` alone changes nothing.
 """
+
 import json
 import logging
 import sys
@@ -12,14 +13,20 @@ import sys
 import pytest
 
 from src.logs import (
-    BOT_TOKEN_PATTERN, RedactBotToken, TelegramPollingFilter, _formatter, event,
+    BOT_TOKEN_PATTERN,
+    RedactBotToken,
+    TelegramPollingFilter,
+    _formatter,
+    event,
 )
 
 # Shaped like a real token — digits, colon, 35 URL-safe characters — and not one.
 FAKE_TOKEN = '1234567890:AAHfake_Token_For_Tests_00000000000'
 
 
-def make_record(msg: str, *args, name: str = 'httpx', level: int = logging.INFO) -> logging.LogRecord:
+def make_record(
+    msg: str, *args, name: str = 'httpx', level: int = logging.INFO
+) -> logging.LogRecord:
     """A record built the way `httpx` builds one: the URL is an argument, not the message."""
     return logging.LogRecord(
         name=name,
@@ -147,12 +154,15 @@ def test_event_round_trips_an_int_not_a_string():
     assert isinstance(formatted['chat_id'], int)
 
 
-@pytest.mark.parametrize('bad_fields', [
-    {'module': 1},   # reserved LogRecord attribute
-    {'log': 1},      # owned by the collector's container operator
-    {'args': 1},     # reserved LogRecord attribute
-    {'Foo': 1},      # not [a-z][a-z0-9_]*
-])
+@pytest.mark.parametrize(
+    'bad_fields',
+    [
+        {'module': 1},  # reserved LogRecord attribute
+        {'log': 1},  # owned by the collector's container operator
+        {'args': 1},  # reserved LogRecord attribute
+        {'Foo': 1},  # not [a-z][a-z0-9_]*
+    ],
+)
 def test_event_rejects_a_bad_field_name(bad_fields):
     with pytest.raises(ValueError):
         event('SOME_EVENT', **bad_fields)
@@ -164,8 +174,13 @@ def test_exc_info_produces_a_single_line_with_a_populated_stack():
         raise RuntimeError('boom')
     except RuntimeError:
         record = logging.LogRecord(
-            name='bot', level=logging.ERROR, pathname='x.py', lineno=1,
-            msg='failed', args=(), exc_info=sys.exc_info(),
+            name='bot',
+            level=logging.ERROR,
+            pathname='x.py',
+            lineno=1,
+            msg='failed',
+            args=(),
+            exc_info=sys.exc_info(),
         )
 
     formatted = format_record(record)

@@ -44,7 +44,8 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
     last_message = await get_last_message(chat_id)
     if last_message and last_message.role == UserRole.AI:
         logger.info(
-            'Skipping initiative reply', extra=event('INITIATIVE_SKIPPED', reason='last_from_ai'),
+            'Skipping initiative reply',
+            extra=event('INITIATIVE_SKIPPED', reason='last_from_ai'),
         )
         return False
 
@@ -54,17 +55,22 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
         cooldown_threshold = now - timedelta(minutes=settings.INITIATIVE_COOLDOWN_MINUTES)
         if last_bot_message.created_at > cooldown_threshold:
             logger.info(
-                'Skipping initiative reply', extra=event('INITIATIVE_SKIPPED', reason='cooldown'),
+                'Skipping initiative reply',
+                extra=event('INITIATIVE_SKIPPED', reason='cooldown'),
             )
             return False
 
         user_messages_count = await get_messages_count_since(
-            chat_id, last_bot_message.created_at.timestamp(), role=UserRole.USER,
+            chat_id,
+            last_bot_message.created_at.timestamp(),
+            role=UserRole.USER,
         )
         if user_messages_count < settings.INITIATIVE_MIN_GAP_MESSAGES:
             logger.info(
                 'Skipping initiative reply',
-                extra=event('INITIATIVE_SKIPPED', reason='gap_too_small', count=user_messages_count),
+                extra=event(
+                    'INITIATIVE_SKIPPED', reason='gap_too_small', count=user_messages_count
+                ),
             )
             return False
 
@@ -77,7 +83,9 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
         logger.info(
             'Skipping initiative reply',
             extra=event(
-                'INITIATIVE_SKIPPED', reason='daily_limit', count=replied_count,
+                'INITIATIVE_SKIPPED',
+                reason='daily_limit',
+                count=replied_count,
                 limit=settings.INITIATIVE_DAILY_LIMIT,
             ),
         )

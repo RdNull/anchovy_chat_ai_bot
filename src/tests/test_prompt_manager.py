@@ -45,10 +45,7 @@ def test_character_setup_v1_rendering():
     memory = 'Known for shouting at clouds.'
 
     rendered = manager.get_prompt(
-        'character_setup',
-        'v1',
-        character_description=character_description,
-        memory=memory
+        'character_setup', 'v1', character_description=character_description, memory=memory
     )
 
     expected_part1 = 'Ты — развлекательный бот-персонаж в групповом чате Telegram.'
@@ -61,10 +58,7 @@ def test_character_setup_v1_rendering():
 
     # Test without memory
     rendered_no_memory = manager.get_prompt(
-        'character_setup',
-        'v1',
-        character_description=character_description,
-        memory=None
+        'character_setup', 'v1', character_description=character_description, memory=None
     )
     assert expected_part3 not in rendered_no_memory
 
@@ -74,10 +68,7 @@ def test_memory_v1_rendering():
 
     # Just a smoke test for memory template rendering
     rendered = manager.get_prompt(
-        'memory',
-        'v1',
-        new_messages='User: hello',
-        current_memory='Memory content'
+        'memory', 'v1', new_messages='User: hello', current_memory='Memory content'
     )
     assert 'НОВЫЕ СООБЩЕНИЯ:\nUser: hello' in rendered
     assert 'ТЕКУЩАЯ ПАМЯТЬ:\nMemory content' in rendered

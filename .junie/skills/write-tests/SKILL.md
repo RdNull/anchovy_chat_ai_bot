@@ -49,7 +49,7 @@ docker compose exec bot pytest -k test_name      # single test
 from unittest.mock import AsyncMock, MagicMock
 from langchain_core.messages import AIMessage
 
-llm = MagicMock()               # NOT AsyncMock — bind_tools() must be sync
+llm = MagicMock()  # NOT AsyncMock — bind_tools() must be sync
 llm.bind_tools.return_value = llm
 llm.ainvoke = AsyncMock(side_effect=[AIMessage(content='reply')])
 mocker.patch('src.characters.character.ai.get_model', return_value=llm)
@@ -58,9 +58,7 @@ mocker.patch('src.characters.character.ai.get_model', return_value=llm)
 ### Memory LLM
 ```python
 mock_llm = MagicMock()
-mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
-    return_value=StructuredMemory()
-)
+mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=StructuredMemory())
 mocker.patch(
     'src.processors.context.memory.ai.get_memory_model',
     return_value=mock_llm,

@@ -14,8 +14,11 @@ _TIMESTAMP_PATTERN = re.compile(r'\[Текущее время: \d{2}-\d{2}-\d{2}
 
 def make_character(memory=None):
     character = Character(
-        code='test', display_name='Test', name='test',
-        description='A test character', style_prompt='Говори коротко.',
+        code='test',
+        display_name='Test',
+        name='test',
+        description='A test character',
+        style_prompt='Говори коротко.',
     )
     character.memory = memory
     return character
@@ -37,6 +40,7 @@ def rendered_system_prompt(llm) -> str:
 
 
 # --- target_index resolution (1-based, matching the `#N` labels shown to the model) ---
+
 
 async def test_evaluate_initiative_resolves_first_message_from_index_one(mocker):
     candidates = [make_message(text=f'msg{i}') for i in range(3)]
@@ -118,8 +122,10 @@ async def test_evaluate_initiative_target_index_never_addresses_context(mocker):
 # the window's newest candidate and age against it. target_index alone counts from
 # the oldest candidate, so it can't tell a stale target from a large window apart. ---
 
+
 async def test_evaluate_initiative_logs_zero_distance_and_age_for_the_newest_candidate(
-    mocker, caplog,
+    mocker,
+    caplog,
 ):
     now = datetime.now(timezone.utc)
     candidates = [
@@ -168,6 +174,7 @@ async def test_evaluate_initiative_omits_distance_and_age_without_a_target(mocke
 
 # --- LLM failure ---
 
+
 async def test_evaluate_initiative_handles_llm_error(mocker):
     llm = MagicMock()
     llm.with_structured_output.return_value.ainvoke = AsyncMock(side_effect=RuntimeError('boom'))
@@ -191,6 +198,7 @@ async def test_evaluate_initiative_handles_empty_response(mocker):
 
 
 # --- character.memory handling ---
+
 
 async def test_evaluate_initiative_without_memory_does_not_crash(mocker):
     llm = mock_initiative_llm(mocker, InitiativeDecision(score=0.1, target_index=None, reason='r'))
@@ -216,11 +224,14 @@ async def test_evaluate_initiative_with_memory_includes_it_in_the_prompt(mocker)
 
 # --- message rendering ---
 
+
 async def test_evaluate_initiative_renders_bot_messages_with_their_nickname(mocker):
     # response_format (used for LangChain role-tagged history in character.py) strips
     # the nickname; here everything is flattened into a list, so the bot's own turns
     # need ai_format too or the model can't tell whose line is whose.
-    candidates = [Message(chat_id=1, role=UserRole.AI, text='моя реплика', nickname='shizoded(anchovy)')]
+    candidates = [
+        Message(chat_id=1, role=UserRole.AI, text='моя реплика', nickname='shizoded(anchovy)')
+    ]
     llm = mock_initiative_llm(mocker, InitiativeDecision(score=0.1, target_index=None, reason='r'))
 
     await evaluate_initiative(make_character(), [], candidates)
@@ -240,6 +251,7 @@ async def test_evaluate_initiative_numbers_candidates_from_one(mocker):
 
 
 # --- two-block window: context is unnumbered, candidates are #1..#N ---
+
 
 async def test_evaluate_initiative_renders_unnumbered_context_and_numbered_candidates(mocker):
     context = [make_message(text='раньше')]
@@ -269,6 +281,7 @@ async def test_evaluate_initiative_empty_context_drops_the_block_and_its_label(m
 
 # --- current time in the header ---
 
+
 async def test_evaluate_initiative_includes_current_time_in_the_header(mocker):
     llm = mock_initiative_llm(mocker, InitiativeDecision(score=0.1, target_index=None, reason='r'))
 
@@ -279,6 +292,7 @@ async def test_evaluate_initiative_includes_current_time_in_the_header(mocker):
 
 
 # --- out-of-range target_index gets its own log line, distinct from a genuine null ---
+
 
 async def test_evaluate_initiative_out_of_range_target_index_logs_a_warning(mocker, caplog):
     mock_initiative_llm(mocker, InitiativeDecision(score=0.6, target_index=5, reason='r'))

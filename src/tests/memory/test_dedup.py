@@ -16,6 +16,7 @@ def recent_texts(memory: StructuredMemory, nick: str) -> list[str]:
 
 # --- normalize ---
 
+
 def test_normalize_lowercases_and_strips_punctuation():
     assert normalize('Ездит На Велосипеде!!!') == 'ездит на велосипеде'
 
@@ -52,6 +53,7 @@ def test_normalize_strips_cyrillic_nicks():
 
 # --- no conflicts ---
 
+
 def test_no_duplicates_leaves_memory_unchanged():
     memory = make_memory(
         alice=ParticipantInfo(traits=['программист'], recent=make_recent('ездит на велосипеде')),
@@ -69,6 +71,7 @@ def test_no_duplicates_leaves_memory_unchanged():
 
 # --- cross-participant resolution ---
 
+
 def test_single_incumbent_keeps_incumbent_copy():
     current = make_memory(alice=ParticipantInfo(traits=['ездит на велосипеде']))
     updated = make_memory(
@@ -80,14 +83,16 @@ def test_single_incumbent_keeps_incumbent_copy():
 
     assert updated.participants['@alice'].traits == ['ездит на велосипеде']
     assert updated.participants['@bob'].traits == []
-    assert drops == [ConflictRecord(
-        text='ездит на велосипеде',
-        owner='@bob',
-        field='traits',
-        kept_owner='@alice',
-        reason='incumbent_wins',
-        removed=True,
-    )]
+    assert drops == [
+        ConflictRecord(
+            text='ездит на велосипеде',
+            owner='@bob',
+            field='traits',
+            kept_owner='@alice',
+            reason='incumbent_wins',
+            removed=True,
+        )
+    ]
 
 
 def test_no_incumbent_keeps_every_copy():
@@ -193,6 +198,7 @@ def test_trait_and_recent_share_one_keyspace_across_participants():
 
 # --- within-participant traits/recent overlap ---
 
+
 def test_traits_recent_overlap_keeps_trait():
     updated = make_memory(
         alice=ParticipantInfo(
@@ -205,17 +211,20 @@ def test_traits_recent_overlap_keeps_trait():
 
     assert updated.participants['@alice'].traits == ['ездит на велосипеде']
     assert recent_texts(updated, '@alice') == []
-    assert drops == [ConflictRecord(
-        text='Ездит на велосипеде!',
-        owner='@alice',
-        field='recent',
-        kept_owner='@alice',
-        reason='traits_recent_overlap',
-        removed=True,
-    )]
+    assert drops == [
+        ConflictRecord(
+            text='Ездит на велосипеде!',
+            owner='@alice',
+            field='recent',
+            kept_owner='@alice',
+            reason='traits_recent_overlap',
+            removed=True,
+        )
+    ]
 
 
 # --- untouched data ---
+
 
 def test_state_is_not_deduplicated_against_participants():
     updated = StructuredMemory(

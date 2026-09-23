@@ -22,7 +22,7 @@ async def save_initiative_run(chat_id: int, last_message_time: datetime) -> str:
     data = {
         'chat_id': chat_id,
         'last_message_time': last_message_time.timestamp(),
-        'created_at': datetime.now(timezone.utc).timestamp()
+        'created_at': datetime.now(timezone.utc).timestamp(),
     }
     result = await db.initiative_runs.insert_one(data)
     return str(result.inserted_id)

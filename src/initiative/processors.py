@@ -15,12 +15,13 @@ from src.utils import format_ts
 
 @traceable
 async def evaluate_initiative(
-    character: Character, context: list[Message], candidates: list[Message],
+    character: Character,
+    context: list[Message],
+    candidates: list[Message],
 ) -> InitiativeVerdict:
     rendered_context = '\n'.join(f'▸ {m.ai_format}' for m in context)
     rendered_candidates = '\n'.join(
-        f'#{i} ▸ {m.ai_format}'
-        for i, m in enumerate(candidates, start=1)
+        f'#{i} ▸ {m.ai_format}' for i, m in enumerate(candidates, start=1)
     )
 
     llm = ai.get_initiative_model(version='gemini-3.8-flash-low')
@@ -39,25 +40,20 @@ async def evaluate_initiative(
 
     started = time.monotonic()
     try:
-        evaluation_result: InitiativeDecision = await model_with_structure.ainvoke([
-            SystemMessage(content=system_prompt)
-        ])
+        evaluation_result: InitiativeDecision = await model_with_structure.ainvoke(
+            [SystemMessage(content=system_prompt)]
+        )
     except Exception:
         logger.error(
-            'Error while evaluating initiative', exc_info=True,
+            'Error while evaluating initiative',
+            exc_info=True,
             extra=event('INITIATIVE_EVALUATE', outcome='error'),
         )
-        return InitiativeVerdict(
-            target_message=None,
-            score=0,
-            reason='Initiative evaluation error'
-        )
+        return InitiativeVerdict(target_message=None, score=0, reason='Initiative evaluation error')
 
     if not evaluation_result:
         return InitiativeVerdict(
-            target_message=None,
-            score=0,
-            reason='Initiative evaluation empty response'
+            target_message=None, score=0, reason='Initiative evaluation empty response'
         )
 
     # target_index is 1-based, matching the `#N` labels the candidates were shown
@@ -65,14 +61,13 @@ async def evaluate_initiative(
     # `0` included — means 'no target', not a failed run: a stray index must not
     # throw away an otherwise good score.
     target_index = evaluation_result.target_index or 0
-    target_message = (
-        candidates[target_index - 1] if 0 < target_index <= len(candidates) else None
-    )
+    target_message = candidates[target_index - 1] if 0 < target_index <= len(candidates) else None
     if evaluation_result.target_index and target_message is None:
         logger.warning(
             'Initiative evaluation target_index out of range',
             extra=event(
-                'INITIATIVE_TARGET_OUT_OF_RANGE', target_index=evaluation_result.target_index,
+                'INITIATIVE_TARGET_OUT_OF_RANGE',
+                target_index=evaluation_result.target_index,
                 candidates=len(candidates),
             ),
         )
@@ -103,9 +98,13 @@ async def evaluate_initiative(
     logger.info(
         'Initiative evaluation result',
         extra=event(
-            'INITIATIVE_EVALUATE', outcome='ok', score=evaluation_result.score,
-            reason=evaluation_result.reason, target_index=evaluation_result.target_index,
-            elapsed_ms=elapsed_ms(started), **target_fields,
+            'INITIATIVE_EVALUATE',
+            outcome='ok',
+            score=evaluation_result.score,
+            reason=evaluation_result.reason,
+            target_index=evaluation_result.target_index,
+            elapsed_ms=elapsed_ms(started),
+            **target_fields,
         ),
     )
     return InitiativeVerdict(

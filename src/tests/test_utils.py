@@ -24,15 +24,12 @@ def make_message(
     nickname='user1',
 ):
     return Message(
-        chat_id=chat_id,
-        telegram_id=telegram_id,
-        role=role,
-        text=text,
-        nickname=nickname
+        chat_id=chat_id, telegram_id=telegram_id, role=role, text=text, nickname=nickname
     )
 
 
 # --- escape_markdown_v2 ---
+
 
 def test_escape_markdown_v2_special_chars():
     special = r'_*[]()~`>#+-=|{}.!'
@@ -46,6 +43,7 @@ def test_escape_markdown_v2_plain_text():
 
 
 # --- ReplyToBotFilter ---
+
 
 def _make_tg_message(is_bot=True, username='test_bot', has_reply=True):
     message = MagicMock()
@@ -79,6 +77,7 @@ def test_reply_to_bot_filter_wrong_username():
 
 # --- set_chat_character / get_chat_character ---
 
+
 async def test_set_get_chat_character():
     code = next(iter(CHARACTERS))
     chat_id = 12345
@@ -94,6 +93,7 @@ async def test_get_chat_character_no_code_returns_valid():
 
 # --- send_chat_action ---
 
+
 async def test_send_chat_action_calls_bot(mocker):
     bot = MagicMock()
     bot.send_chat_action = AsyncMock()
@@ -106,6 +106,7 @@ async def test_send_chat_action_calls_bot(mocker):
 
 
 # --- MessageMedia.ai_format ---
+
 
 def test_media_ai_format_processing():
     media = MessageMedia(status=MessageMediaStatus.PENDING)
@@ -143,6 +144,7 @@ def test_media_ai_format_ready_no_ocr():
 
 
 # --- Message.embedding_text ---
+
 
 def test_message_embedding_text_plain():
     msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello')
@@ -211,20 +213,28 @@ def test_message_embedding_text_caption_less_media_has_no_literal_none():
 def test_message_embedding_text_with_timestamp():
     # 2026-04-19 10:00 UTC = 2026-04-19 15:00 Almaty (UTC+5)
     created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
-    msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello',
-                  created_at=created_at)
+    msg = Message(
+        chat_id=1, nickname='nick', role=UserRole.USER, text='hello', created_at=created_at
+    )
     assert msg.embedding_text == '[26-04-19 15:00] nick: hello'
 
 
 def test_message_embedding_text_reply_with_timestamp():
     created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
     reply = MessageReply(text='quoted', nickname='other')
-    msg = Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hello', reply=reply,
-                  created_at=created_at)
+    msg = Message(
+        chat_id=1,
+        nickname='nick',
+        role=UserRole.USER,
+        text='hello',
+        reply=reply,
+        created_at=created_at,
+    )
     assert msg.embedding_text == '[26-04-19 15:00] nick (reply: "other| quoted"): hello'
 
 
 # --- Message.response_format ---
+
 
 def test_message_response_format_plain_text_unchanged():
     msg = Message(chat_id=1, nickname='nick', role=UserRole.AI, text='ответил')
@@ -272,17 +282,20 @@ def _msg(reactions):
     return Message(chat_id=1, nickname='nick', role=UserRole.USER, text='hi', reactions=reactions)
 
 
-@pytest.mark.parametrize('reactions, expected', [
-    ({}, None),
-    ({'🖕': [BOT]}, f'⤷ 🖕 {BOT}'),
-    ({'🤡': ['dima', 'sasha']}, '⤷ 🤡 dima, sasha'),
-    ({'👍': [BOT, 'misha']}, f'⤷ 👍 {BOT}, misha'),
-    ({'🤡': ['a', 'b', 'c']}, '⤷ 🤡 a, b, c'),
-    ({'👍': ['a', 'b', 'c', 'd']}, '⤷ 👍 ×4'),
-    ({'👍': [BOT, 'a', 'b', 'c', 'd']}, f'⤷ 👍 {BOT} +4'),
-    ({'🤡': ['dima', 'sasha'], '👍': [BOT, 'misha']}, f'⤷ 🤡 dima, sasha · 👍 {BOT}, misha'),
-    ({'🤡': ['a', 'b', 'c', 'd'], '🖕': [BOT]}, f'⤷ 🤡 ×4 · 🖕 {BOT}'),
-])
+@pytest.mark.parametrize(
+    'reactions, expected',
+    [
+        ({}, None),
+        ({'🖕': [BOT]}, f'⤷ 🖕 {BOT}'),
+        ({'🤡': ['dima', 'sasha']}, '⤷ 🤡 dima, sasha'),
+        ({'👍': [BOT, 'misha']}, f'⤷ 👍 {BOT}, misha'),
+        ({'🤡': ['a', 'b', 'c']}, '⤷ 🤡 a, b, c'),
+        ({'👍': ['a', 'b', 'c', 'd']}, '⤷ 👍 ×4'),
+        ({'👍': [BOT, 'a', 'b', 'c', 'd']}, f'⤷ 👍 {BOT} +4'),
+        ({'🤡': ['dima', 'sasha'], '👍': [BOT, 'misha']}, f'⤷ 🤡 dima, sasha · 👍 {BOT}, misha'),
+        ({'🤡': ['a', 'b', 'c', 'd'], '🖕': [BOT]}, f'⤷ 🤡 ×4 · 🖕 {BOT}'),
+    ],
+)
 def test_render_reactions(reactions: dict, expected: str | None):
     assert _msg(reactions)._render_reactions() == expected
 

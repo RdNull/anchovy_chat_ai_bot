@@ -14,11 +14,9 @@ def test_resolve_env_vars():
     manager = ModelManager()
     config = {
         'api_key': 'env:TEST_API_KEY',
-        'nested': {
-            'value': 'env:TEST_NESTED_VAR'
-        },
+        'nested': {'value': 'env:TEST_NESTED_VAR'},
         'list': ['env:TEST_LIST_VAR', 'plain_string'],
-        'plain': 'value'
+        'plain': 'value',
     }
 
     test_env = {
@@ -31,11 +29,9 @@ def test_resolve_env_vars():
 
     assert resolved == {
         'api_key': 'secret',
-        'nested': {
-            'value': 'nested_secret'
-        },
+        'nested': {'value': 'nested_secret'},
         'list': ['list_secret', 'plain_string'],
-        'plain': 'value'
+        'plain': 'value',
     }
 
 

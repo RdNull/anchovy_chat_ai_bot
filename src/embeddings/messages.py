@@ -18,7 +18,7 @@ def chunk_messages(messages: list[Message], window=8, overlap=3) -> list[ChunkDa
 
     chunks = []
     for i in range(0, len(messages), window - overlap):
-        chunk_messages_ = messages[i:i + window]
+        chunk_messages_ = messages[i : i + window]
         if len(chunk_messages_) < overlap // 2:
             continue
 
@@ -51,12 +51,7 @@ class MessageEmbeddingsClient(EmbeddingsClient):
                 size=100,
                 sort_order=-1,
             )
-            result.append(
-                RelatedMessagesData(
-                    messages=messages,
-                    score=search_result['score']
-                )
-            )
+            result.append(RelatedMessagesData(messages=messages, score=search_result['score']))
 
         return result
 

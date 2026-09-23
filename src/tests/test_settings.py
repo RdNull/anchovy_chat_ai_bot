@@ -7,6 +7,7 @@ from src.settings import _Settings
 
 # --- trigger / fetch-cap wiring ---
 
+
 def default_of(name: str):
     """The declared default, not the resolved value.
 
@@ -47,6 +48,7 @@ def test_triggers_are_re_exported_at_module_level():
 
 
 # --- _fetch_caps_exceed_triggers ---
+
 
 def test_memory_cap_below_its_trigger_refuses_to_boot():
     with pytest.raises(ValidationError) as excinfo:
@@ -97,6 +99,7 @@ def test_initiative_cap_below_its_trigger_refuses_to_boot():
 # which would then crash `candidates[-1]` in `_claim_window`. A zero-or-negative
 # gap collapses every window to its single newest message. Field bounds refuse
 # both at boot rather than at the first affected run.
+
 
 def test_initiative_trigger_size_must_be_at_least_one():
     with pytest.raises(ValidationError):

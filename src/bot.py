@@ -5,8 +5,13 @@ from scheduler.asyncio import Scheduler
 from scheduler.trigger import Monday
 from telegram import Update
 from telegram.ext import (
-    Application, ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler,
-    MessageReactionHandler, filters,
+    Application,
+    ApplicationBuilder,
+    CallbackQueryHandler,
+    CommandHandler,
+    MessageHandler,
+    MessageReactionHandler,
+    filters,
 )
 
 from src import const, settings, tasks
@@ -78,43 +83,40 @@ def main() -> None:
 
     loop.create_task(log_sticker_corpus())
     loop.create_task(setup_scheduler())
-    app = ApplicationBuilder().token(
-        settings.TELEGRAM_TOKEN
-    ).application_class(ContextBindingApplication).http_version('2').post_init(post_init).build()
+    app = (
+        ApplicationBuilder()
+        .token(settings.TELEGRAM_TOKEN)
+        .application_class(ContextBindingApplication)
+        .http_version('2')
+        .post_init(post_init)
+        .build()
+    )
 
     mention_handler = MessageHandler(
-        filters.TEXT & (
-            filters.ChatType.PRIVATE |
-            filters.Mention(settings.BOT_NICKNAME) |
-            ReplyToBotFilter()
-        ),
-        handlers.handle_mention
+        filters.TEXT
+        & (filters.ChatType.PRIVATE | filters.Mention(settings.BOT_NICKNAME) | ReplyToBotFilter()),
+        handlers.handle_mention,
     )
     conversation_handler = MessageHandler(
-        (
-            filters.TEXT | filters.PHOTO | filters.Sticker.ALL | filters.ANIMATION
-        ) & (~filters.COMMAND),
-        handlers.handle_conversation
+        (filters.TEXT | filters.PHOTO | filters.Sticker.ALL | filters.ANIMATION)
+        & (~filters.COMMAND),
+        handlers.handle_conversation,
     )
     edits_handler = MessageHandler(
-        filters.UpdateType.EDITED_MESSAGE & filters.TEXT,
-        handlers.handle_message_edit
+        filters.UpdateType.EDITED_MESSAGE & filters.TEXT, handlers.handle_message_edit
     )
     reaction_handler = MessageReactionHandler(handlers.handle_message_reaction)
     media_handler = MessageHandler(
-        (filters.PHOTO | filters.Sticker.ALL | filters.ANIMATION) & (
-            filters.ChatType.PRIVATE |
-            filters.Mention(settings.BOT_NICKNAME) |
-            ReplyToBotFilter()
-        ), handlers.handle_media
+        (filters.PHOTO | filters.Sticker.ALL | filters.ANIMATION)
+        & (filters.ChatType.PRIVATE | filters.Mention(settings.BOT_NICKNAME) | ReplyToBotFilter()),
+        handlers.handle_media,
     )
     start_handler = CommandHandler('start', handlers.start)
     info_handler = CommandHandler('info', handlers.info)
     list_handler = CommandHandler('list', handlers.list_characters)
     random_handler = CommandHandler('random', handlers.random_character)
     select_callback_handler = CallbackQueryHandler(
-        handlers.select_character,
-        pattern="^select_char:"
+        handlers.select_character, pattern='^select_char:'
     )
 
     # commands

@@ -12,6 +12,7 @@ through to a code default and the bot runs on defaults with nothing in the logs.
 These tests close the class. A value the deploy job does not export is a red test here, not
 an incident three months from now.
 """
+
 import re
 from pathlib import Path
 
@@ -31,12 +32,20 @@ _STEP_LEVEL = frozenset({'IMAGE_TAG'})
 
 # Settings the bot ConfigMap deliberately does not carry — each for its own reason,
 # not an oversight the reverse-direction test below should catch.
-_CONFIGMAP_EXEMPT = frozenset({
-    # Secrets: manifests/secrets.yaml, guarded by deploy-k8s.sh, never a ConfigMap.
-    'TELEGRAM_TOKEN', 'DATABASE_URL', 'OPENROUTER_API_KEY', 'QDRANT_URL',
-    # Set only in manifests/blackbox/, read only by that process.
-    'BLACKBOX_CHAT_ID', 'BLACKBOX_HOST', 'BLACKBOX_PORT', 'BLACKBOX_MCP_ACCESS_TOKEN',
-})
+_CONFIGMAP_EXEMPT = frozenset(
+    {
+        # Secrets: manifests/secrets.yaml, guarded by deploy-k8s.sh, never a ConfigMap.
+        'TELEGRAM_TOKEN',
+        'DATABASE_URL',
+        'OPENROUTER_API_KEY',
+        'QDRANT_URL',
+        # Set only in manifests/blackbox/, read only by that process.
+        'BLACKBOX_CHAT_ID',
+        'BLACKBOX_HOST',
+        'BLACKBOX_PORT',
+        'BLACKBOX_MCP_ACCESS_TOKEN',
+    }
+)
 
 
 def required_vars() -> dict[str, set[str]]:
@@ -129,13 +138,19 @@ def test_the_invariant_is_not_vacuous():
     sources = required_vars()
 
     assert set(sources) >= {
-        'configmap.yaml', 'deployment.yaml', 'secrets.yaml',
-        'blackbox/secrets.yaml', 'blackbox/deployment.yaml', 'dns-sync.yaml',
+        'configmap.yaml',
+        'deployment.yaml',
+        'secrets.yaml',
+        'blackbox/secrets.yaml',
+        'blackbox/deployment.yaml',
+        'dns-sync.yaml',
         'otel-collector.yaml',
     }
     assert 'MONGO_INITDB_ROOT_PASSWORD' in sources['secrets.yaml']
     assert secret_keys() >= {
-        'MONGO_INITDB_ROOT_PASSWORD', 'BLACKBOX_MCP_ACCESS_TOKEN', 'LINODE_DNS_ACCESS_TOKEN',
+        'MONGO_INITDB_ROOT_PASSWORD',
+        'BLACKBOX_MCP_ACCESS_TOKEN',
+        'LINODE_DNS_ACCESS_TOKEN',
         'AXIOM_TOKEN',
     }
     assert len(deploy_job_env()) > 1
@@ -206,4 +221,6 @@ def test_no_injected_service_variable_shadows_a_setting():
             collisions[document['metadata']['name']] = sorted(clash)
 
     assert 'BLACKBOX_PORT' in injected['blackbox']  # the check sees the real collision
-    assert not collisions, f'injected Service env shadows settings — set enableServiceLinks: false: {collisions}'
+    assert not collisions, (
+        f'injected Service env shadows settings — set enableServiceLinks: false: {collisions}'
+    )

@@ -2,8 +2,14 @@ from datetime import datetime, timedelta, timezone
 
 from src import settings
 from src.memory.decay import (
-    CAP_REASON, TOPICS_FIELD, DecayCaps, EvictionRecord, apply_decay, reconcile,
-    resolve_watermark, summarize_churn,
+    CAP_REASON,
+    TOPICS_FIELD,
+    DecayCaps,
+    EvictionRecord,
+    apply_decay,
+    reconcile,
+    resolve_watermark,
+    summarize_churn,
 )
 from src.memory.dedup import ConflictRecord
 from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInfo, StructuredMemory
@@ -40,7 +46,9 @@ def make_memory(**participants: ParticipantInfo) -> StructuredMemory:
 
 
 def born(**entries: str) -> dict[str, DecayRecord]:
-    return {key: DecayRecord(born=stamp, cycles=0, field='recent') for key, stamp in entries.items()}
+    return {
+        key: DecayRecord(born=stamp, cycles=0, field='recent') for key, stamp in entries.items()
+    }
 
 
 def cycle(updated, prior, guard_records=None, now=NOW, prior_content=None, **overrides):
@@ -70,6 +78,7 @@ def events(churn) -> dict[str, str]:
 
 
 # --- reconcile ---
+
 
 def test_carry_preserves_born_and_increments_cycles():
     updated = make_memory(alice=ParticipantInfo(recent=['ездил в Лондон']))
@@ -119,12 +128,15 @@ def test_reconcile_returns_the_sidecar_only():
 
 # --- summarize_churn ---
 
+
 def test_vanished_entry_is_reported_and_not_carried():
     updated = make_memory(alice=ParticipantInfo(recent=['ездил в Лондон']))
-    prior = {'@alice': {
-        'ездил в лондон': DecayRecord(born=YESTERDAY, cycles=1, field='recent'),
-        'опоздал на созвон': DecayRecord(born=YESTERDAY, cycles=1, field='recent'),
-    }}
+    prior = {
+        '@alice': {
+            'ездил в лондон': DecayRecord(born=YESTERDAY, cycles=1, field='recent'),
+            'опоздал на созвон': DecayRecord(born=YESTERDAY, cycles=1, field='recent'),
+        }
+    }
 
     decay, _, churn = cycle(updated, prior)
 
@@ -135,10 +147,12 @@ def test_vanished_entry_is_reported_and_not_carried():
 def test_vanish_record_carries_the_field_it_was_lost_from():
     """`lost_recent` in the churn log is counted off this field."""
     updated = make_memory(alice=ParticipantInfo())
-    prior = {'@alice': {
-        'опоздал': DecayRecord(born=YESTERDAY, cycles=1, field='recent'),
-        'программист': DecayRecord(born=YESTERDAY, cycles=1, field='traits'),
-    }}
+    prior = {
+        '@alice': {
+            'опоздал': DecayRecord(born=YESTERDAY, cycles=1, field='recent'),
+            'программист': DecayRecord(born=YESTERDAY, cycles=1, field='traits'),
+        }
+    }
 
     _, _, churn = cycle(updated, prior)
 
@@ -198,7 +212,11 @@ def test_only_participant_field_evictions_suppress_a_vanish():
     updated = make_memory(alice=ParticipantInfo())
     prior_decay = {'@alice': {'x': DecayRecord(born=YESTERDAY, cycles=1, field='recent')}}
     non_participant_eviction = EvictionRecord(
-        nick='@alice', field=TOPICS_FIELD, text='x', reason=CAP_REASON, applied=True,
+        nick='@alice',
+        field=TOPICS_FIELD,
+        text='x',
+        reason=CAP_REASON,
+        applied=True,
     )
 
     churn = summarize_churn(
@@ -224,15 +242,19 @@ def test_state_list_evictions_carry_no_participant_and_never_reach_churn():
 def test_guard_dropped_entries_are_not_counted_as_vanished():
     """The guard runs first and mutates `updated`, so its drops are already gone."""
     updated = make_memory(alice=ParticipantInfo(traits=[]))
-    prior = {'@alice': {'ездит на велосипеде': DecayRecord(born=YESTERDAY, cycles=1, field='traits')}}
-    guard_records = [ConflictRecord(
-        text='Ездит на велосипеде!',
-        owner='@alice',
-        field='traits',
-        kept_owner='@bob',
-        reason='incumbent_wins',
-        removed=True,
-    )]
+    prior = {
+        '@alice': {'ездит на велосипеде': DecayRecord(born=YESTERDAY, cycles=1, field='traits')}
+    }
+    guard_records = [
+        ConflictRecord(
+            text='Ездит на велосипеде!',
+            owner='@alice',
+            field='traits',
+            kept_owner='@bob',
+            reason='incumbent_wins',
+            removed=True,
+        )
+    ]
 
     _, _, churn = cycle(updated, prior, guard_records)
 
@@ -242,15 +264,19 @@ def test_guard_dropped_entries_are_not_counted_as_vanished():
 def test_guard_reported_but_kept_entry_still_vanishes_if_absent():
     """`removed=False` means the guard left it alone, so its absence is a real loss."""
     updated = make_memory(alice=ParticipantInfo(traits=[]))
-    prior = {'@alice': {'ездит на велосипеде': DecayRecord(born=YESTERDAY, cycles=1, field='traits')}}
-    guard_records = [ConflictRecord(
-        text='ездит на велосипеде',
-        owner='@alice',
-        field='traits',
-        kept_owner=None,
-        reason='no_incumbent',
-        removed=False,
-    )]
+    prior = {
+        '@alice': {'ездит на велосипеде': DecayRecord(born=YESTERDAY, cycles=1, field='traits')}
+    }
+    guard_records = [
+        ConflictRecord(
+            text='ездит на велосипеде',
+            owner='@alice',
+            field='traits',
+            kept_owner=None,
+            reason='no_incumbent',
+            removed=False,
+        )
+    ]
 
     _, _, churn = cycle(updated, prior, guard_records)
 
@@ -259,7 +285,9 @@ def test_guard_reported_but_kept_entry_still_vanishes_if_absent():
 
 def test_promotion_preserves_born_flips_field_and_reports_promote():
     updated = make_memory(alice=ParticipantInfo(traits=['ездит на велосипеде']))
-    prior = {'@alice': {'ездит на велосипеде': DecayRecord(born=LAST_WEEK, cycles=4, field='recent')}}
+    prior = {
+        '@alice': {'ездит на велосипеде': DecayRecord(born=LAST_WEEK, cycles=4, field='recent')}
+    }
 
     decay, _, churn = cycle(updated, prior)
 
@@ -298,19 +326,23 @@ def test_every_trait_born_beside_a_lost_recent_is_a_candidate():
     Nothing pairs a reworded trait to the entry it replaced, so all of them are
     reported and the log prints `lost_recent` next to the count.
     """
-    updated = make_memory(alice=ParticipantInfo(
-        traits=['часто опаздывает', 'ночная сова', 'любит кофе']
-    ))
-    prior = {'@alice': {
-        'опоздал на созвон': DecayRecord(born=LAST_WEEK, cycles=3, field='recent'),
-        'сидел до утра': DecayRecord(born=LAST_WEEK, cycles=2, field='recent'),
-        'пил кофе': DecayRecord(born=LAST_WEEK, cycles=1, field='recent'),
-    }}
+    updated = make_memory(
+        alice=ParticipantInfo(traits=['часто опаздывает', 'ночная сова', 'любит кофе'])
+    )
+    prior = {
+        '@alice': {
+            'опоздал на созвон': DecayRecord(born=LAST_WEEK, cycles=3, field='recent'),
+            'сидел до утра': DecayRecord(born=LAST_WEEK, cycles=2, field='recent'),
+            'пил кофе': DecayRecord(born=LAST_WEEK, cycles=1, field='recent'),
+        }
+    }
 
     _, _, churn = cycle(updated, prior)
 
     assert [r.key for r in churn if r.event == 'promote_candidate'] == [
-        'любит кофе', 'ночная сова', 'часто опаздывает'
+        'любит кофе',
+        'ночная сова',
+        'часто опаздывает',
     ]
     assert len([r for r in churn if r.event == 'vanish']) == 3
 
@@ -337,7 +369,9 @@ def test_no_candidate_when_nothing_new_landed_in_traits():
 def test_verbatim_promotion_reports_promote_not_candidate():
     """When the text does survive the move, the exact signal still fires."""
     updated = make_memory(alice=ParticipantInfo(traits=['ездит на велосипеде']))
-    prior = {'@alice': {'ездит на велосипеде': DecayRecord(born=LAST_WEEK, cycles=3, field='recent')}}
+    prior = {
+        '@alice': {'ездит на велосипеде': DecayRecord(born=LAST_WEEK, cycles=3, field='recent')}
+    }
 
     _, _, churn = cycle(updated, prior)
 
@@ -346,7 +380,9 @@ def test_verbatim_promotion_reports_promote_not_candidate():
 
 def test_demotion_traits_to_recent_carries_rather_than_promotes():
     updated = make_memory(alice=ParticipantInfo(recent=['ездит на велосипеде']))
-    prior = {'@alice': {'ездит на велосипеде': DecayRecord(born=LAST_WEEK, cycles=4, field='traits')}}
+    prior = {
+        '@alice': {'ездит на велосипеде': DecayRecord(born=LAST_WEEK, cycles=4, field='traits')}
+    }
 
     decay, _, churn = cycle(updated, prior)
 
@@ -381,6 +417,7 @@ def test_reconcile_ignores_nicks_absent_from_updated():
 
 
 # --- resolve_watermark ---
+
 
 def test_resolve_watermark_uses_the_newest_message_timestamp():
     older = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc)
@@ -418,6 +455,7 @@ def test_resolve_watermark_returns_the_datetime_the_snapshot_is_stamped_with():
 
 # --- apply_decay: baseline caps ---
 
+
 def test_baseline_caps_apply_when_decay_disabled():
     items = [str(i) for i in range(8)]
     updated = StructuredMemory(
@@ -437,9 +475,13 @@ def test_baseline_caps_apply_when_decay_disabled():
 
 def test_state_caps_come_from_the_caps_object():
     """They were module constants, unreachable from settings and from any caller."""
-    updated = StructuredMemory(state=ChatState(
-        active_topics=['a', 'b', 'c'], open_questions=['a', 'b', 'c'], running_jokes=['a', 'b', 'c']
-    ))
+    updated = StructuredMemory(
+        state=ChatState(
+            active_topics=['a', 'b', 'c'],
+            open_questions=['a', 'b', 'c'],
+            running_jokes=['a', 'b', 'c'],
+        )
+    )
 
     apply_decay(updated, {}, caps(topics_keep=1, questions_keep=2, jokes_keep=0))
 
@@ -451,9 +493,13 @@ def test_state_caps_come_from_the_caps_object():
 def test_state_list_evictions_are_recorded():
     """They were a bare slice with no `EvictionRecord` at all — `MEMORY_DECAY` had
     never once reported a dropped joke, question or topic."""
-    updated = StructuredMemory(state=ChatState(
-        active_topics=['a', 'b', 'c'], open_questions=['a', 'b', 'c'], running_jokes=['a', 'b', 'c']
-    ))
+    updated = StructuredMemory(
+        state=ChatState(
+            active_topics=['a', 'b', 'c'],
+            open_questions=['a', 'b', 'c'],
+            running_jokes=['a', 'b', 'c'],
+        )
+    )
 
     evictions = apply_decay(updated, {}, caps(topics_keep=1, questions_keep=2, jokes_keep=0))
 
@@ -519,9 +565,7 @@ AGED = {'newest': NOW, 'middle': YESTERDAY, 'oldest': LAST_WEEK}
 def test_policy_keeps_newest_by_born_not_by_list_position():
     updated = make_memory(alice=ParticipantInfo(recent=list(AGED)))
 
-    evictions = apply_decay(
-        updated, {'@alice': born(**AGED)}, caps(enabled=True, recent_keep=2)
-    )
+    evictions = apply_decay(updated, {'@alice': born(**AGED)}, caps(enabled=True, recent_keep=2))
 
     # Survivors keep emission order, so the next cycle's positional cap stays sane.
     assert updated.participants['@alice'].recent == ['newest', 'middle']
@@ -536,9 +580,7 @@ def test_disabled_policy_records_both_what_it_would_drop_and_what_actually_went(
     """
     updated = make_memory(alice=ParticipantInfo(recent=list(AGED)))
 
-    evictions = apply_decay(
-        updated, {'@alice': born(**AGED)}, caps(enabled=False, recent_keep=2)
-    )
+    evictions = apply_decay(updated, {'@alice': born(**AGED)}, caps(enabled=False, recent_keep=2))
 
     assert updated.participants['@alice'].recent == ['middle', 'oldest']
     assert [(e.text, e.reason, e.applied) for e in evictions] == [
@@ -549,10 +591,12 @@ def test_disabled_policy_records_both_what_it_would_drop_and_what_actually_went(
 
 def test_cycles_evict_independently_of_the_cap():
     updated = make_memory(alice=ParticipantInfo(recent=['ancient', 'fresh']))
-    decay = {'@alice': {
-        'ancient': DecayRecord(born=LAST_WEEK, cycles=21, field='recent'),
-        'fresh': DecayRecord(born=NOW, cycles=0, field='recent'),
-    }}
+    decay = {
+        '@alice': {
+            'ancient': DecayRecord(born=LAST_WEEK, cycles=21, field='recent'),
+            'fresh': DecayRecord(born=NOW, cycles=0, field='recent'),
+        }
+    }
 
     evictions = apply_decay(updated, decay, caps(enabled=True))
 
@@ -581,6 +625,7 @@ def test_duplicate_entry_text_is_accounted_for_once_per_position():
 
 
 # --- apply_decay: sidecar pruning ---
+
 
 def test_evicted_keys_are_pruned_from_the_sidecar():
     updated = make_memory(alice=ParticipantInfo(recent=['oldest', 'newest']))
@@ -616,10 +661,12 @@ def test_sidecar_drops_participants_that_emptied():
 
 def test_traits_survive_the_recent_policy_untouched():
     updated = make_memory(alice=ParticipantInfo(traits=['программист'], recent=['опоздал']))
-    decay = {'@alice': {
-        'программист': DecayRecord(born=LAST_WEEK, cycles=99, field='traits'),
-        'опоздал': DecayRecord(born=NOW, cycles=0, field='recent'),
-    }}
+    decay = {
+        '@alice': {
+            'программист': DecayRecord(born=LAST_WEEK, cycles=99, field='traits'),
+            'опоздал': DecayRecord(born=NOW, cycles=0, field='recent'),
+        }
+    }
 
     apply_decay(updated, decay, caps(enabled=True))
 
@@ -629,6 +676,7 @@ def test_traits_survive_the_recent_policy_untouched():
 
 
 # --- active_topics stripped from the prompt input ---
+
 
 def test_prompt_input_strips_active_topics_without_mutating_current():
     content = StructuredMemory(
@@ -654,6 +702,7 @@ def test_prompt_input_is_empty_object_without_prior_memory():
 
 
 # --- settings wiring ---
+
 
 def test_decay_ships_enabled():
     assert settings.ENABLE_MEMORY_DECAY is True

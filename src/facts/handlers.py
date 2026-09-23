@@ -18,13 +18,16 @@ async def update_user_facts(new_messages: list[Message]) -> None:
         logger.info(
             'Extracted and saved facts',
             extra=event(
-                'FACT_EXTRACT', outcome='ok', count=len(facts),
+                'FACT_EXTRACT',
+                outcome='ok',
+                count=len(facts),
                 elapsed_ms=elapsed_ms(started),
             ),
         )
     except Exception:
         logger.error(
-            'Error extracting facts from messages', exc_info=True,
+            'Error extracting facts from messages',
+            exc_info=True,
             extra=event('FACT_EXTRACT', outcome='error'),
         )
 
@@ -34,7 +37,9 @@ async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
         logger.warning(
             'Skipping fact with invalid confidence',
             extra=event(
-                'FACT_REJECTED', reason='invalid_confidence', confidence=confidence,
+                'FACT_REJECTED',
+                reason='invalid_confidence',
+                confidence=confidence,
                 nickname=nickname,
             ),
         )
@@ -51,7 +56,9 @@ async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
             await update_fact(similar_fact.fact.id, confidence=new_confidence)
             logger.info(
                 'Reinforced fact confidence',
-                extra=event('FACT_REINFORCED', fact_id=similar_fact.fact.id, confidence=new_confidence),
+                extra=event(
+                    'FACT_REINFORCED', fact_id=similar_fact.fact.id, confidence=new_confidence
+                ),
             )
         else:
             await update_fact(similar_fact.fact.id, confidence=confidence, text=text)

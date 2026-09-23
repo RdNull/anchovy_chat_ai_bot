@@ -14,10 +14,7 @@ async def test_main_initialization(mocker):
     mock_builder = mocker.patch('src.bot.ApplicationBuilder')
 
     mock_app = MagicMock()
-    chain = (
-        mock_builder.return_value.token.return_value
-        .application_class.return_value.http_version.return_value
-    )
+    chain = mock_builder.return_value.token.return_value.application_class.return_value.http_version.return_value
     chain.post_init.return_value.build.return_value = mock_app
 
     main()
@@ -38,7 +35,7 @@ async def test_setup_scheduler(mocker):
 
     try:
         await asyncio.wait_for(setup_scheduler(), timeout=2.0)
-    except (asyncio.CancelledError, asyncio.TimeoutError):
+    except asyncio.CancelledError, asyncio.TimeoutError:
         pass
 
     assert mock_scheduler.call_count == 1
@@ -54,7 +51,9 @@ async def test_log_sticker_corpus_reports_size_and_flag(mocker):
     await log_sticker_corpus()
 
     assert mock_logger.info.call_args.kwargs['extra'] == {
-        'event': 'STICKER_CORPUS', 'size': 7, 'enabled': True,
+        'event': 'STICKER_CORPUS',
+        'size': 7,
+        'enabled': True,
     }
 
 
@@ -66,7 +65,9 @@ async def test_log_sticker_corpus_on_a_cold_start(mocker):
     await log_sticker_corpus()
 
     assert mock_logger.info.call_args.kwargs['extra'] == {
-        'event': 'STICKER_CORPUS', 'size': 0, 'enabled': False,
+        'event': 'STICKER_CORPUS',
+        'size': 0,
+        'enabled': False,
     }
 
 
@@ -78,8 +79,13 @@ async def test_context_binding_application_binds_ids_before_delegating(mocker):
 
     async def fake_process_update(self, update):
         record = logging.LogRecord(
-            name='bot', level=logging.INFO, pathname='x.py', lineno=1,
-            msg='handled', args=(), exc_info=None,
+            name='bot',
+            level=logging.INFO,
+            pathname='x.py',
+            lineno=1,
+            msg='handled',
+            args=(),
+            exc_info=None,
         )
         LogContextFilter().filter(record)
         observed['chat_id'] = getattr(record, 'chat_id', None)

@@ -2,14 +2,20 @@ from datetime import datetime, timezone
 
 from src import mongo
 from src.messages.repository import (
-    get_last_message, get_message_by_tg_id, get_messages, get_messages_count,
-    get_messages_count_since, save_message, update_message,
+    get_last_message,
+    get_message_by_tg_id,
+    get_messages,
+    get_messages_count,
+    get_messages_count_since,
+    save_message,
+    update_message,
 )
 from src.messages.models import Message, MessageReply, UpdateMessage, UserRole
 from src.tests.test_utils import make_message
 
 
 # --- save_message ---
+
 
 async def test_save_message_persists_fields():
     replied_msg = Message(
@@ -31,7 +37,7 @@ async def test_save_message_persists_fields():
             telegram_id=405,
             text='quoted text',
             nickname='other_user',
-        )
+        ),
     )
     assert msg.id is None
     await save_message(msg)
@@ -61,7 +67,7 @@ async def test_save_message_reply_skipped_when_original_not_in_db():
             telegram_id=999,
             text='original text not in db',
             nickname='ghost_user',
-        )
+        ),
     )
     await save_message(msg)
 
@@ -93,6 +99,7 @@ async def test_parse_old_format_reply():
 
 
 # --- get_messages ---
+
 
 async def test_get_messages_order():
     await save_message(make_message(text='first'))
@@ -212,6 +219,7 @@ async def test_get_messages_ascending_respects_from_date():
 
 # --- get_last_message ---
 
+
 async def test_get_last_message():
     await save_message(make_message(role=UserRole.USER, text='user msg'))
     await save_message(make_message(role=UserRole.AI, text='ai msg'))
@@ -246,6 +254,7 @@ async def test_get_message_by_telegram_id():
 
 # --- get_messages_count / get_messages_count_since ---
 
+
 async def test_get_messages_count():
     for _ in range(3):
         await save_message(make_message())
@@ -277,5 +286,3 @@ async def test_message_update():
     fetched_message = await get_last_message(old_message.chat_id)
     assert fetched_message
     assert fetched_message.text == 'updated text'
-
-

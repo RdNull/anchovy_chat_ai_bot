@@ -18,8 +18,13 @@ from src.embeddings.messages import messages_embeddings_client
 TOKEN = 'test-token-0123456789abcdef'
 
 TOOLS = {
-    'find_windows', 'get_window', 'list_messages', 'list_snapshots',
-    'get_memory', 'diff_memory', 'get_user_facts',
+    'find_windows',
+    'get_window',
+    'list_messages',
+    'list_snapshots',
+    'get_memory',
+    'diff_memory',
+    'get_user_facts',
 }
 
 _MCP_HEADERS = {
@@ -178,9 +183,16 @@ async def test_an_unauthenticated_request_never_reaches_the_app_or_its_body():
 
 def test_logs_carry_neither_the_token_nor_the_body(client, caplog):
     body_marker = 'body-marker-7c1e'
-    request = {**_INITIALIZE, 'params': {**_INITIALIZE['params'], 'clientInfo': {
-        'name': body_marker, 'version': '0',
-    }}}
+    request = {
+        **_INITIALIZE,
+        'params': {
+            **_INITIALIZE['params'],
+            'clientInfo': {
+                'name': body_marker,
+                'version': '0',
+            },
+        },
+    }
 
     with caplog.at_level(logging.DEBUG):
         client.post('/', json=request, headers=_authorized())

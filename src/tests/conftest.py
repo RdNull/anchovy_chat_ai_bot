@@ -15,7 +15,9 @@ def pytest_sessionstart(session):
     `src.mongo` to the real database and empty it one test at a time.
     """
     if not mongo.db.name.startswith('test'):
-        pytest.exit(f'refusing to run: tests would drop collections in {mongo.db.name!r}', returncode=2)
+        pytest.exit(
+            f'refusing to run: tests would drop collections in {mongo.db.name!r}', returncode=2
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -96,12 +98,22 @@ def make_bot():
 def mock_llm(mocker):
     llm = MagicMock()
     llm.bind_tools.return_value = llm
-    llm.ainvoke = AsyncMock(return_value=AIMessage(
-        content='',
-        tool_calls=[{'id': 'mock_tc1', 'name': 'answer_text', 'args': {'text': 'мок ответ'}, 'type': 'tool_call'}]
-    ))
+    llm.ainvoke = AsyncMock(
+        return_value=AIMessage(
+            content='',
+            tool_calls=[
+                {
+                    'id': 'mock_tc1',
+                    'name': 'answer_text',
+                    'args': {'text': 'мок ответ'},
+                    'type': 'tool_call',
+                }
+            ],
+        )
+    )
     mocker.patch('src.characters.character.ai.get_model', return_value=llm)
     return llm
+
 
 @pytest.fixture(autouse=True)
 def mock_langsmith(mocker):

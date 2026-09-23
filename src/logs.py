@@ -66,7 +66,7 @@ _RENAME_FIELDS = {
     'levelname': 'level',
     'name': 'logger',
     'lineno': 'line',
-    'message': 'msg',   # `msg`, not `message`: the collector moves this key back into `body`.
+    'message': 'msg',  # `msg`, not `message`: the collector moves this key back into `body`.
     'exc_info': 'stack',
 }
 
@@ -100,12 +100,33 @@ logger = logging.getLogger('bot')
 
 # Keys `logging.LogRecord` already owns. Passing one through `extra=` raises
 # "Attempt to overwrite 'x' in LogRecord" — a crash inside a log line.
-_RESERVED = frozenset({
-    'name', 'msg', 'args', 'levelname', 'levelno', 'pathname', 'filename', 'module',
-    'exc_info', 'exc_text', 'stack_info', 'lineno', 'funcName', 'created', 'msecs',
-    'relativeCreated', 'thread', 'threadName', 'processName', 'process', 'message',
-    'asctime', 'taskName',
-})
+_RESERVED = frozenset(
+    {
+        'name',
+        'msg',
+        'args',
+        'levelname',
+        'levelno',
+        'pathname',
+        'filename',
+        'module',
+        'exc_info',
+        'exc_text',
+        'stack_info',
+        'lineno',
+        'funcName',
+        'created',
+        'msecs',
+        'relativeCreated',
+        'thread',
+        'threadName',
+        'processName',
+        'process',
+        'message',
+        'asctime',
+        'taskName',
+    }
+)
 # Owned by the `container` operator in the collector; a collision silently overwrites the CRI
 # metadata during the attributes merge.
 _COLLECTOR_OWNED = frozenset({'log', 'logtag'})

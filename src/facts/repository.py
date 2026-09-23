@@ -65,12 +65,14 @@ async def save_fact(fact: UserFact) -> UserFact:
 
 async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
     up_to_date_ts = up_to_date.timestamp()
-    cursor = mongo.facts.find({
-        '$or': [
-            {'updated_at': {'$lt': up_to_date_ts}},
-            {'updated_at': {'$exists': False}, 'created_at': {'$lt': up_to_date_ts}},
-        ]
-    })
+    cursor = mongo.facts.find(
+        {
+            '$or': [
+                {'updated_at': {'$lt': up_to_date_ts}},
+                {'updated_at': {'$exists': False}, 'created_at': {'$lt': up_to_date_ts}},
+            ]
+        }
+    )
     facts = await cursor.to_list(length=1000)
     logger.info('Decaying stale facts', extra=event('FACT_DECAY_RUN', count=len(facts)))
 
@@ -87,11 +89,12 @@ async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
             logger.info(
                 'Fact deleted, confidence decayed to zero',
                 extra=event(
-                    'FACT_DELETED', fact_id=str(fact_data['_id']), reason='confidence_zero',
+                    'FACT_DELETED',
+                    fact_id=str(fact_data['_id']),
+                    reason='confidence_zero',
                 ),
             )
         else:
             await mongo.facts.update_one(
-                {'_id': fact_data['_id']},
-                {'$set': {'confidence': new_confidence}}
+                {'_id': fact_data['_id']}, {'$set': {'confidence': new_confidence}}
             )

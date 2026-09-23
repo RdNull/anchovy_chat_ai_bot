@@ -28,12 +28,14 @@ async def _seed_chat(count: int) -> list:
 
 
 async def _save_snapshot(created_at: datetime, content: dict, decay: dict | None = None):
-    await mongo.memory.insert_one({
-        'chat_id': CHAT_ID,
-        'content': content,
-        'decay': decay or {},
-        'created_at': created_at.timestamp(),
-    })
+    await mongo.memory.insert_one(
+        {
+            'chat_id': CHAT_ID,
+            'content': content,
+            'decay': decay or {},
+            'created_at': created_at.timestamp(),
+        }
+    )
 
 
 def _points(*hits):
@@ -69,6 +71,7 @@ def facts_qdrant(mocker):
 
 # --- chat default ---
 
+
 async def test_chat_id_falls_back_to_the_configured_chat(mocker):
     mocker.patch.object(settings, 'BLACKBOX_CHAT_ID', CHAT_ID)
     await _save_snapshot(T0, {'participants': {}})
@@ -86,6 +89,7 @@ async def test_missing_chat_id_without_a_default_raises(mocker):
 
 
 # --- find_windows ---
+
 
 async def test_find_windows_skips_a_window_an_earlier_hit_covers(messages_qdrant):
     ids = [m.id for m in await _seed_chat(12)]
@@ -172,6 +176,7 @@ async def test_find_windows_skips_stale_hits_among_good_ones(messages_qdrant):
 
 # --- get_window ---
 
+
 async def test_get_window_memory_format_matches_extraction():
     messages = await _seed_chat(7)
 
@@ -221,6 +226,7 @@ async def test_get_window_unknown_message_raises():
 
 
 # --- list_messages ---
+
 
 async def _say(text: str, role: UserRole = UserRole.USER, nickname: str = 'alice'):
     await save_message(make_message(chat_id=CHAT_ID, role=role, text=text, nickname=nickname))
@@ -275,12 +281,18 @@ async def test_list_messages_clamps_the_limit(mocker):
 
 # --- list_snapshots / get_memory ---
 
+
 async def test_list_snapshots_newest_first_with_counts():
     await _save_snapshot(T0, {'participants': {'alice': {'traits': ['a'], 'recent': []}}})
-    await _save_snapshot(T0 + timedelta(days=1), {'participants': {
-        'bob': {'traits': ['b', 'c'], 'recent': ['d']},
-        'alice': {'traits': ['a']},
-    }})
+    await _save_snapshot(
+        T0 + timedelta(days=1),
+        {
+            'participants': {
+                'bob': {'traits': ['b', 'c'], 'recent': ['d']},
+                'alice': {'traits': ['a']},
+            }
+        },
+    )
 
     snapshots = await queries.list_snapshots(CHAT_ID)
 
@@ -386,13 +398,15 @@ NEWER = {
 def test_diff_snapshots_classifies_every_entry():
     diff = queries.diff_snapshots(OLDER, NEWER)
 
-    assert diff['births'] == [{
-        'nick': 'alice',
-        'field': 'traits',
-        'text': 'катается на велосипеде',
-        'born': '26-09-02 12:00',
-        'cycles': 0,
-    }]
+    assert diff['births'] == [
+        {
+            'nick': 'alice',
+            'field': 'traits',
+            'text': 'катается на велосипеде',
+            'born': '26-09-02 12:00',
+            'cycles': 0,
+        }
+    ]
     assert diff['vanishes'] == [{'nick': 'alice', 'field': 'recent', 'text': 'Сдала экзамен'}]
     assert diff['promotions'] == [
         {'nick': 'alice', 'field': 'traits', 'text': 'купила велосипед'},
@@ -480,12 +494,15 @@ async def test_diff_memory_before_any_snapshot_raises():
 
 # --- get_user_facts ---
 
+
 async def test_get_user_facts_without_query_orders_by_confidence(facts_qdrant):
-    await mongo.facts.insert_many([
-        {'nickname': 'alice', 'text': 'low', 'confidence': 0.5},
-        {'nickname': 'alice', 'text': 'high', 'confidence': 0.9},
-        {'nickname': 'bob', 'text': 'other', 'confidence': 1.0},
-    ])
+    await mongo.facts.insert_many(
+        [
+            {'nickname': 'alice', 'text': 'low', 'confidence': 0.5},
+            {'nickname': 'alice', 'text': 'high', 'confidence': 0.9},
+            {'nickname': 'bob', 'text': 'other', 'confidence': 1.0},
+        ]
+    )
 
     facts = await queries.get_user_facts('alice')
 
@@ -498,7 +515,9 @@ async def test_get_user_facts_without_query_orders_by_confidence(facts_qdrant):
 
 async def test_get_user_facts_accepts_the_memory_form_of_a_nick(facts_qdrant):
     """Memory keys participants as `@nick`; facts are stored bare, since `upsert_fact` strips it."""
-    result = await mongo.facts.insert_one({'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8})
+    result = await mongo.facts.insert_one(
+        {'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8}
+    )
     facts_qdrant.query_points.return_value = _points((0.9, {'id': str(result.inserted_id)}))
 
     by_confidence = await queries.get_user_facts('@alice')
@@ -510,10 +529,12 @@ async def test_get_user_facts_accepts_the_memory_form_of_a_nick(facts_qdrant):
 
 
 async def test_get_user_facts_with_query_dedupes_duplicated_points(facts_qdrant):
-    result = await mongo.facts.insert_many([
-        {'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8},
-        {'nickname': 'alice', 'text': 'owns a bike', 'confidence': 0.6},
-    ])
+    result = await mongo.facts.insert_many(
+        [
+            {'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8},
+            {'nickname': 'alice', 'text': 'owns a bike', 'confidence': 0.6},
+        ]
+    )
     coffee, bike = (str(i) for i in result.inserted_ids)
     facts_qdrant.query_points.return_value = _points(
         (0.9, {'id': coffee}),

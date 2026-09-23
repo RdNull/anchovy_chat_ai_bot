@@ -5,10 +5,7 @@ from src.tasks.memory import run_memory_cleanup
 
 
 async def test_run_memory_cleanup_calls_delete(mocker):
-    mock_delete = mocker.patch(
-        'src.tasks.memory.delete_old_memories',
-        AsyncMock()
-    )
+    mock_delete = mocker.patch('src.tasks.memory.delete_old_memories', AsyncMock())
 
     await run_memory_cleanup()
 
@@ -18,8 +15,7 @@ async def test_run_memory_cleanup_calls_delete(mocker):
 
 async def test_run_memory_cleanup_handles_errors(mocker):
     mocker.patch(
-        'src.tasks.memory.delete_old_memories',
-        AsyncMock(side_effect=RuntimeError('db error'))
+        'src.tasks.memory.delete_old_memories', AsyncMock(side_effect=RuntimeError('db error'))
     )
     mock_logger = mocker.patch('src.tasks.memory.logger')
 

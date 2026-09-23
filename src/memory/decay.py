@@ -209,7 +209,9 @@ def _cut(size: int, keep: int) -> int:
 
 
 def _evict_state_list(
-    field: str, entries: list[str], keep: int,
+    field: str,
+    entries: list[str],
+    keep: int,
 ) -> tuple[list[str], list[EvictionRecord]]:
     """Applies the positional cap to one `ChatState` list and records what it costs.
 
@@ -244,7 +246,8 @@ def _policy_selection(
         `(kept, expired)`, both sets of indices into `entries`.
     """
     expired = {
-        index for index, entry in enumerate(entries)
+        index
+        for index, entry in enumerate(entries)
         if (record := records.get(normalize(entry))) and record.cycles > max_cycles
     }
 
@@ -316,13 +319,15 @@ def apply_decay(
                 reason = BASELINE_REASON
             else:
                 reason = CYCLES_REASON if index in expired else CAP_REASON
-            evictions.append(EvictionRecord(
-                nick=nick,
-                field=RECENT_FIELD,
-                text=entry,
-                reason=reason,
-                applied=index not in kept,
-            ))
+            evictions.append(
+                EvictionRecord(
+                    nick=nick,
+                    field=RECENT_FIELD,
+                    text=entry,
+                    reason=reason,
+                    applied=index not in kept,
+                )
+            )
 
         trait_cut = _cut(len(info.traits), caps.traits_keep)
         evictions.extend(
@@ -414,9 +419,9 @@ def summarize_churn(
         for key, record in decay.get(nick, {}).items():
             text = _sample_text(updated, nick, key)
             if record.cycles == 0:
-                churn.append(ChurnRecord(
-                    nick=nick, key=key, text=text, field=record.field, event=BIRTH
-                ))
+                churn.append(
+                    ChurnRecord(nick=nick, key=key, text=text, field=record.field, event=BIRTH)
+                )
                 continue
 
             previous = prior.get(key)
@@ -425,13 +430,15 @@ def summarize_churn(
                 and previous.field == RECENT_FIELD
                 and record.field == TRAITS_FIELD
             )
-            churn.append(ChurnRecord(
-                nick=nick,
-                key=key,
-                text=text,
-                field=record.field,
-                event=PROMOTE if promoted else CARRY,
-            ))
+            churn.append(
+                ChurnRecord(
+                    nick=nick,
+                    key=key,
+                    text=text,
+                    field=record.field,
+                    event=PROMOTE if promoted else CARRY,
+                )
+            )
 
     for nick, prior in prior_decay.items():
         survivors = decay.get(nick, {})
@@ -439,10 +446,15 @@ def summarize_churn(
         for key, record in prior.items():
             if key in survivors or (nick, key) in accounted:
                 continue
-            churn.append(ChurnRecord(
-                nick=nick, key=key, text=_sample_text(prior_content, nick, key),
-                field=record.field, event=VANISH,
-            ))
+            churn.append(
+                ChurnRecord(
+                    nick=nick,
+                    key=key,
+                    text=_sample_text(prior_content, nick, key),
+                    field=record.field,
+                    event=VANISH,
+                )
+            )
             if record.field == RECENT_FIELD:
                 lost_recent += 1
 
@@ -453,7 +465,8 @@ def summarize_churn(
         # reworded trait to the entry it replaced, so reporting a single candidate
         # made a nick that generalised three events look like it lost two.
         born_traits = sorted(
-            key for key, record in survivors.items()
+            key
+            for key, record in survivors.items()
             if record.field == TRAITS_FIELD and record.cycles == 0
         )
         churn.extend(

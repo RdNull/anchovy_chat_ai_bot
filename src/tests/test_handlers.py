@@ -9,17 +9,23 @@ from src.chat_settings import repository as chat_settings_repository
 from src.media import create_media_description
 from src.messages import handlers
 from src.messages.models import (
-    Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UpdateMessage,
+    Message,
+    MessageMedia,
+    MessageMediaStatus,
+    MessageMediaTypes,
+    UpdateMessage,
     UserRole,
 )
 from src.messages.parsing import _get_message_medium
 from src.messages.repository import (
-    get_messages, save_message,
+    get_messages,
+    save_message,
 )
 from src.messages.response import fetch_last_messages
 
 
 # --- /start ---
+
 
 async def test_start_replies(make_update, make_context):
     update = make_update()
@@ -28,6 +34,7 @@ async def test_start_replies(make_update, make_context):
 
 
 # --- /info ---
+
 
 async def test_info_replies_with_character_name(make_update, make_context):
     code = next(iter(CHARACTERS))
@@ -43,8 +50,10 @@ async def test_info_replies_with_character_name(make_update, make_context):
 
 # --- /list ---
 
+
 async def test_list_characters_sends_keyboard(make_update, make_context):
     from telegram import InlineKeyboardMarkup
+
     update = make_update()
 
     await handlers.list_characters(update, make_context)
@@ -54,6 +63,7 @@ async def test_list_characters_sends_keyboard(make_update, make_context):
 
 
 # --- /random ---
+
 
 async def test_random_character_sets_valid_code(make_update, make_context):
     update = make_update()
@@ -66,6 +76,7 @@ async def test_random_character_sets_valid_code(make_update, make_context):
 
 
 # --- select_character callback ---
+
 
 async def test_select_character_updates_context(make_update, make_context):
     code = next(iter(CHARACTERS))
@@ -84,6 +95,7 @@ async def test_select_character_updates_context(make_update, make_context):
 
 # --- @restricted access control ---
 
+
 async def test_restricted_blocks_unauthorized_user(make_update, make_context):
     update = make_update(user_id=999, chat_id=999)
 
@@ -96,6 +108,7 @@ async def test_restricted_blocks_unauthorized_user(make_update, make_context):
 
 
 # --- parse_user_message ---
+
 
 def make_sticker(file_id='sticker_fid', unique_id='sticker_uid', emoji='😀', set_name='pack'):
     """A real `telegram.Sticker`, not a MagicMock.
@@ -213,10 +226,9 @@ async def test_parse_user_message_with_animation_is_not_a_sticker(make_update):
 
 # --- handle_conversation ---
 
+
 async def test_handle_conversation_pushes_to_history(make_update, make_context, mocker):
-    mocker.patch(
-        'src.messages.handlers.run_followups', new_callable=AsyncMock
-    )
+    mocker.patch('src.messages.handlers.run_followups', new_callable=AsyncMock)
     update = make_update(chat_id=222)
 
     await handlers.handle_conversation(update, make_context)
@@ -228,10 +240,9 @@ async def test_handle_conversation_pushes_to_history(make_update, make_context, 
 
 # --- generate_answer ---
 
+
 async def test_generate_answer_full_flow(make_update, make_context, make_bot, mock_llm, mocker):
-    mocker.patch(
-        'src.messages.response.run_followups', new_callable=AsyncMock
-    )
+    mocker.patch('src.messages.response.run_followups', new_callable=AsyncMock)
     bot = make_bot()
     mocker.patch('src.messages.response.get_bot', return_value=bot)
     update = make_update(text='question', chat_id=222)
@@ -253,19 +264,19 @@ async def test_generate_answer_full_flow(make_update, make_context, make_bot, mo
 async def test_error_handler(mocker):
     update = MagicMock()
     context = MagicMock()
-    context.error = ValueError("Something went wrong")
+    context.error = ValueError('Something went wrong')
 
-    mock_logger = mocker.patch("src.messages.handlers.logger")
+    mock_logger = mocker.patch('src.messages.handlers.logger')
 
     await handlers.error_handler(update, context)
 
     assert mock_logger.error.call_count == 1
-    assert "Exception while handling an update" in mock_logger.error.call_args[0][0]
+    assert 'Exception while handling an update' in mock_logger.error.call_args[0][0]
 
 
 async def test_handle_mention(make_update, make_context, mocker):
     update = make_update()
-    mock_gen = mocker.patch("src.messages.handlers.generate_answer", AsyncMock())
+    mock_gen = mocker.patch('src.messages.handlers.generate_answer', AsyncMock())
 
     await handlers.handle_mention(update, make_context)
 
@@ -278,14 +289,14 @@ async def test_handle_media(make_update, make_context, mocker):
     mock_photo = MagicMock()
     mock_photo.width = 100
     mock_photo.height = 100
-    mock_photo.file_id = "f1"
-    mock_photo.file_unique_id = "fu1"
+    mock_photo.file_id = 'f1'
+    mock_photo.file_unique_id = 'fu1'
     update.message.photo = [mock_photo]
 
     # Mock bot.get_file to be an AsyncMock
     make_context.bot.get_file = AsyncMock()
 
-    mock_gen = mocker.patch("src.messages.handlers.generate_answer", AsyncMock())
+    mock_gen = mocker.patch('src.messages.handlers.generate_answer', AsyncMock())
 
     await handlers.handle_media(update, make_context)
 
@@ -306,7 +317,9 @@ async def test_handle_media_no_message_returns_early(make_context, mocker):
 
 
 async def test_handle_conversation_dispatches_pipeline_for_described_media(
-    mocker, make_update, make_context,
+    mocker,
+    make_update,
+    make_context,
 ):
     # A sticker the group has sent before comes back READY from the description row.
     # Gating dispatch on PENDING would skip the pipeline entirely and leave
@@ -334,6 +347,7 @@ async def test_handle_conversation_dispatches_pipeline_for_described_media(
 
 # --- handle_conversation early return ---
 
+
 async def test_handle_conversation_no_message_returns_early(make_context, mocker):
     update = MagicMock()
     update.message = None
@@ -348,6 +362,7 @@ async def test_handle_conversation_no_message_returns_early(make_context, mocker
 
 
 # --- handle_conversation with pending media ---
+
 
 async def test_handle_conversation_creates_media_task(make_update, make_context, mocker):
     mocker.patch('src.messages.handlers.run_followups', new_callable=AsyncMock)
@@ -366,12 +381,14 @@ async def test_handle_conversation_creates_media_task(make_update, make_context,
 
     # Allow the created task to run
     import asyncio
+
     await asyncio.sleep(0)
 
     assert mock_handle_media.call_count == 1
 
 
 # --- generate_answer early return ---
+
 
 async def test_generate_answer_no_message_returns_early(make_context, mocker):
     update = MagicMock()
@@ -384,6 +401,7 @@ async def test_generate_answer_no_message_returns_early(make_context, mocker):
 
 
 # --- parse_user_message reply with medium ---
+
 
 async def test_parse_user_message_reply_with_sticker(make_update):
     sticker = make_sticker()
@@ -450,6 +468,7 @@ async def test_handle_message_edit_no_message_found(mocker, make_update, make_co
 
 # --- fetch_last_messages ---
 
+
 async def test_fetch_last_messages_no_pending_media_returns_without_wait(mocker):
     # The triggering message is no longer trimmed off: it stays in the window so
     # _format_previous_messages can mark it with [TARGET].
@@ -466,10 +485,15 @@ async def test_fetch_last_messages_no_pending_media_returns_without_wait(mocker)
 
 async def test_fetch_last_messages_with_ready_media_no_wait(mocker):
     msg_ready = Message(
-        chat_id=222, nickname='user', role=UserRole.USER, text=None,
+        chat_id=222,
+        nickname='user',
+        role=UserRole.USER,
+        text=None,
         media=MessageMedia(
-            unique_id='uid1', media_id='fid1',
-            type=MessageMediaTypes.IMAGE, status=MessageMediaStatus.READY,
+            unique_id='uid1',
+            media_id='fid1',
+            type=MessageMediaTypes.IMAGE,
+            status=MessageMediaStatus.READY,
         ),
     )
     msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
@@ -484,10 +508,15 @@ async def test_fetch_last_messages_with_ready_media_no_wait(mocker):
 
 async def test_fetch_last_messages_pending_media_waits_and_refetches(mocker):
     msg_pending = Message(
-        chat_id=222, nickname='user', role=UserRole.USER, text=None,
+        chat_id=222,
+        nickname='user',
+        role=UserRole.USER,
+        text=None,
         media=MessageMedia(
-            unique_id='uid1', media_id='fid1',
-            type=MessageMediaTypes.IMAGE, status=MessageMediaStatus.PENDING,
+            unique_id='uid1',
+            media_id='fid1',
+            type=MessageMediaTypes.IMAGE,
+            status=MessageMediaStatus.PENDING,
         ),
     )
     msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
@@ -509,10 +538,15 @@ async def test_fetch_last_messages_pending_media_waits_and_refetches(mocker):
 
 async def test_fetch_last_messages_processing_media_waits(mocker):
     msg_processing = Message(
-        chat_id=222, nickname='user', role=UserRole.USER, text=None,
+        chat_id=222,
+        nickname='user',
+        role=UserRole.USER,
+        text=None,
         media=MessageMedia(
-            unique_id='uid2', media_id='fid2',
-            type=MessageMediaTypes.IMAGE, status=MessageMediaStatus.PROCESSING,
+            unique_id='uid2',
+            media_id='fid2',
+            type=MessageMediaTypes.IMAGE,
+            status=MessageMediaStatus.PROCESSING,
         ),
     )
     msg_current = Message(chat_id=222, nickname='user', role=UserRole.USER, text='current')
@@ -531,6 +565,7 @@ async def test_fetch_last_messages_processing_media_waits(mocker):
 
 
 # --- _get_message_medium ---
+
 
 def test_get_message_medium_sticker():
     tg_msg = MagicMock()

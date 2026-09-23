@@ -2,8 +2,11 @@ import asyncio
 import random
 
 from telegram import (
-    InlineKeyboardButton, InlineKeyboardMarkup, Message as TgMessage,
-    ReactionTypeEmoji, Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message as TgMessage,
+    ReactionTypeEmoji,
+    Update,
 )
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
@@ -15,8 +18,10 @@ from src.media.handlers import handle_media_message
 from src.messages.models import UpdateMessage
 from .parsing import parse_user_message
 from .repository import (
-    get_message_by_tg_id, save_message,
-    update_message, update_message_reactions,
+    get_message_by_tg_id,
+    save_message,
+    update_message,
+    update_message_reactions,
 )
 from .followups import run_followups
 from .response import generate_answer
@@ -42,7 +47,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = getattr(getattr(update, 'effective_user', None), 'id', None)
     with log_context(chat_id=chat_id, user_id=user_id):
         logger.error(
-            'Exception while handling an update', exc_info=context.error,
+            'Exception while handling an update',
+            exc_info=context.error,
             extra=event('UPDATE_FAILED'),
         )
 
@@ -55,9 +61,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = escape_markdown_v2(character.display_name)
     description = escape_markdown_v2(character.description)
     await update.message.reply_text(
-        f"*Персонаж:* {name}\n"
-        f"*Описание:* {description}",
-        parse_mode="MarkdownV2"
+        f'*Персонаж:* {name}\n*Описание:* {description}', parse_mode='MarkdownV2'
     )
 
 
@@ -65,12 +69,12 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info('Command handled', extra=event('COMMAND_HANDLED', command='list'))
     keyboard = [
-        [InlineKeyboardButton(character.display_name, callback_data=f"select_char:{code}")]
+        [InlineKeyboardButton(character.display_name, callback_data=f'select_char:{code}')]
         for code, character in CHARACTERS.items()
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выберите персонажа:", reply_markup=reply_markup)
+    await update.message.reply_text('Выберите персонажа:', reply_markup=reply_markup)
 
 
 @restricted
@@ -79,14 +83,15 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await query.answer()
 
-    character_code = query.data.split(":")[1]
+    character_code = query.data.split(':')[1]
     logger.info(
-        'Character set', extra=event('CHARACTER_SET', character=character_code, source='select'),
+        'Character set',
+        extra=event('CHARACTER_SET', character=character_code, source='select'),
     )
     await set_chat_character(chat_id, character_code)
     character = CHARACTERS[character_code]
 
-    await query.edit_message_text(f"Персонаж изменён на: {character.display_name}")
+    await query.edit_message_text(f'Персонаж изменён на: {character.display_name}')
 
 
 @restricted
@@ -94,12 +99,13 @@ async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     character_code = random.choice(list(CHARACTERS.keys()))
     logger.info(
-        'Character set', extra=event('CHARACTER_SET', character=character_code, source='random'),
+        'Character set',
+        extra=event('CHARACTER_SET', character=character_code, source='random'),
     )
     await set_chat_character(chat_id, character_code)
     character = CHARACTERS[character_code]
 
-    await update.message.reply_text(f"Выпал персонаж: {character.display_name}")
+    await update.message.reply_text(f'Выпал персонаж: {character.display_name}')
 
 
 @restricted
@@ -119,8 +125,10 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     logger.info(
         'Message received',
         extra=event(
-            'MESSAGE_RECEIVED', nickname=user_message.nickname,
-            has_media=bool(user_message.media), text_len=len(user_message.text or ''),
+            'MESSAGE_RECEIVED',
+            nickname=user_message.nickname,
+            has_media=bool(user_message.media),
+            text_len=len(user_message.text or ''),
         ),
     )
 
@@ -160,12 +168,8 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
         return
 
     user_nickname = reaction_update.user.username or reaction_update.user.first_name
-    old_emojis = [
-        r.emoji for r in reaction_update.old_reaction if isinstance(r, ReactionTypeEmoji)
-    ]
-    new_emojis = [
-        r.emoji for r in reaction_update.new_reaction if isinstance(r, ReactionTypeEmoji)
-    ]
+    old_emojis = [r.emoji for r in reaction_update.old_reaction if isinstance(r, ReactionTypeEmoji)]
+    new_emojis = [r.emoji for r in reaction_update.new_reaction if isinstance(r, ReactionTypeEmoji)]
     await update_message_reactions(message, user_nickname, old_emojis, new_emojis)
 
 
@@ -182,7 +186,8 @@ async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     message = await get_message_by_tg_id(
-        chat_id=edited_tg_message.chat_id, telegram_id=edited_tg_message.message_id,
+        chat_id=edited_tg_message.chat_id,
+        telegram_id=edited_tg_message.message_id,
     )
     if not message:
         return

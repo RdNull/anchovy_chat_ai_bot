@@ -12,11 +12,16 @@ async def parse_user_message(update) -> Message | None:
     reply = None
     if update.message.reply_to_message:
         reply_msg = update.message.reply_to_message
-        reply_nickname = reply_msg.from_user.username or reply_msg.from_user.first_name if reply_msg.from_user else 'unknown'
+        reply_nickname = (
+            reply_msg.from_user.username or reply_msg.from_user.first_name
+            if reply_msg.from_user
+            else 'unknown'
+        )
         reply_media = None
         if reply_medium := _get_message_medium(reply_msg):
             reply_media = await get_message_media_data(
-                reply_medium.file_id, reply_medium.file_unique_id,
+                reply_medium.file_id,
+                reply_medium.file_unique_id,
             )
             _mark_sticker(reply_media, reply_medium)
 
@@ -42,7 +47,7 @@ async def parse_user_message(update) -> Message | None:
         text=message_text,
         reply=reply,
         nickname=user_nickname,
-        media=media
+        media=media,
     )
 
 

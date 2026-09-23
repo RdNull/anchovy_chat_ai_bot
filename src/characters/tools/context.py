@@ -15,7 +15,7 @@ from src.media.repository import get_recent_sticker_ids
 from src.prompt_manager import prompt_manager
 from src.rate_limit import SlidingWindowRateLimiter
 
-SEARCH_MESSAGES_DESCRIPTION = '''
+SEARCH_MESSAGES_DESCRIPTION = """
 [context]: Поиск сообщений чата по запросу
 Не используй для того, что уже есть в текущей истории
 Args:
@@ -24,7 +24,7 @@ Args:
 Returns:
     Список найденных блоков сообщений с оценками релевантности (`score`; 0..1) и сообщениями (`messages`)
     Блоки расположены в порядке релевантности; сообщения внутри блока идут по порядку
-'''
+"""
 
 
 @tool(description=SEARCH_MESSAGES_DESCRIPTION)
@@ -32,7 +32,9 @@ async def search_messages(search_query: str, limit: int = 3) -> list[dict]:
     if limit < 0 or limit > 5:
         logger.warning(
             'Clamping tool argument',
-            extra=event('TOOL_ARG_CLAMPED', tool='search_messages', arg='limit', given=limit, used=3),
+            extra=event(
+                'TOOL_ARG_CLAMPED', tool='search_messages', arg='limit', given=limit, used=3
+            ),
         )
         limit = 3
 
@@ -44,8 +46,11 @@ async def search_messages(search_query: str, limit: int = 3) -> list[dict]:
     logger.info(
         'Message search finished',
         extra=event(
-            'TOOL_MESSAGE_SEARCH', query_len=len(search_query), limit=limit,
-            results=len(related_messages), elapsed_ms=elapsed_ms(started),
+            'TOOL_MESSAGE_SEARCH',
+            query_len=len(search_query),
+            limit=limit,
+            results=len(related_messages),
+            elapsed_ms=elapsed_ms(started),
             outcome='ok' if related_messages else 'empty',
         ),
     )
@@ -53,16 +58,17 @@ async def search_messages(search_query: str, limit: int = 3) -> list[dict]:
         {
             'score': rm.score,
             'messages': '\n'.join([m.embedding_text for m in rm.messages]),
-        } for rm in related_messages
+        }
+        for rm in related_messages
     ]
 
 
-GET_USER_FACT_TOOL_DESCRIPTION = '''
+GET_USER_FACT_TOOL_DESCRIPTION = """
 [context]: Получить КЛЮЧЕВЫЕ факты о пользователе
 Args:
 - nickname: Никнейм пользователя
 - limit: Количество фактов для получения
-'''
+"""
 
 
 @tool(description=GET_USER_FACT_TOOL_DESCRIPTION)
@@ -70,7 +76,9 @@ async def get_user_facts(nickname: str, limit: int = 5) -> list[dict]:
     if limit < 0 or limit > 20:  # dumb check, but I don't trust AI
         logger.warning(
             'Clamping tool argument',
-            extra=event('TOOL_ARG_CLAMPED', tool='get_user_facts', arg='limit', given=limit, used=5),
+            extra=event(
+                'TOOL_ARG_CLAMPED', tool='get_user_facts', arg='limit', given=limit, used=5
+            ),
         )
         limit = 5
 
@@ -80,17 +88,18 @@ async def get_user_facts(nickname: str, limit: int = 5) -> list[dict]:
     logger.info(
         'User facts retrieved',
         extra=event(
-            'TOOL_USER_FACTS', nickname=nickname, results=len(facts), limit=limit,
-            elapsed_ms=elapsed_ms(started), outcome='ok' if facts else 'empty',
+            'TOOL_USER_FACTS',
+            nickname=nickname,
+            results=len(facts),
+            limit=limit,
+            elapsed_ms=elapsed_ms(started),
+            outcome='ok' if facts else 'empty',
         ),
     )
-    return [
-        fact.model_dump(include={'text', 'confidence'})
-        for fact in facts
-    ]
+    return [fact.model_dump(include={'text', 'confidence'}) for fact in facts]
 
 
-SEARCH_WEB_DESCRIPTION = '''
+SEARCH_WEB_DESCRIPTION = """
 [context]: Поиск фактов в интернете
 Только для проверяемых фактов: цены, даты, счета матчей, релизы, кто где выиграл
 Не используй для мнений, оценок, шуток и для того, что уже есть в текущей истории
@@ -102,7 +111,7 @@ Args:
     limit: количество обрывков (1-3)
 Returns:
     Список коротких обрывков. `['не нашлось']` - искать было нечего или не получилось
-'''
+"""
 
 _NOT_FOUND = 'не нашлось'
 _WEB_SEARCH_NOT_FOUND = [_NOT_FOUND]
@@ -110,12 +119,12 @@ _WEB_SEARCH_NOT_FOUND = [_NOT_FOUND]
 # bare-domain pattern matches the link *label*, eats the `](href)` behind it, and
 # strands the opening `[` as the fragment's tail.
 _CLEANERS = (
-    re.compile(r'\[[^\]]*\]\([^)]*\)'),                                   # [revolut.com](https://...)
-    re.compile(r'https?://\S+', re.I),                                    # bare url
+    re.compile(r'\[[^\]]*\]\([^)]*\)'),  # [revolut.com](https://...)
+    re.compile(r'https?://\S+', re.I),  # bare url
     re.compile(r'\b[\w-]+\.(?:ru|com|org|net|io|kz|dev|me|tv)\b[^\s\[\]()]*', re.I),
-    re.compile(r'\[[^\]]*\]|\(\s*\)|[\[\]]'),                              # refs, emptied pairs
-    re.compile(r'^[-*\u2022\u2013\u2014\s]+(?!\d)'),                        # bullet, but not a minus sign
-    re.compile(r'[\s\-\u2013\u2014,;:([{\u00ab]+$'),                         # debris the passes above left
+    re.compile(r'\[[^\]]*\]|\(\s*\)|[\[\]]'),  # refs, emptied pairs
+    re.compile(r'^[-*\u2022\u2013\u2014\s]+(?!\d)'),  # bullet, but not a minus sign
+    re.compile(r'[\s\-\u2013\u2014,;:([{\u00ab]+$'),  # debris the passes above left
 )
 _web_search_limiter = SlidingWindowRateLimiter(settings.WEB_SEARCH_RATE_LIMIT, name='web_search')
 
@@ -214,11 +223,13 @@ def _log_search(query: str, results: int, outcome: str, elapsed: int) -> None:
     """The unit's only instrument: what the bot looks up, how often, and how it fails."""
     logger.info(
         'Web search finished',
-        extra=event('TOOL_WEB_SEARCH', query=query, results=results, outcome=outcome, elapsed_ms=elapsed),
+        extra=event(
+            'TOOL_WEB_SEARCH', query=query, results=results, outcome=outcome, elapsed_ms=elapsed
+        ),
     )
 
 
-FIND_STICKERS_DESCRIPTION = '''
+FIND_STICKERS_DESCRIPTION = """
 [context]: Найти стикеры, которые уже использует чат
 Ищет по описаниям картинок, а не по тексту твоей реплики
 Args:
@@ -227,7 +238,7 @@ Args:
 Returns:
     Список кандидатов: sticker_id, emoji, описание, текст на картинке
     Пустой список - ничего похожего нет, отвечай текстом
-'''
+"""
 
 _MAX_QUERIES = 3
 _RRF_K = 60
@@ -248,8 +259,11 @@ async def find_stickers(queries: list[str] | str) -> list[dict]:
         logger.warning(
             'Clamping tool argument',
             extra=event(
-                'TOOL_ARG_CLAMPED', tool='find_stickers', arg='queries',
-                given=len(queries), used=_MAX_QUERIES,
+                'TOOL_ARG_CLAMPED',
+                tool='find_stickers',
+                arg='queries',
+                given=len(queries),
+                used=_MAX_QUERIES,
             ),
         )
         queries = queries[:_MAX_QUERIES]
@@ -292,7 +306,8 @@ async def find_stickers(queries: list[str] | str) -> list[dict]:
             'emoji': r.emoji,
             'description': r.description,
             'text': r.ocr_text,
-        } for r in found
+        }
+        for r in found
     ]
 
 
@@ -340,6 +355,9 @@ def _log_sticker_search(
             queries=' | '.join(queries),
             hits='|'.join(str(len(p)) for p in probes),
             contrib='|'.join(str(len(returned.intersection(p))) for p in probes),
-            query_count=len(queries), fused=fused, returned=len(found), elapsed_ms=elapsed,
+            query_count=len(queries),
+            fused=fused,
+            returned=len(found),
+            elapsed_ms=elapsed,
         ),
     )
