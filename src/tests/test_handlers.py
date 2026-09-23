@@ -6,8 +6,8 @@ from telegram import Sticker
 from src import settings
 from src.characters.registry import CHARACTERS
 from src.chat_settings import repository as chat_settings_repository
+from src.media import create_media_description
 from src.messages import handlers
-from src.messages.media import create_media_description
 from src.messages.models import (
     Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UpdateMessage,
     UserRole,

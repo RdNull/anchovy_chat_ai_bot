@@ -6,7 +6,7 @@ from bson import ObjectId
 
 from src import mongo, settings
 from src.logs import event, logger
-from src.messages.media import get_media_description_by_media_id, wait_for_media_ready
+from src.media import get_media_description_by_media_id, wait_for_media_ready
 from src.messages.models import Message, MessageMedia, MessageReply, UpdateMessage, UserRole
 
 

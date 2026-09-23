@@ -2,12 +2,12 @@ import argparse
 import asyncio
 import time
 
+from src import mongo
 from src.embeddings.stickers import stickers_embedding_client
 from src.log_context import push_log_context
 from src.logs import elapsed_ms, event, logger
-from src.messages.media.repository import _parse_media_description
+from src.media.repository import parse_media_description
 from src.messages.models import MessageMediaStatus, MessageMediaTypes
-from src import mongo
 
 parser = argparse.ArgumentParser(description='Generate embeddings for stickers in DB.')
 parser.add_argument('--batch-size', type=int, default=100)
@@ -33,7 +33,7 @@ async def create_sticker_embeddings(batch_size: int):
     cursor = mongo.media_descriptions.find(query).batch_size(batch_size)
     processed = 0
     async for raw in cursor:
-        await stickers_embedding_client.save_sticker(_parse_media_description(raw))
+        await stickers_embedding_client.save_sticker(parse_media_description(raw))
         processed += 1
         if processed % batch_size == 0:
             logger.info(

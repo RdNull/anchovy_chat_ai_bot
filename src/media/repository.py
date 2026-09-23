@@ -62,7 +62,7 @@ async def mark_as_sticker(
 
     Rows written before the sticker unit are typed `image` or `gif`, because only
     Telegram's metadata can tell them apart and nothing was reading it. Backfilled on
-    re-sighting rather than by a migration — see `pipeline.py:_backfill_sticker`.
+    re-sighting rather than by a migration — see `handlers.py:_backfill_sticker`.
     """
     await media_descriptions.update_one(
         {'_id': ObjectId(description_id)},
@@ -76,12 +76,12 @@ async def mark_as_sticker(
 
 async def get_media_description(description_id: str) -> MediaDescription | None:
     result = await media_descriptions.find_one({'_id': ObjectId(description_id)})
-    return _parse_media_description(result) if result else None
+    return parse_media_description(result) if result else None
 
 
 async def get_media_description_by_media_id(media_id: str) -> MediaDescription | None:
     result = await media_descriptions.find_one({'media_id': media_id})
-    return _parse_media_description(result) if result else None
+    return parse_media_description(result) if result else None
 
 
 async def wait_for_media_ready(unique_ids: list[str], timeout: float) -> None:
@@ -110,7 +110,7 @@ async def wait_for_media_ready(unique_ids: list[str], timeout: float) -> None:
 
 async def get_media_descriptions_by_hash(content_hash: str) -> MediaDescription | None:
     result = await media_descriptions.find_one({'hash': content_hash})
-    return _parse_media_description(result) if result else None
+    return parse_media_description(result) if result else None
 
 
 async def update_media_description_status(description_id: str, status: MessageMediaStatus):
@@ -158,11 +158,13 @@ async def sticker_corpus_size() -> int:
     )
 
 
-def _parse_media_description(data: dict) -> MediaDescription:
+def parse_media_description(data: dict) -> MediaDescription:
     # `sticker_emoji` and `updated_at` use `.get`, unlike their siblings: every row
     # written before the respective field existed lacks the key and must parse as
     # None rather than raise. A missing `updated_at` is treated as stale by the
-    # staleness check in pipeline.py, so a legacy row is retried rather than stuck.
+    # staleness check in handlers.py, so a legacy row is retried rather than stuck.
+    # Public: `scripts/create_sticker_embeddings.py` reuses it to parse a raw Mongo
+    # row without going through the rest of this module's query helpers.
     return MediaDescription(
         _id=str(data['_id']),
         description=data['description'] or '',

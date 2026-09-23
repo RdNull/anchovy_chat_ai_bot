@@ -1,10 +1,10 @@
 from langchain_core.tools import tool
 from telegram.error import BadRequest
 
+from src.characters.tools.registry import ToolContext, ToolFailure
 from src.embeddings.stickers import stickers_embedding_client
 from src.logs import event, logger
-from src.messages.media.repository import get_sendable_file_id
-from src.characters.tools.registry import ToolContext, ToolFailure
+from src.media.repository import get_sendable_file_id
 from src.types import ReactionEmoji
 
 ANSWER_TEXT_DESCRIPTION = '''

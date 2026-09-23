@@ -11,8 +11,8 @@ from telegram.ext import CallbackContext, ContextTypes
 from src.characters.registry import CHARACTERS, get_chat_character, set_chat_character
 from src.log_context import log_context
 from src.logs import event, logger
+from src.media.handlers import handle_media_message
 from src.messages.models import UpdateMessage
-from .media.pipeline import handle_media_message
 from .parsing import parse_user_message
 from .repository import (
     get_message_by_tg_id, save_message,

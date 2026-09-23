@@ -11,7 +11,7 @@ from src.embeddings.messages import messages_embeddings_client
 from src.embeddings.stickers import StickerSearchResult, stickers_embedding_client
 from src.facts.repository import get_facts
 from src.logs import elapsed_ms, event, logger
-from src.messages.media.repository import get_recent_sticker_ids
+from src.media.repository import get_recent_sticker_ids
 from src.prompt_manager import prompt_manager
 from src.rate_limit import SlidingWindowRateLimiter
 
