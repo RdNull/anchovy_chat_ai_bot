@@ -20,6 +20,18 @@ docker compose exec bot pytest src/tests/test_X.py -v  # single file
 docker compose exec bot pytest -k test_name      # single test
 ```
 
+### Lint and format
+```bash
+uv run ruff check .              # lint
+uv run ruff format .             # format
+uv run pre-commit install        # once, so both run on every commit
+```
+Ruff config is in `pyproject.toml`'s `[tool.ruff]`. A block of rules is ignored under a
+`# TODO` comment (missing annotations, `os.path`, dangling `create_task`, `str, Enum`) —
+fix incrementally rather than re-disabling one of these on the next unrelated change.
+`.pre-commit-config.yaml` pins the same ruff version as `uv.lock`; bump both together when
+running `uv lock --upgrade` (see **Refresh dependencies** below).
+
 ### Prompt evaluation (LLM outputs)
 ```bash
 cd evals && promptfoo eval
@@ -196,7 +208,7 @@ Full test-suite breakdown by module: `src/tests/CLAUDE.md`. Use the [write-tests
 
 ## Code Style
 
-- Follow PEP 8 and the Google Python Style Guide.
+- Follow PEP 8 and the Google Python Style Guide, enforced by `ruff` — see **Lint and format** above.
 - Use single quotes for strings.
 - Always use `src/settings.py` for config access — never read env vars directly.
 - It's forbidden to use line splitting for long strings (`\`).

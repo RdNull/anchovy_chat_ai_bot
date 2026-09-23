@@ -125,6 +125,7 @@ Two constraints in the manifests are load-bearing and read like frugality: the b
 | Deployment           | Kubernetes, GitHub Actions                      | CI build/push to GHCR, `kubectl`-based deploy   |
 | Ingress & TLS        | Traefik, cert-manager, Let's Encrypt            | HTTPS on the node's own ports, no load balancer |
 | Testing              | pytest, pytest-asyncio, pytest-mock, pytest-cov | Async test suite against a real MongoDB         |
+| Linting & Formatting | ruff, pre-commit                                | Lint + format on every commit                   |
 
 ---
 
@@ -220,6 +221,14 @@ Tests live in `src/tests/` and run inside Docker against a real MongoDB instance
 
 ```bash
 docker compose exec bot pytest
+```
+
+### Linting & formatting
+
+```bash
+uv run ruff check .
+uv run ruff format .
+uv run pre-commit install   # once, to run both on every commit
 ```
 
 ---
