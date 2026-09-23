@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -28,8 +28,9 @@ def make_user_message(chat_id=1, text='hello'):
 
 
 def make_replier(chat_id=1, target=_NOT_SET):
-    """target defaults to a fresh message — production always has one for a normal
-    reply; pass target=None to exercise the harness for an untargeted send."""
+    """Target defaults to a fresh message — production always has one for a normal
+    reply; pass target=None to exercise the harness for an untargeted send.
+    """
     replier = MagicMock()
     replier.chat_id = chat_id
     replier.target_message = make_user_message(chat_id=chat_id) if target is _NOT_SET else target
@@ -554,7 +555,7 @@ def test_system_message_with_memory_includes_memory_section():
     character = make_character()
     character.memory = MemoryData(
         chat_id=1,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         content=StructuredMemory(state=ChatState(open_questions=['oppa'])),
     )
 

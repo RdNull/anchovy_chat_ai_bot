@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from src import settings
 from src.initiative.models import InitiativeVerdict
@@ -13,7 +13,7 @@ def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1', c
     return Message(chat_id=chat_id, role=role, text=text, nickname=nickname, created_at=created_at)
 
 
-BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+BASE = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def at(minutes: float, text='hi') -> Message:
@@ -162,7 +162,7 @@ async def test_pre_check_passes_when_cooldown_and_gap_satisfied(mocker):
 
 
 async def _seed_replied_run(chat_id=222):
-    run_id = await save_initiative_run(chat_id, last_message_time=datetime.now(timezone.utc))
+    run_id = await save_initiative_run(chat_id, last_message_time=datetime.now(UTC))
     await mark_initiative_replied(run_id)
 
 

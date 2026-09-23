@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock, MagicMock
 
 from src.characters.character import Character
@@ -127,7 +127,7 @@ async def test_evaluate_initiative_logs_zero_distance_and_age_for_the_newest_can
     mocker,
     caplog,
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     candidates = [
         make_message(text='older', created_at=now - timedelta(minutes=5)),
         make_message(text='newest', created_at=now),
@@ -143,7 +143,7 @@ async def test_evaluate_initiative_logs_zero_distance_and_age_for_the_newest_can
 
 
 async def test_evaluate_initiative_logs_distance_and_age_for_a_middle_candidate(mocker, caplog):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     candidates = [
         make_message(text='c1', created_at=now - timedelta(minutes=10)),
         make_message(text='c2', created_at=now - timedelta(minutes=4)),
@@ -212,7 +212,7 @@ async def test_evaluate_initiative_without_memory_does_not_crash(mocker):
 async def test_evaluate_initiative_with_memory_includes_it_in_the_prompt(mocker):
     memory = MemoryData(
         chat_id=1,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         content=StructuredMemory(state=ChatState(running_jokes=['стартер про пиццу'])),
     )
     llm = mock_initiative_llm(mocker, InitiativeDecision(score=0.1, target_index=None, reason='r'))

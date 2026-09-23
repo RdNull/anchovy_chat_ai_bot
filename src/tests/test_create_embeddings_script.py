@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -12,7 +12,7 @@ from src.scripts.create_sticker_embeddings import create_sticker_embeddings
 @pytest.mark.asyncio
 async def test_create_embeddings_loop(mocker):
     chat_id = 999
-    start_date = datetime.now(timezone.utc)
+    start_date = datetime.now(UTC)
 
     # Mock history returns
     msg1 = Message(
@@ -46,7 +46,7 @@ async def test_create_embeddings_empty_history(mocker):
     )
     mock_embeddings = mocker.patch('src.scripts.create_embeddings.messages_embeddings_client.save')
 
-    await create_embeddings(123, datetime.now(timezone.utc))
+    await create_embeddings(123, datetime.now(UTC))
 
     assert mock_history.call_count == 1
     assert mock_embeddings.call_count == 0

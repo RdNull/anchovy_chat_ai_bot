@@ -1,4 +1,4 @@
-from telegram import Message as TgMessage, PhotoSize, Sticker
+from telegram import Message as TgMessage, Sticker
 from telegram._files._basemedium import _BaseMedium
 
 from src.messages.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole

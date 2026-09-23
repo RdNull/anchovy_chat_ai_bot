@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from langchain_core.messages import SystemMessage
 from langsmith import traceable
@@ -30,7 +30,7 @@ async def evaluate_initiative(
     system_prompt = prompt_manager.get_prompt(
         'initiative',
         version='v1',
-        current_time=format_ts(datetime.now(timezone.utc)),
+        current_time=format_ts(datetime.now(UTC)),
         context=rendered_context,
         messages=rendered_candidates,
         bot_nickname=settings.BOT_NICKNAME,

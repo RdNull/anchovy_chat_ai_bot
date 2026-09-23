@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
 from src import settings
@@ -184,22 +184,23 @@ async def test_update_chat_memory_disabled_saves_empty_memory(mocker):
 
 async def test_update_chat_memory_disabled_stamps_wall_clock(mocker):
     """No window is processed by the model when memory is disabled, so the empty
-    snapshot is stamped with wall clock rather than a message timestamp."""
+    snapshot is stamped with wall clock rather than a message timestamp.
+    """
     mocker.patch.object(settings, 'ENABLE_MEMORY_PROCESSING', False)
     mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
     mocker.patch('src.memory.handlers.update_user_facts')
-    stale = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    stale = datetime(2020, 1, 1, tzinfo=UTC)
     message = make_message()
     message.created_at = stale
     mocker.patch('src.memory.handlers.get_messages', AsyncMock(return_value=[message]))
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
 
     await update_chat_memory(1)
 
     saved = await get_last_memory(1)
     assert saved is not None
     assert saved.created_at != stale
-    assert before <= saved.created_at <= datetime.now(timezone.utc)
+    assert before <= saved.created_at <= datetime.now(UTC)
 
 
 async def test_update_chat_memory_disabled_still_runs_facts(mocker):
@@ -415,7 +416,8 @@ async def test_update_chat_embeddings_concurrent_calls_save_once(mocker):
     """The bug: `run_followups` is a detached task per message, so concurrent calls
     used to all read the same checkpoint and each pay for the same embedding pass
     (observed at 8x in prod). The lock serializes them; the second call re-reads
-    the advanced watermark and finds nothing left to embed."""
+    the advanced watermark and finds nothing left to embed.
+    """
     mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
     mock_save = mock_embeddings_client(mocker)
 
@@ -431,7 +433,8 @@ async def test_update_chat_embeddings_concurrent_calls_save_once(mocker):
 
 async def test_update_chat_embeddings_failed_save_leaves_checkpoint_unadvanced(mocker):
     """The lock is held across the save, not released before it: a failed save must
-    not advance the watermark, so the same window is retried rather than lost."""
+    not advance the watermark, so the same window is retried rather than lost.
+    """
     mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
     mock_save = mocker.patch(
         'src.embeddings.handlers.messages_embeddings_client.save',
@@ -543,14 +546,14 @@ async def test_extract_memory_falls_back_to_wall_clock_without_timestamps(mocker
     """`Message.created_at` is optional; an unstamped window must not crash."""
     mock_memory_llm(mocker, return_value=StructuredMemory(state=ChatState(active_topics=['t'])))
     mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
 
     unstamped = make_message()
     unstamped.created_at = None
     result = await extract_memory(chat_id=1, current_memory=None, new_messages=[unstamped])
 
     assert result is not None
-    assert before <= result.created_at <= datetime.now(timezone.utc)
+    assert before <= result.created_at <= datetime.now(UTC)
 
 
 async def test_extract_memory_renders_the_context_window_into_the_prompt(mocker):
@@ -566,7 +569,8 @@ async def test_extract_memory_renders_the_context_window_into_the_prompt(mocker)
 
 async def test_extract_memory_prompt_renders_the_real_template(mocker):
     """No stub: every other `extract_memory` test mocks `get_prompt`, so none of
-    them would notice `v4.j2` losing the variable and rendering an empty gap."""
+    them would notice `v4.j2` losing the variable and rendering an empty gap.
+    """
     mocker.patch.object(settings, 'LAST_MESSAGES_SIZE', 14)
     mock_llm = mock_memory_llm(
         mocker, return_value=StructuredMemory(state=ChatState(active_topics=['t']))
@@ -595,7 +599,7 @@ async def test_extract_memory_resolves_attribution_before_eviction(mocker):
     valid = [f't{i}' for i in range(1, 11)]
     current = MemoryData(
         chat_id=1,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         content=StructuredMemory(participants={'@bob': ParticipantInfo(traits=['дубль'])}),
     )
     llm_result = StructuredMemory(
@@ -644,7 +648,7 @@ async def test_extract_memory_logs_churn_and_would_evict(mocker):
     """
     current = MemoryData(
         chat_id=1,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         content=StructuredMemory(
             participants={'@alice': ParticipantInfo(recent=['ездил в Лондон', 'опоздал'])}
         ),

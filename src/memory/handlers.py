@@ -1,6 +1,6 @@
 import asyncio
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from src import mongo, settings
 from src.facts.handlers import update_user_facts
@@ -115,7 +115,7 @@ async def _update_chat_memory(chat_id: int):
 
 
 async def delete_old_memories(retention_days: int) -> None:
-    cutoff_ts = (datetime.now(timezone.utc) - timedelta(days=retention_days)).timestamp()
+    cutoff_ts = (datetime.now(UTC) - timedelta(days=retention_days)).timestamp()
 
     cursor = await mongo.memory.aggregate(
         [

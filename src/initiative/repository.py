@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from bson import ObjectId
 
@@ -22,7 +22,7 @@ async def save_initiative_run(chat_id: int, last_message_time: datetime) -> str:
     data = {
         'chat_id': chat_id,
         'last_message_time': last_message_time.timestamp(),
-        'created_at': datetime.now(timezone.utc).timestamp(),
+        'created_at': datetime.now(UTC).timestamp(),
     }
     result = await db.initiative_runs.insert_one(data)
     return str(result.inserted_id)
@@ -39,12 +39,12 @@ async def mark_initiative_replied(run_id: str) -> None:
     """
     await db.initiative_runs.update_one(
         {'_id': ObjectId(run_id)},
-        {'$set': {'replied_at': datetime.now(timezone.utc).timestamp()}},
+        {'$set': {'replied_at': datetime.now(UTC).timestamp()}},
     )
 
 
 async def count_replied_since(chat_id: int, window: timedelta) -> int:
-    since = datetime.now(timezone.utc) - window
+    since = datetime.now(UTC) - window
     return await db.initiative_runs.count_documents(
         {'chat_id': chat_id, 'replied_at': {'$gte': since.timestamp()}}
     )

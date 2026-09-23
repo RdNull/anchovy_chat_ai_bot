@@ -21,7 +21,7 @@ module in the project, and this module is imported by `src/logs.py` in turn.
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Generator
+from collections.abc import Generator
 from uuid import uuid4
 
 _LOG_CONTEXT: ContextVar[dict[str, object]] = ContextVar('log_context', default={})
@@ -39,7 +39,7 @@ def _with_request_id(current: dict[str, object], fields: dict[str, object]) -> d
 
 
 @contextmanager
-def log_context(**fields: object) -> Generator[None, None, None]:
+def log_context(**fields: object) -> Generator[None]:
     """Binds `fields` onto every log record emitted within the block (and its child tasks),
     restoring the prior binding on exit.
 

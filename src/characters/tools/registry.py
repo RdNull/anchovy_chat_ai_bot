@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Iterable
+from collections.abc import Iterable
 
 from langchain_core.messages import ToolCall, ToolMessage
 from langchain_core.tools import BaseTool

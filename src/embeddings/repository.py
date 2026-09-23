@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from src import mongo as db
 from src.embeddings.models import EmbeddingTask
@@ -21,6 +21,6 @@ async def save_embedding_task(chat_id: int, last_message_time: datetime):
     data = {
         'chat_id': chat_id,
         'last_message_time': last_message_time.timestamp(),
-        'created_at': datetime.now(timezone.utc).timestamp(),
+        'created_at': datetime.now(UTC).timestamp(),
     }
     await db.embedding_tasks.insert_one(data)

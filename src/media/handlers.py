@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from telegram.ext import ContextTypes
 
@@ -159,7 +159,8 @@ def _skip_media_description_generation(description: MediaDescription) -> bool:
     """READY always skips; PROCESSING skips only while it's still plausibly in
     flight. A crash or pod restart between the PROCESSING write and the describe
     call would otherwise leave a row that is never retried and that
-    `wait_for_media_ready` polls to its full timeout on every future sighting."""
+    `wait_for_media_ready` polls to its full timeout on every future sighting.
+    """
     if description.status == MessageMediaStatus.READY:
         return True
     if description.status == MessageMediaStatus.PROCESSING:
@@ -172,7 +173,7 @@ def _is_processing_stale(updated_at: datetime | None) -> bool:
     # stale rather than raising, so a legacy row is retried instead of stuck.
     if updated_at is None:
         return True
-    age = datetime.now(timezone.utc) - updated_at
+    age = datetime.now(UTC) - updated_at
     return age > timedelta(minutes=settings.MEDIA_PROCESSING_STALE_MINUTES)
 
 

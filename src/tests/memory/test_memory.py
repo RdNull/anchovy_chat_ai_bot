@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock
 
 import pytest
@@ -217,8 +217,8 @@ def test_prompt_format_empty_state_sections_omitted():
 
 
 async def test_delete_old_memories_removes_superseded_stale_record():
-    ten_days_ago = (datetime.now(timezone.utc) - timedelta(days=10)).timestamp()
-    nine_days_ago = (datetime.now(timezone.utc) - timedelta(days=9)).timestamp()
+    ten_days_ago = (datetime.now(UTC) - timedelta(days=10)).timestamp()
+    nine_days_ago = (datetime.now(UTC) - timedelta(days=9)).timestamp()
     await mongo.memory.insert_one(
         {
             'chat_id': 1,
@@ -242,7 +242,7 @@ async def test_delete_old_memories_removes_superseded_stale_record():
 
 
 async def test_delete_old_memories_keeps_recent_records():
-    one_day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).timestamp()
+    one_day_ago = (datetime.now(UTC) - timedelta(days=1)).timestamp()
     await mongo.memory.insert_one(
         {
             'chat_id': 2,
@@ -258,7 +258,7 @@ async def test_delete_old_memories_keeps_recent_records():
 
 
 async def test_delete_old_memories_preserves_only_record_even_if_stale():
-    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
+    thirty_days_ago = (datetime.now(UTC) - timedelta(days=30)).timestamp()
     await mongo.memory.insert_one(
         {
             'chat_id': 3,
@@ -274,8 +274,8 @@ async def test_delete_old_memories_preserves_only_record_even_if_stale():
 
 
 async def test_delete_old_memories_respects_custom_retention_days():
-    three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).timestamp()
-    one_day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).timestamp()
+    three_days_ago = (datetime.now(UTC) - timedelta(days=3)).timestamp()
+    one_day_ago = (datetime.now(UTC) - timedelta(days=1)).timestamp()
     await mongo.memory.insert_one(
         {
             'chat_id': 4,

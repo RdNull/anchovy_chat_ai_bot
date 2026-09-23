@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from src import settings
 from src.memory.decay import (
@@ -165,7 +165,8 @@ def test_vanish_record_carries_the_field_it_was_lost_from():
 def test_vanish_reports_the_prior_snapshot_raw_text_not_the_key():
     """The bug: a vanish used to log `text=key` — lowercased, punctuation-stripped —
     since the raw text is already gone from `updated` by the time churn runs. The
-    prior snapshot is the only place it still exists."""
+    prior snapshot is the only place it still exists.
+    """
     updated = make_memory(alice=ParticipantInfo())
     prior_content = make_memory(alice=ParticipantInfo(traits=['Программист, Питон!']))
     prior = {'@alice': {'программист питон': DecayRecord(born=YESTERDAY, cycles=1, field='traits')}}
@@ -208,7 +209,8 @@ def test_evicted_entry_is_neither_carried_nor_vanished():
 def test_only_participant_field_evictions_suppress_a_vanish():
     """The `accounted` filter, checked directly rather than relying on `'-'` never
     colliding with a real nick: an eviction on a non-participant field must never
-    suppress a genuine vanish, even sharing (nick, key)."""
+    suppress a genuine vanish, even sharing (nick, key).
+    """
     updated = make_memory(alice=ParticipantInfo())
     prior_decay = {'@alice': {'x': DecayRecord(born=YESTERDAY, cycles=1, field='recent')}}
     non_participant_eviction = EvictionRecord(
@@ -228,7 +230,8 @@ def test_only_participant_field_evictions_suppress_a_vanish():
 
 def test_state_list_evictions_carry_no_participant_and_never_reach_churn():
     """State evictions have no sidecar record to lose, so a dropped joke must never
-    surface as a participant `vanish` — only `MEMORY_DECAY` reports it."""
+    surface as a participant `vanish` — only `MEMORY_DECAY` reports it.
+    """
     updated = make_memory(alice=ParticipantInfo(recent=['b']))
     updated.state.running_jokes = ['a']
     prior = {'@alice': {'b': DecayRecord(born=YESTERDAY, cycles=1, field='recent')}}
@@ -420,32 +423,32 @@ def test_reconcile_ignores_nicks_absent_from_updated():
 
 
 def test_resolve_watermark_uses_the_newest_message_timestamp():
-    older = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc)
-    newer = datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc)
+    older = datetime(2026, 5, 1, 9, 0, tzinfo=UTC)
+    newer = datetime(2026, 5, 1, 13, 0, tzinfo=UTC)
 
     assert resolve_watermark([newer, None, older]) == newer
 
 
 def test_resolve_watermark_ignores_the_order_it_is_given():
     """The window is fetched oldest-first now; the watermark must not care."""
-    older = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc)
-    newer = datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc)
+    older = datetime(2026, 5, 1, 9, 0, tzinfo=UTC)
+    newer = datetime(2026, 5, 1, 13, 0, tzinfo=UTC)
 
     assert resolve_watermark([older, newer]) == resolve_watermark([newer, older])
 
 
 def test_resolve_watermark_falls_back_to_wall_clock_without_timestamps():
     """`Message.created_at` is optional, so `max()` over an empty window would raise."""
-    before = datetime.now(timezone.utc) - timedelta(minutes=1)
+    before = datetime.now(UTC) - timedelta(minutes=1)
 
     result = resolve_watermark([None, None])
 
-    assert before <= result <= datetime.now(timezone.utc)
+    assert before <= result <= datetime.now(UTC)
 
 
 def test_resolve_watermark_returns_the_datetime_the_snapshot_is_stamped_with():
     """One value feeds two consumers: `format_ts` for the sidecar, raw for the stamp."""
-    newest = datetime(2026, 5, 1, 13, 0, tzinfo=timezone.utc)
+    newest = datetime(2026, 5, 1, 13, 0, tzinfo=UTC)
 
     result = resolve_watermark([newest])
 
@@ -492,7 +495,8 @@ def test_state_caps_come_from_the_caps_object():
 
 def test_state_list_evictions_are_recorded():
     """They were a bare slice with no `EvictionRecord` at all — `MEMORY_DECAY` had
-    never once reported a dropped joke, question or topic."""
+    never once reported a dropped joke, question or topic.
+    """
     updated = StructuredMemory(
         state=ChatState(
             active_topics=['a', 'b', 'c'],
@@ -685,7 +689,7 @@ def test_prompt_input_strips_active_topics_without_mutating_current():
             active_topics=['деплой'], open_questions=['когда релиз?'], running_jokes=['лежит']
         ),
     )
-    current = MemoryData(chat_id=1, created_at=datetime.now(timezone.utc), content=content)
+    current = MemoryData(chat_id=1, created_at=datetime.now(UTC), content=content)
 
     rendered = _prompt_memory(current)
 

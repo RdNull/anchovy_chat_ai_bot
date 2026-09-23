@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -215,7 +215,7 @@ async def test_upsert_fact_updates_existing_lower_confidence(mocker):
 
 
 async def test_decay_reduces_confidence_for_stale_facts():
-    old_ts = (datetime.now(timezone.utc) - timedelta(weeks=2)).timestamp()
+    old_ts = (datetime.now(UTC) - timedelta(weeks=2)).timestamp()
     await mongo.facts.insert_one(
         {
             'nickname': 'alice',
@@ -234,7 +234,7 @@ async def test_decay_reduces_confidence_for_stale_facts():
 
 
 async def test_decay_deletes_fact_when_confidence_reaches_zero():
-    old_ts = (datetime.now(timezone.utc) - timedelta(weeks=2)).timestamp()
+    old_ts = (datetime.now(UTC) - timedelta(weeks=2)).timestamp()
     await mongo.facts.insert_one(
         {
             'nickname': 'alice',
@@ -252,7 +252,7 @@ async def test_decay_deletes_fact_when_confidence_reaches_zero():
 
 
 async def test_decay_skips_recently_updated_facts():
-    recent_ts = datetime.now(timezone.utc).timestamp()
+    recent_ts = datetime.now(UTC).timestamp()
     await mongo.facts.insert_one(
         {
             'nickname': 'alice',
@@ -271,7 +271,7 @@ async def test_decay_skips_recently_updated_facts():
 
 
 async def test_decay_falls_back_to_created_at_when_no_updated_at():
-    old_ts = (datetime.now(timezone.utc) - timedelta(weeks=2)).timestamp()
+    old_ts = (datetime.now(UTC) - timedelta(weeks=2)).timestamp()
     await mongo.facts.insert_one(
         {
             'nickname': 'alice',
@@ -310,7 +310,7 @@ async def test_get_facts_handles_decimal128_stored_in_mongo():
             'nickname': 'alice',
             'text': 'likes coffee',
             'confidence': Decimal128('0.9'),
-            'created_at': datetime.now(timezone.utc).timestamp(),
+            'created_at': datetime.now(UTC).timestamp(),
         }
     )
     facts = await get_facts('alice')
@@ -346,7 +346,8 @@ async def test_extract_facts_empty_result_returns_empty_list(mocker):
 
 async def test_extract_facts_raises_on_llm_failure(mocker):
     """Pure: the processor no longer catches its own failures — `update_user_facts`
-    (the handler) owns the `FACT_EXTRACT` error event."""
+    (the handler) owns the `FACT_EXTRACT` error event.
+    """
     mock_llm = MagicMock()
     mock_llm.__or__.return_value.with_retry.return_value.ainvoke = AsyncMock(
         side_effect=Exception('LLM failure')

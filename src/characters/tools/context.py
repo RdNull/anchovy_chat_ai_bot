@@ -120,8 +120,8 @@ _WEB_SEARCH_NOT_FOUND = [_NOT_FOUND]
 # strands the opening `[` as the fragment's tail.
 _CLEANERS = (
     re.compile(r'\[[^\]]*\]\([^)]*\)'),  # [revolut.com](https://...)
-    re.compile(r'https?://\S+', re.I),  # bare url
-    re.compile(r'\b[\w-]+\.(?:ru|com|org|net|io|kz|dev|me|tv)\b[^\s\[\]()]*', re.I),
+    re.compile(r'https?://\S+', re.IGNORECASE),  # bare url
+    re.compile(r'\b[\w-]+\.(?:ru|com|org|net|io|kz|dev|me|tv)\b[^\s\[\]()]*', re.IGNORECASE),
     re.compile(r'\[[^\]]*\]|\(\s*\)|[\[\]]'),  # refs, emptied pairs
     re.compile(r'^[-*\u2022\u2013\u2014\s]+(?!\d)'),  # bullet, but not a minus sign
     re.compile(r'[\s\-\u2013\u2014,;:([{\u00ab]+$'),  # debris the passes above left
@@ -153,7 +153,7 @@ async def search_web(query: str, limit: int = 2) -> list[str]:
             model.ainvoke([SystemMessage(system_prompt), HumanMessage(query)]),
             timeout=settings.WEB_SEARCH_TIMEOUT,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         _log_search(query, 0, 'timeout', elapsed_ms(started))
         return _WEB_SEARCH_NOT_FOUND
     except Exception:

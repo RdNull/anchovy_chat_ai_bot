@@ -2,11 +2,11 @@ import asyncio
 import random
 import time
 from dataclasses import dataclass
-from typing import Generator, Sequence
+from collections.abc import Generator, Sequence
 
 import langsmith
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolCall
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langsmith import traceable
 
 from src import ai, settings
@@ -31,7 +31,8 @@ _MAX_LOOP_DEPTH = 8
 class _LoopStats:
     """Accumulates across every recursive turn of `_run_llm_loop`, for the one `LLM_INVOKE`
     line logged when the whole loop finishes — model spend and latency are otherwise
-    invisible outside LangSmith."""
+    invisible outside LangSmith.
+    """
 
     depth: int = 0
     tool_calls: int = 0
@@ -48,7 +49,7 @@ class _LoopStats:
 
 def _format_previous_messages(
     replier: Replier, last_messages: list[Message]
-) -> Generator[HumanMessage | AIMessage, None, None]:
+) -> Generator[HumanMessage | AIMessage]:
     # A `Message` built in memory rather than read from Mongo has `id=None`, and
     # comparing those as strings made every such message the target.
     target_id = replier.target_message.id if replier.target_message else None
@@ -118,7 +119,7 @@ class Character:
     ) -> None:
         chat_id = replier.chat_id
         if self.rate_limiter.is_exceeded(chat_id):
-            return None
+            return
 
         llm, version, model_name = self._get_llm(versions=('v8',))
         messages = [
@@ -153,7 +154,7 @@ class Character:
                     outcome='ok',
                 ),
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 'LLM request timed out',
                 extra=event(
@@ -220,7 +221,7 @@ class Character:
             return
 
         messages.append(response)
-        for tool_call in response.tool_calls:  # type: ToolCall
+        for tool_call in response.tool_calls:
             tool_message, tool_result = await tools_registry.execute(tool_call)
             if tools_registry.is_return_direct(tool_call):
                 if not isinstance(tool_result, ToolFailure):

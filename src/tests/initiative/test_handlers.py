@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
 from telegram.constants import ChatAction
@@ -14,7 +14,7 @@ from src.messages.models import Message, UserRole
 
 def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1', created_at=None):
     message = Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
-    message.created_at = created_at or datetime.now(timezone.utc)
+    message.created_at = created_at or datetime.now(UTC)
     return message
 
 
@@ -193,7 +193,7 @@ async def test_get_messages_resumes_from_watermark_and_also_reads_context(mocker
     mock_fetch = mocker.patch(
         'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[])
     )
-    watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+    watermark = datetime.now(UTC) - timedelta(hours=1)
 
     await handlers._get_messages(222, watermark)
 
@@ -215,7 +215,7 @@ async def test_get_messages_takes_the_newest_of_a_backlog_past_the_cap(mocker):
     # Regression: an oldest-first read after a cooldown-blocked stretch judged the
     # conversation from an hour ago rather than the one happening now.
     mocker.patch.object(settings, 'INITIATIVE_RUN_MESSAGES_MAX_SIZE', 3)
-    watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+    watermark = datetime.now(UTC) - timedelta(hours=1)
     for i in range(1, 6):
         await save_message(make_message(text=f'm{i}'))
 
@@ -226,7 +226,7 @@ async def test_get_messages_takes_the_newest_of_a_backlog_past_the_cap(mocker):
 
 # --- _split_window: the gap cut, then re-partitioned around the watermark ---
 
-BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+BASE = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def at(minutes: float, text='hi') -> Message:
@@ -291,7 +291,7 @@ def test_split_window_no_cut_keeps_everything_partitioned_by_watermark():
 
 async def test_claim_window_does_not_advance_watermark_when_pre_check_fails_after_the_cut(mocker):
     mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
-    watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+    watermark = datetime.now(UTC) - timedelta(hours=1)
     mocker.patch(
         'src.initiative.handlers.get_last_initiative_run',
         AsyncMock(return_value=MagicMock(last_message_time=watermark)),

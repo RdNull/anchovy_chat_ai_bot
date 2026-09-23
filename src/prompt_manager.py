@@ -17,7 +17,7 @@ class PromptManager:
             for filename in files:
                 if filename.endswith('.j2'):
                     path = os.path.join(root, filename)
-                    with open(path, 'r', encoding='utf-8') as f:
+                    with open(path, encoding='utf-8') as f:
                         template_str = f.read()
 
                     task = os.path.basename(root)

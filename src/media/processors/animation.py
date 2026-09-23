@@ -4,7 +4,6 @@ import math
 import os
 import tempfile
 import time
-from typing import List
 
 import cv2
 from PIL import Image
@@ -94,7 +93,7 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
     return None
 
 
-def _get_animation_key_frames(animation: AnimationDetectionData) -> List[str]:
+def _get_animation_key_frames(animation: AnimationDetectionData) -> list[str]:
     """
     Extracts key frames from GIF or video (without sound).
     The number of frames depends on the animation length: 1 to 4.
@@ -110,7 +109,7 @@ def _get_animation_key_frames(animation: AnimationDetectionData) -> List[str]:
             return _extract_video_frames(animation.content)
 
 
-def _extract_tgs_frames(tgs_bytes: bytes) -> List[str]:
+def _extract_tgs_frames(tgs_bytes: bytes) -> list[str]:
     frames = []
     try:
         with io.BytesIO(tgs_bytes) as tgs_file:
@@ -151,7 +150,7 @@ def _extract_tgs_frames(tgs_bytes: bytes) -> List[str]:
     return frames
 
 
-def _extract_gif_frames(gif_bytes: bytes) -> List[str]:
+def _extract_gif_frames(gif_bytes: bytes) -> list[str]:
     frames = []
     try:
         with Image.open(io.BytesIO(gif_bytes)) as img:
@@ -180,7 +179,7 @@ def _extract_gif_frames(gif_bytes: bytes) -> List[str]:
     return frames
 
 
-def _extract_video_frames(video_bytes: bytes) -> List[str]:
+def _extract_video_frames(video_bytes: bytes) -> list[str]:
     frames = []
     # OpenCV cannot read directly from BytesIO, need a temporary file
     with tempfile.NamedTemporaryFile(delete=False, suffix='.tmp') as temp_video:

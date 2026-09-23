@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
 from telegram.constants import ChatAction
@@ -212,7 +212,7 @@ def test_message_embedding_text_caption_less_media_has_no_literal_none():
 
 def test_message_embedding_text_with_timestamp():
     # 2026-04-19 10:00 UTC = 2026-04-19 15:00 Almaty (UTC+5)
-    created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
+    created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=UTC)
     msg = Message(
         chat_id=1, nickname='nick', role=UserRole.USER, text='hello', created_at=created_at
     )
@@ -220,7 +220,7 @@ def test_message_embedding_text_with_timestamp():
 
 
 def test_message_embedding_text_reply_with_timestamp():
-    created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc)
+    created_at = datetime(2026, 4, 19, 10, 0, 0, tzinfo=UTC)
     reply = MessageReply(text='quoted', nickname='other')
     msg = Message(
         chat_id=1,

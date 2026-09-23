@@ -35,7 +35,7 @@ async def test_setup_scheduler(mocker):
 
     try:
         await asyncio.wait_for(setup_scheduler(), timeout=2.0)
-    except asyncio.CancelledError, asyncio.TimeoutError:
+    except TimeoutError, asyncio.CancelledError:
         pass
 
     assert mock_scheduler.call_count == 1
@@ -74,7 +74,8 @@ async def test_log_sticker_corpus_on_a_cold_start(mocker):
 async def test_context_binding_application_binds_ids_before_delegating(mocker):
     """Only our own override is under test here -- not PTB's dispatch internals, which
     `create_task`'s own context-copying (already pinned down in test_log_context.py)
-    is what makes correct for every handler group and the error handler alike."""
+    is what makes correct for every handler group and the error handler alike.
+    """
     observed = {}
 
     async def fake_process_update(self, update):

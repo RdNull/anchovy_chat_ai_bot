@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from src import settings
 from src.initiative.models import InitiativeVerdict
@@ -51,7 +51,7 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
 
     last_bot_message = await get_last_message(chat_id, role=UserRole.AI)
     if last_bot_message and last_bot_message.created_at:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cooldown_threshold = now - timedelta(minutes=settings.INITIATIVE_COOLDOWN_MINUTES)
         if last_bot_message.created_at > cooldown_threshold:
             logger.info(

@@ -33,7 +33,7 @@ or two while never binding at all in a busy one — it bites exactly where it do
 the most damage.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from src import settings
 from src.memory.keys import RECENT_FIELD, TRAITS_FIELD, normalize
@@ -109,7 +109,7 @@ class DecayCaps(BaseModel):
     jokes_keep: int
 
     @classmethod
-    def from_settings(cls) -> 'DecayCaps':
+    def from_settings(cls) -> DecayCaps:
         return cls(
             enabled=settings.ENABLE_MEMORY_DECAY,
             traits_keep=settings.TRAITS_KEEP,
@@ -135,7 +135,7 @@ def resolve_watermark(created_ats: list[datetime | None]) -> datetime:
     LLM call, and every message that lands in the gap is skipped forever.
     """
     stamped = [value for value in created_ats if value]
-    return max(stamped) if stamped else datetime.now(timezone.utc)
+    return max(stamped) if stamped else datetime.now(UTC)
 
 
 def _emitted_fields(memory: StructuredMemory, nick: str) -> dict[str, str]:

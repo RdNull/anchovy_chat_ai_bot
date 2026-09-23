@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, call
@@ -378,7 +377,7 @@ async def test_search_web_normalises_list_content(mocker):
 
 
 async def test_search_web_timeout_returns_not_found(mocker):
-    model = mock_web_search_model(mocker, asyncio.TimeoutError())
+    model = mock_web_search_model(mocker, TimeoutError())
 
     result = await search_web.ainvoke({'query': 'x', 'limit': 2})
 

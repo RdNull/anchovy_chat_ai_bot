@@ -58,7 +58,7 @@ def restricted(func):
                     f'ID чата: `{chat_id}`',
                     parse_mode='MarkdownV2',
                 )
-            return
+            return None
 
         return await func(update, context, *args, **kwargs)
 

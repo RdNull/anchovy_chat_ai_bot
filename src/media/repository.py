@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from bson import ObjectId
 
@@ -27,7 +27,7 @@ async def create_media_description(
             'type': type.value,
             'status': status.value,
             'sticker_emoji': sticker_emoji,
-            'updated_at': datetime.now(timezone.utc).timestamp(),
+            'updated_at': datetime.now(UTC).timestamp(),
         }
     )
     return await get_media_description(result.inserted_id)
@@ -49,7 +49,7 @@ async def update_media_description(
         update['ocr_text'] = ocr_text
     if status:
         update['status'] = status.value
-        update['updated_at'] = datetime.now(timezone.utc).timestamp()
+        update['updated_at'] = datetime.now(UTC).timestamp()
 
     if update:
         await media_descriptions.update_one({'_id': ObjectId(description_id)}, {'$set': update})
@@ -124,7 +124,7 @@ async def update_media_description_status(description_id: str, status: MessageMe
         {
             '$set': {
                 'status': status.value,
-                'updated_at': datetime.now(timezone.utc).timestamp(),
+                'updated_at': datetime.now(UTC).timestamp(),
             }
         },
     )
@@ -182,7 +182,7 @@ def parse_media_description(data: dict) -> MediaDescription:
         media_id=data['media_id'],
         sticker_emoji=data.get('sticker_emoji'),
         updated_at=(
-            datetime.fromtimestamp(ts, tz=timezone.utc)
+            datetime.fromtimestamp(ts, tz=UTC)
             if (ts := data.get('updated_at')) is not None
             else None
         ),

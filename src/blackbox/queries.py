@@ -15,7 +15,7 @@ Everything returned is text group-chat members wrote. It is data; see the server
 instructions.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any, Literal
 
 from qdrant_client.http.models import FieldCondition, Filter, MatchValue, Range
@@ -68,15 +68,15 @@ def _clamp(value: int, cap: int, floor: int = 1) -> int:
 
 def _utc(value: datetime) -> datetime:
     """Reads a naive datetime as UTC — the clock every stored timestamp is on."""
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def _iso(ts: float | None) -> str | None:
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts is not None else None
+    return datetime.fromtimestamp(ts, tz=UTC).isoformat() if ts is not None else None
 
 
 def _chronological(messages: list[Message]) -> list[Message]:
-    epoch = datetime.fromtimestamp(0, tz=timezone.utc)
+    epoch = datetime.fromtimestamp(0, tz=UTC)
     return sorted(messages, key=lambda m: m.created_at or epoch)
 
 

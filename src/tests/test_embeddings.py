@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 from uuid import UUID
 
@@ -19,7 +19,6 @@ from src.facts.models import UserFact
 from src.media.models import MediaDescription
 from src.messages.models import (
     Message,
-    MessageMedia,
     MessageMediaStatus,
     MessageMediaTypes,
     UserRole,
@@ -58,7 +57,7 @@ def create_mock_message(mid, text, chat_id=123, nickname='user'):
         role=UserRole.USER,
         text=text,
         nickname=nickname,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -249,7 +248,7 @@ async def test_facts_embedding_client_save_fact(mocker):
         nickname='bob',
         text='likes pizza',
         confidence=0.8,
-        created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2024, 1, 1, tzinfo=UTC),
     )
 
     await client.save_fact(fact)

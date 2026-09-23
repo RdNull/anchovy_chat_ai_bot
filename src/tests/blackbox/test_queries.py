@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from types import SimpleNamespace
 
 import pytest
@@ -13,7 +13,7 @@ from src.messages.models import UserRole
 from src.tests.test_utils import make_message
 
 CHAT_ID = 1
-T0 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
 
 async def _seed_chat(count: int) -> list:
@@ -258,9 +258,9 @@ async def test_list_messages_oldest_end_by_nick_in_memory_form():
 
 async def test_list_messages_time_range():
     await _say('before')
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     await _say('inside')
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     await _say('after')
 
     rows = await queries.list_messages(CHAT_ID, since=start, until=end)

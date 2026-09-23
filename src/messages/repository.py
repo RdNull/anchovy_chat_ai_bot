@@ -1,6 +1,6 @@
 import asyncio
-from datetime import datetime, timezone
-from typing import Iterable
+from datetime import datetime, UTC
+from collections.abc import Iterable
 
 from bson import ObjectId
 
@@ -24,7 +24,7 @@ async def save_message(message: Message):
         'nickname': message.nickname,
         'media_id': message.media.media_id if message.media else None,
         'media_unique_id': message.media.unique_id if message.media else None,
-        'created_at': datetime.now(timezone.utc).timestamp(),
+        'created_at': datetime.now(UTC).timestamp(),
     }
     if message.reply:
         reply_doc = await mongo.messages.find_one(
@@ -303,6 +303,6 @@ async def _parse_message_record(data: dict) -> Message:
         nickname=data.get('nickname', 'unknown'),
         reply=reply,
         media=media,
-        created_at=datetime.fromtimestamp(data['created_at'], tz=timezone.utc),
+        created_at=datetime.fromtimestamp(data['created_at'], tz=UTC),
         reactions=data.get('reactions', {}),
     )

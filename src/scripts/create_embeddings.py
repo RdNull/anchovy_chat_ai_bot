@@ -2,7 +2,7 @@
 
 import argparse
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from src.embeddings.messages import messages_embeddings_client
 from src.embeddings.repository import save_embedding_task
@@ -59,7 +59,7 @@ if __name__ == '__main__':  # pragma: no cover
     if date_from := args.date_from:
         date_from = datetime.fromisoformat(date_from)
     else:
-        date_from = datetime.now(timezone.utc) - timedelta(days=1)
+        date_from = datetime.now(UTC) - timedelta(days=1)
 
     chat = args.chat
     asyncio.run(create_embeddings(chat_id=chat, date_from=date_from))
