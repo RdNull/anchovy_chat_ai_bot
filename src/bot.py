@@ -13,7 +13,7 @@ from src import const, settings, tasks
 from src.log_context import log_context, push_log_context
 from src.logs import event, logger
 from src.messages import handlers
-from src.messages.media import sticker_corpus_size
+from src.media import sticker_corpus_size
 from src.messages.utils import ReplyToBotFilter
 from src.running_app import set_running_app
 

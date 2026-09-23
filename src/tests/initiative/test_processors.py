@@ -7,7 +7,7 @@ from src.characters.character import Character
 from src.initiative.models import InitiativeDecision
 from src.initiative.processors import evaluate_initiative
 from src.memory.models import ChatState, MemoryData, StructuredMemory
-from src.models import Message, UserRole
+from src.messages.models import Message, UserRole
 
 _TIMESTAMP_PATTERN = re.compile(r'\[Текущее время: \d{2}-\d{2}-\d{2} \d{2}:\d{2}]')
 

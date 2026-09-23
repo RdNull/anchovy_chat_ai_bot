@@ -7,12 +7,12 @@ import pytest
 from PIL import Image
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.models import AnimationDetectionData, ImageDetectionData, MediaDescriptionData
-from src.processors.media.animation import (
+from src.media.models import AnimationDetectionData, ImageDetectionData, MediaDescriptionData
+from src.media.processors.animation import (
     _extract_gif_frames, _extract_tgs_frames,
     _extract_video_frames, _image_to_base64, _resize_frame_if_needed, describe_animation,
 )
-from src.processors.media.image import describe_image
+from src.media.processors.image import describe_image
 
 MEDIA_DIR = 'src/tests/media/data'
 
@@ -196,7 +196,7 @@ def test_extract_video_frames_error(mocker):
 
 def test_extract_tgs_frames_error(mocker):
     # Test error handling in TGS extraction
-    mocker.patch('src.processors.media.animation.import_tgs', side_effect=ValueError("bad tgs"))
+    mocker.patch('src.media.processors.animation.import_tgs', side_effect=ValueError("bad tgs"))
     assert _extract_tgs_frames(b"bad data") == []
 
 
@@ -211,14 +211,14 @@ async def test_describe_animation_error(mocker):
 
     anim_data = AnimationDetectionData(content=b"data", format='gif')
     # Mocking _get_animation_key_frames to return something so it doesn't return None early
-    mocker.patch('src.processors.media.animation._get_animation_key_frames', return_value=['f1'])
+    mocker.patch('src.media.processors.animation._get_animation_key_frames', return_value=['f1'])
 
     result = await describe_animation(anim_data)
     assert result is None
 
 
 async def test_describe_animation_no_frames(mocker):
-    mocker.patch('src.processors.media.animation._get_animation_key_frames', return_value=[])
+    mocker.patch('src.media.processors.animation._get_animation_key_frames', return_value=[])
     anim_data = AnimationDetectionData(content=b"data", format='gif')
     result = await describe_animation(anim_data)
     assert result is None
@@ -246,7 +246,7 @@ def test_extract_tgs_frames_short(mocker):
     mock_anim = MagicMock()
     mock_anim.in_point = 0
     mock_anim.out_point = 5  # 6 frames total
-    mocker.patch('src.processors.media.animation.import_tgs', return_value=mock_anim)
+    mocker.patch('src.media.processors.animation.import_tgs', return_value=mock_anim)
 
     # Mock Image.open to return a mock image with size
     mock_img = MagicMock()
@@ -258,15 +258,15 @@ def test_extract_tgs_frames_short(mocker):
     # Ensure it works as a context manager
     mock_renderer.__enter__.return_value = mock_renderer
     mock_renderer.__exit__.return_value = False
-    mocker.patch('src.processors.media.animation.PngRenderer', return_value=mock_renderer)
+    mocker.patch('src.media.processors.animation.PngRenderer', return_value=mock_renderer)
 
     # Patch Image.open in the module where it's imported
-    mocker.patch('src.processors.media.animation.Image.open', return_value=mock_img)
-    mocker.patch('src.processors.media.animation._image_to_base64', return_value="b64")
+    mocker.patch('src.media.processors.animation.Image.open', return_value=mock_img)
+    mocker.patch('src.media.processors.animation._image_to_base64', return_value="b64")
 
     # Mock _resize_frame_if_needed to just return the same mock image
     # and avoid its internal unpacking logic if it fails for some reason in mock
-    mocker.patch('src.processors.media.animation._resize_frame_if_needed', return_value=mock_img)
+    mocker.patch('src.media.processors.animation._resize_frame_if_needed', return_value=mock_img)
 
     # Should use only start index
     # animation.py:86: num_frames = animation.out_point - animation.in_point + 1 = 6

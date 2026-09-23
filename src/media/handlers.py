@@ -6,14 +6,14 @@ from telegram.ext import ContextTypes
 from src import settings
 from src.embeddings.stickers import stickers_embedding_client
 from src.logs import elapsed_ms, event, logger
-from src.models import (
+from src.media.download import get_message_media
+from src.media.models import (
     AnimationDetectionData, ImageDetectionData, MediaDescription, MediaDescriptionData,
-    MediaDetectionData, Message, MessageMediaStatus, MessageMediaTypes,
+    MediaDetectionData,
 )
-from src.processors.media.animation import describe_animation
-from src.processors.media.image import describe_image
-from .download import get_message_media
-from .repository import (
+from src.media.processors.animation import describe_animation
+from src.media.processors.image import describe_image
+from src.media.repository import (
     create_media_description,
     get_media_description_by_media_id,
     get_media_descriptions_by_hash,
@@ -21,6 +21,7 @@ from .repository import (
     update_media_description,
     update_media_description_status,
 )
+from src.messages.models import Message, MessageMediaStatus, MessageMediaTypes
 
 
 async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_TYPE):

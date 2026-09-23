@@ -1,10 +1,32 @@
+import time
 from datetime import datetime, timedelta, timezone
 
-from src import mongo
 from src.embeddings.facts import facts_embedding_client
-from src.facts.repository import create_fact, update_fact
-from src.logs import event, logger
-from src.models import UserFact
+from src.facts.processors import extract_facts
+from src.facts.repository import create_fact, decay_facts, update_fact
+from src.logs import elapsed_ms, event, logger
+from src.messages.models import Message
+
+
+async def update_user_facts(new_messages: list[Message]) -> None:
+    started = time.monotonic()
+    try:
+        facts = await extract_facts(new_messages)
+        for fact in facts:
+            await upsert_fact(fact.nickname, fact.text, fact.confidence)
+
+        logger.info(
+            'Extracted and saved facts',
+            extra=event(
+                'FACT_EXTRACT', outcome='ok', count=len(facts),
+                elapsed_ms=elapsed_ms(started),
+            ),
+        )
+    except Exception:
+        logger.error(
+            'Error extracting facts from messages', exc_info=True,
+            extra=event('FACT_EXTRACT', outcome='error'),
+        )
 
 
 async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
@@ -43,35 +65,7 @@ async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
     await facts_embedding_client.save_fact(fact)
     logger.info('Saved new fact', extra=event('FACT_SAVED', fact_id=fact.id, nickname=nickname))
 
+
 async def decay_all_facts(decay_amount: float = 0.1) -> None:
     one_week_ago_ts = datetime.now(timezone.utc) - timedelta(weeks=1)
     await decay_facts(one_week_ago_ts, decay_amount)
-
-
-async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
-    up_to_date_ts = up_to_date.timestamp()
-    cursor = mongo.facts.find({
-        '$or': [
-            {'updated_at': {'$lt': up_to_date_ts}},
-            {'updated_at': {'$exists': False}, 'created_at': {'$lt': up_to_date_ts}},
-        ]
-    })
-    facts = await cursor.to_list(length=1000)
-    logger.info('Decaying stale facts', extra=event('FACT_DECAY_RUN', count=len(facts)))
-
-    for fact_data in facts:
-        fact = UserFact.model_validate(fact_data)
-        new_confidence = round(fact.confidence - decay_amount, 10)
-        if new_confidence <= 0:
-            await mongo.facts.delete_one({'_id': fact_data['_id']})
-            logger.info(
-                'Fact deleted, confidence decayed to zero',
-                extra=event(
-                    'FACT_DELETED', fact_id=str(fact_data['_id']), reason='confidence_zero',
-                ),
-            )
-        else:
-            await mongo.facts.update_one(
-                {'_id': fact_data['_id']},
-                {'$set': {'confidence': new_confidence}}
-            )

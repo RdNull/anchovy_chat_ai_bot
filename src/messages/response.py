@@ -6,15 +6,16 @@ from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 from src import settings
+from src.characters.character import Character
+from src.characters.registry import get_chat_character
+from src.characters.reply import Replier
 from src.logs import elapsed_ms, event, logger
 from src.memory.repository import get_last_memory
 from src.running_app import get_bot
+from .followups import run_followups
 from .parsing import parse_user_message
 from .repository import fetch_last_messages, save_message
-from .utils import get_chat_character, send_action
-from ..characters.character import Character
-from ..characters.reply import Replier
-from ..processors.context.handlers import run_context_checks
+from .utils import send_action
 
 
 @send_action(ChatAction.TYPING)
@@ -45,7 +46,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         last_messages = await fetch_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
         await character.respond(replier, last_messages)
 
-        asyncio.create_task(run_context_checks(chat_id))
+        asyncio.create_task(run_followups(chat_id))
         outcome = 'ok'
     finally:
         logger.info(

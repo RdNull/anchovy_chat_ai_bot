@@ -5,21 +5,21 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from src import settings
 
-from src.messages.media import (
+from src import settings
+from src.media import (
     create_media_description, get_media_description_by_media_id, get_recent_sticker_ids,
     get_sendable_file_id, sticker_corpus_size, update_media_description_status,
     wait_for_media_ready,
 )
+from src.media.download import _parse_animation_file, _parse_image_file, get_message_media
+from src.media.handlers import _generate_media_description, handle_media_message
+from src.media.models import (
+    AnimationDetectionData, ImageDetectionData, MediaDescriptionData, MediaDetectionData,
+)
+from src.messages.models import Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UserRole
 from src.messages.repository import get_message_media_data
 from src.mongo import media_descriptions, messages
-from src.messages.media.download import _parse_animation_file, _parse_image_file, get_message_media
-from src.messages.media.pipeline import _generate_media_description, handle_media_message
-from src.models import (
-    AnimationDetectionData, ImageDetectionData, MediaDescriptionData, MediaDetectionData,
-    Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UserRole,
-)
 
 
 async def insert_carrier(unique_id, file_id, created_at, chat_id=123, role=UserRole.USER):
@@ -58,14 +58,14 @@ def sample_message():
 
 async def test_handle_media_message_new_image(mocker, sample_message, mock_context):
     # Mock get_message_media
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.media.handlers.get_message_media', return_value=ImageDetectionData(
         content='base64content',
         format='jpg'
     ))
 
     # Mock _generate_media_description
     mocker.patch(
-        'src.messages.media.pipeline._generate_media_description',
+        'src.media.handlers._generate_media_description',
         return_value=MediaDescriptionData(
             description='A cute cat',
             ocr_text='CAT'
@@ -112,20 +112,20 @@ async def test_handle_media_message_cache_hit_by_hash(mocker, sample_message, mo
         status=MessageMediaStatus.READY
     )
 
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.media.handlers.get_message_media', return_value=ImageDetectionData(
         content='base64content',
         format='jpg'
     ))
 
     # Mocking content_hash for the detection data
     mocker.patch(
-        'src.models.ImageDetectionData.content_hash',
+        'src.media.models.ImageDetectionData.content_hash',
         new_callable=mocker.PropertyMock,
         return_value=content_hash
     )
 
     # Mock _generate_media_description to ensure it's NOT called
-    mock_gen = mocker.patch('src.messages.media.pipeline._generate_media_description')
+    mock_gen = mocker.patch('src.media.handlers._generate_media_description')
 
     await handle_media_message(sample_message, mock_context)
 
@@ -150,11 +150,11 @@ async def test_handle_media_message_skips_when_no_unique_id(mock_context):
 
 
 async def test_handle_media_message_generate_returns_none(mocker, sample_message, mock_context):
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.media.handlers.get_message_media', return_value=ImageDetectionData(
         content='base64content',
         format='jpg'
     ))
-    mocker.patch('src.messages.media.pipeline._generate_media_description', return_value=None)
+    mocker.patch('src.media.handlers._generate_media_description', return_value=None)
 
     # Should complete without raising; description record is created but not finalised
     await handle_media_message(sample_message, mock_context)
@@ -197,7 +197,7 @@ async def test_handle_media_message_skips_a_fresh_processing_row(mocker, sample_
     await create_media_description(
         media_id='unique_id_123', status=MessageMediaStatus.PROCESSING,
     )
-    mock_get_media = mocker.patch('src.messages.media.pipeline.get_message_media')
+    mock_get_media = mocker.patch('src.media.handlers.get_message_media')
 
     await handle_media_message(sample_message, mock_context)
 
@@ -217,11 +217,11 @@ async def test_handle_media_message_retries_a_stale_processing_row(
         'updated_at': stale,
     })
     mocker.patch.object(settings, 'MEDIA_PROCESSING_STALE_MINUTES', 5)
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.media.handlers.get_message_media', return_value=ImageDetectionData(
         content='base64content', format='jpg',
     ))
     mocker.patch(
-        'src.messages.media.pipeline._generate_media_description',
+        'src.media.handlers._generate_media_description',
         return_value=MediaDescriptionData(description='retried', ocr_text=None),
     )
 
@@ -242,11 +242,11 @@ async def test_handle_media_message_retries_a_processing_row_without_updated_at(
         'media_id': 'unique_id_123', 'type': MessageMediaTypes.IMAGE.value,
         'status': MessageMediaStatus.PROCESSING.value, 'sticker_emoji': None,
     })
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.media.handlers.get_message_media', return_value=ImageDetectionData(
         content='base64content', format='jpg',
     ))
     mocker.patch(
-        'src.messages.media.pipeline._generate_media_description',
+        'src.media.handlers._generate_media_description',
         return_value=MediaDescriptionData(description='retried legacy', ocr_text=None),
     )
 
@@ -332,15 +332,15 @@ def sticker_message():
 
 
 async def test_handle_media_message_passes_sticker_fields_through(mocker, mock_context):
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.media.handlers.get_message_media', return_value=ImageDetectionData(
         content='base64content',
         format='webp',
     ))
     mocker.patch(
-        'src.messages.media.pipeline._generate_media_description',
+        'src.media.handlers._generate_media_description',
         return_value=MediaDescriptionData(description='a dancing cat', ocr_text=None),
     )
-    mocker.patch('src.messages.media.pipeline.stickers_embedding_client.save_sticker')
+    mocker.patch('src.media.handlers.stickers_embedding_client.save_sticker')
 
     await handle_media_message(sticker_message(), mock_context)
 
@@ -350,15 +350,15 @@ async def test_handle_media_message_passes_sticker_fields_through(mocker, mock_c
 
 
 async def test_handle_media_message_indexes_a_ready_sticker(mocker, mock_context):
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.media.handlers.get_message_media', return_value=ImageDetectionData(
         content='base64content', format='webp',
     ))
     mocker.patch(
-        'src.messages.media.pipeline._generate_media_description',
+        'src.media.handlers._generate_media_description',
         return_value=MediaDescriptionData(description='кот танцует', ocr_text=None),
     )
     mock_save = mocker.patch(
-        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+        'src.media.handlers.stickers_embedding_client.save_sticker'
     )
     mocker.patch.object(settings, 'ENABLE_STICKER_REPLIES', False)
 
@@ -371,15 +371,15 @@ async def test_handle_media_message_indexes_a_ready_sticker(mocker, mock_context
 
 
 async def test_handle_media_message_does_not_index_a_photo(mocker, sample_message, mock_context):
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.media.handlers.get_message_media', return_value=ImageDetectionData(
         content='base64content', format='jpg',
     ))
     mocker.patch(
-        'src.messages.media.pipeline._generate_media_description',
+        'src.media.handlers._generate_media_description',
         return_value=MediaDescriptionData(description='a screenshot', ocr_text=None),
     )
     mock_save = mocker.patch(
-        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+        'src.media.handlers.stickers_embedding_client.save_sticker'
     )
 
     await handle_media_message(sample_message, mock_context)
@@ -399,9 +399,9 @@ async def test_handle_media_message_backfills_a_legacy_sticker_row(mocker, mock_
         description='кот танцует',
     )
     mock_save = mocker.patch(
-        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+        'src.media.handlers.stickers_embedding_client.save_sticker'
     )
-    mock_download = mocker.patch('src.messages.media.pipeline.get_message_media')
+    mock_download = mocker.patch('src.media.handlers.get_message_media')
 
     await handle_media_message(sticker_message(), mock_context)
 
@@ -421,9 +421,9 @@ async def test_handle_media_message_backfill_is_once_not_every_sighting(mocker, 
         description='кот танцует',
     )
     mock_save = mocker.patch(
-        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+        'src.media.handlers.stickers_embedding_client.save_sticker'
     )
-    mocker.patch('src.messages.media.pipeline.get_message_media')
+    mocker.patch('src.media.handlers.get_message_media')
 
     await handle_media_message(sticker_message(), mock_context)
     await handle_media_message(sticker_message(), mock_context)
@@ -440,9 +440,9 @@ async def test_handle_media_message_does_not_backfill_a_photo(mocker, sample_mes
         description='a screenshot',
     )
     mock_save = mocker.patch(
-        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+        'src.media.handlers.stickers_embedding_client.save_sticker'
     )
-    mocker.patch('src.messages.media.pipeline.get_message_media')
+    mocker.patch('src.media.handlers.get_message_media')
 
     await handle_media_message(sample_message, mock_context)
 
@@ -459,15 +459,15 @@ async def test_handle_media_message_backfill_defers_indexing_until_ready(mocker,
         type=MessageMediaTypes.IMAGE,
         status=MessageMediaStatus.PENDING,
     )
-    mocker.patch('src.messages.media.pipeline.get_message_media', return_value=ImageDetectionData(
+    mocker.patch('src.media.handlers.get_message_media', return_value=ImageDetectionData(
         content='base64content', format='webp',
     ))
     mocker.patch(
-        'src.messages.media.pipeline._generate_media_description',
+        'src.media.handlers._generate_media_description',
         return_value=MediaDescriptionData(description='кот танцует', ocr_text=None),
     )
     mock_save = mocker.patch(
-        'src.messages.media.pipeline.stickers_embedding_client.save_sticker'
+        'src.media.handlers.stickers_embedding_client.save_sticker'
     )
 
     await handle_media_message(sticker_message(), mock_context)
@@ -555,7 +555,7 @@ async def test_sticker_corpus_size_counts_only_ready_stickers():
 async def test_generate_media_description_image(mocker, sample_message):
     image_data = ImageDetectionData(content='base64content', format='jpg')
     expected = MediaDescriptionData(description='A cat', ocr_text=None)
-    mocker.patch('src.messages.media.pipeline.describe_image', return_value=expected)
+    mocker.patch('src.media.handlers.describe_image', return_value=expected)
 
     result = await _generate_media_description(sample_message, image_data)
 
@@ -565,7 +565,7 @@ async def test_generate_media_description_image(mocker, sample_message):
 async def test_generate_media_description_animation(mocker, sample_message):
     animation_data = AnimationDetectionData(content=b'gif_bytes', format='gif')
     expected = MediaDescriptionData(description='Animated cat', ocr_text=None)
-    mocker.patch('src.messages.media.pipeline.describe_animation', return_value=expected)
+    mocker.patch('src.media.handlers.describe_animation', return_value=expected)
 
     result = await _generate_media_description(sample_message, animation_data)
 
@@ -669,7 +669,7 @@ def test_parse_animation_file():
 # --- wait_for_media_ready ---
 
 async def test_wait_for_media_ready_empty_list(mocker):
-    mock_get = mocker.patch('src.messages.media.repository.get_media_description_by_media_id')
+    mock_get = mocker.patch('src.media.repository.get_media_description_by_media_id')
 
     await wait_for_media_ready([], timeout=5.0)
 
@@ -680,11 +680,11 @@ async def test_wait_for_media_ready_already_finished(mocker):
     ready_desc = MagicMock()
     ready_desc.status.is_finished = True
     mocker.patch(
-        'src.messages.media.repository.get_media_description_by_media_id',
+        'src.media.repository.get_media_description_by_media_id',
         return_value=ready_desc,
     )
     mock_sleep = mocker.patch(
-        'src.messages.media.repository.asyncio.sleep', new_callable=AsyncMock,
+        'src.media.repository.asyncio.sleep', new_callable=AsyncMock,
     )
 
     await wait_for_media_ready(['uid1'], timeout=5.0)
@@ -698,11 +698,11 @@ async def test_wait_for_media_ready_polls_until_ready(mocker):
     ready_desc = MagicMock()
     ready_desc.status.is_finished = True
     mocker.patch(
-        'src.messages.media.repository.get_media_description_by_media_id',
+        'src.media.repository.get_media_description_by_media_id',
         side_effect=[pending_desc, ready_desc],
     )
     mock_sleep = mocker.patch(
-        'src.messages.media.repository.asyncio.sleep', new_callable=AsyncMock,
+        'src.media.repository.asyncio.sleep', new_callable=AsyncMock,
     )
 
     await wait_for_media_ready(['uid1'], timeout=5.0)
@@ -714,11 +714,11 @@ async def test_wait_for_media_ready_treats_none_as_not_ready(mocker):
     ready_desc = MagicMock()
     ready_desc.status.is_finished = True
     mocker.patch(
-        'src.messages.media.repository.get_media_description_by_media_id',
+        'src.media.repository.get_media_description_by_media_id',
         side_effect=[None, ready_desc],
     )
     mock_sleep = mocker.patch(
-        'src.messages.media.repository.asyncio.sleep', new_callable=AsyncMock,
+        'src.media.repository.asyncio.sleep', new_callable=AsyncMock,
     )
 
     await wait_for_media_ready(['uid1'], timeout=5.0)
@@ -727,11 +727,11 @@ async def test_wait_for_media_ready_treats_none_as_not_ready(mocker):
 
 
 async def test_wait_for_media_ready_times_out(mocker):
-    mock_get = mocker.patch('src.messages.media.repository.get_media_description_by_media_id')
+    mock_get = mocker.patch('src.media.repository.get_media_description_by_media_id')
     mock_sleep = mocker.patch(
-        'src.messages.media.repository.asyncio.sleep', new_callable=AsyncMock,
+        'src.media.repository.asyncio.sleep', new_callable=AsyncMock,
     )
-    mock_logger = mocker.patch('src.messages.media.repository.logger')
+    mock_logger = mocker.patch('src.media.repository.logger')
 
     await wait_for_media_ready(['uid1'], timeout=-1.0)
 
@@ -752,11 +752,11 @@ async def test_wait_for_media_ready_multiple_ids_waits_for_all(mocker):
         return results[uid].pop(0)
 
     mocker.patch(
-        'src.messages.media.repository.get_media_description_by_media_id',
+        'src.media.repository.get_media_description_by_media_id',
         side_effect=get_by_uid,
     )
     mock_sleep = mocker.patch(
-        'src.messages.media.repository.asyncio.sleep', new_callable=AsyncMock,
+        'src.media.repository.asyncio.sleep', new_callable=AsyncMock,
     )
 
     await wait_for_media_ready(['uid1', 'uid2'], timeout=5.0)

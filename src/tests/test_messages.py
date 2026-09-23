@@ -5,9 +5,7 @@ from src.messages.repository import (
     get_last_message, get_message_by_tg_id, get_messages, get_messages_count,
     get_messages_count_since, save_message, update_message,
 )
-from src.models import (
-    Message, MessageReply, UpdateMessage, UserRole,
-)
+from src.messages.models import Message, MessageReply, UpdateMessage, UserRole
 from src.tests.test_utils import make_message
 
 

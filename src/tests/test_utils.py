@@ -4,15 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, call
 from telegram.constants import ChatAction
 
 from src import settings
-from src.characters.repository import CHARACTERS
-from src.messages.utils import (
-    ReplyToBotFilter,
-    escape_markdown_v2,
-    get_chat_character,
-    send_chat_action,
-    set_chat_character,
-)
-from src.models import (
+from src.characters.registry import CHARACTERS, get_chat_character, set_chat_character
+from src.messages.models import (
     Message,
     MessageMedia,
     MessageMediaStatus,
@@ -20,6 +13,7 @@ from src.models import (
     MessageReply,
     UserRole,
 )
+from src.messages.utils import ReplyToBotFilter, escape_markdown_v2, send_chat_action
 
 
 def make_message(

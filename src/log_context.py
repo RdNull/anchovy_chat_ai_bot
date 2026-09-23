@@ -2,7 +2,7 @@
 
 Uses a `ContextVar` rather than a parameter because `asyncio.create_task` copies the
 current context into the new task. `handle_conversation` fires
-`create_task(run_context_checks(chat_id))` and `create_task(handle_media_message(...))`;
+`create_task(run_followups(chat_id))` and `create_task(handle_media_message(...))`;
 `run_initiative_checks` fires `create_task(_run_initiative_reply(...))`. All of those
 inherit whatever `log_context` bound at the top of the call chain **for free** — which is
 exactly the causal chain that cannot be reconstructed from Axiom's flat event list otherwise.

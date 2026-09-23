@@ -6,14 +6,14 @@ from langchain.tools import tool
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src import ai, settings
-from src.characters.rate_limit import SlidingWindowRateLimiter
+from src.characters.tools.registry import ToolContext
 from src.embeddings.messages import messages_embeddings_client
 from src.embeddings.stickers import StickerSearchResult, stickers_embedding_client
 from src.facts.repository import get_facts
 from src.logs import elapsed_ms, event, logger
-from src.messages.media.repository import get_recent_sticker_ids
+from src.media.repository import get_recent_sticker_ids
 from src.prompt_manager import prompt_manager
-from src.tools import ToolContext
+from src.rate_limit import SlidingWindowRateLimiter
 
 SEARCH_MESSAGES_DESCRIPTION = '''
 [context]: Поиск сообщений чата по запросу

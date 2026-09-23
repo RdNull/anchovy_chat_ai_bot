@@ -5,7 +5,7 @@ from telegram import Bot, ReplyParameters
 from src import settings
 from src.logs import event, logger
 from src.messages.repository import add_bot_reaction, save_message
-from src.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole
+from src.messages.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole
 from src.types import ReactionEmoji
 
 if TYPE_CHECKING:

@@ -5,7 +5,7 @@ from langsmith import traceable
 
 from src import ai
 from src.logs import elapsed_ms, event, logger
-from src.models import ImageDetectionData, MediaDescriptionData
+from src.media.models import ImageDetectionData, MediaDescriptionData
 from src.prompt_manager import prompt_manager
 
 

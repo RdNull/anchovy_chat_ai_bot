@@ -84,9 +84,11 @@ mocker.patch('src.characters.character.ai.get_model', return_value=llm)
 ```
 
 ### Memory LLM
-The memory cycle lives in `src/memory/processors.py` (`extract_memory`), so patch
-`ai.get_memory_model` **there** — not on `src.ai`, and not under
-`src.processors.context` (that package only holds `handlers.py` and `embeddings.py`):
+`extract_memory` (`src/memory/processors.py`) runs the LLM call and returns the
+extracted `MemoryData` — it never saves it. The save, the `ENABLE_MEMORY_PROCESSING`
+gate and the terminal `MEMORY_EXTRACT` event are `src/memory/handlers.py`'s job.
+Patch `ai.get_memory_model` on `src.memory.processors` — not on `src.ai`, and not on
+`src.memory.handlers`:
 ```python
 from src.memory.models import StructuredMemory
 
@@ -116,7 +118,7 @@ The client methods are `save` and `search` (on `MessageEmbeddingsClient`), and
 `save_fact` / `search_facts` (on `FactsEmbeddingClient`). Patch at the module that
 imported the client instance:
 ```python
-mocker.patch('src.processors.context.embeddings.messages_embeddings_client.save')
+mocker.patch('src.embeddings.handlers.messages_embeddings_client.save')
 mocker.patch('src.characters.tools.context.messages_embeddings_client.search', return_value=[])
 ```
 
@@ -126,7 +128,7 @@ Patch `ToolRegistry.execute` — do NOT patch individual `StructuredTool` instan
 a **tuple** of `(ToolMessage, raw result)`; the loop reads the raw value to tell a
 `ToolFailure` from a delivered answer, so a bare `ToolMessage` return unpacks wrong:
 ```python
-from src.tools import ToolRegistry
+from src.characters.tools.registry import ToolRegistry
 from langchain_core.messages import ToolMessage
 
 mocker.patch.object(
@@ -138,7 +140,7 @@ mocker.patch.object(
 To drive the failure-recovery path, return a `ToolFailure` as the raw value —
 `src/tests/test_character.py:execute_returning` wraps this for a sequence of calls:
 ```python
-from src.tools import ToolFailure
+from src.characters.tools.registry import ToolFailure
 
 mocker.patch.object(
     ToolRegistry,
@@ -212,8 +214,7 @@ renamed at any time. The active character is persisted per chat in MongoDB
 await set_chat_character(chat_id, 'anchovy')
 
 # GOOD
-from src.characters.repository import CHARACTERS
-from src.messages.utils import get_chat_character, set_chat_character
+from src.characters.registry import CHARACTERS, get_chat_character, set_chat_character
 
 code = next(iter(CHARACTERS))
 await set_chat_character(chat_id, code)

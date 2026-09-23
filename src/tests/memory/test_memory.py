@@ -9,7 +9,7 @@ from src.memory.handlers import delete_old_memories
 from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInfo, StructuredMemory
 from src.memory.repository import get_last_memory, save_memory
 from src.messages.repository import get_messages, save_message
-from src.models import Message, UserRole
+from src.messages.models import Message, UserRole
 
 TS = '26-05-01 10:00'
 NOW = datetime(2026, 5, 1, 18, 0, tzinfo=TIMEZONE_ALMATY)

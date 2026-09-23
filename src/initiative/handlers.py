@@ -6,6 +6,7 @@ from telegram.constants import ChatAction
 
 from src import settings
 from src.characters.character import Character
+from src.characters.registry import get_chat_character
 from src.characters.reply import Replier
 from src.initiative.models import InitiativeVerdict
 from src.initiative.policies import decide, pre_check, split_at_gap
@@ -15,16 +16,16 @@ from src.initiative.repository import (
 )
 from src.logs import event, logger
 from src.memory.repository import get_last_memory
+from src.messages.models import Message
 from src.messages.repository import fetch_last_messages
-from src.messages.utils import get_chat_character, send_chat_action
-from src.models import Message
+from src.messages.utils import send_chat_action
 from src.running_app import get_bot
 
-# `run_context_checks` is a detached task per message, so the watermark's
-# read-then-write is not atomic on its own: two messages arriving together would both
-# read the same watermark, claim the same window and answer it twice. Module-level and
-# shared by every chat, like `CHAT_CONTEXT_LOCK` — the critical section is short and
-# ends before the LLM call.
+# `run_followups` is a detached task per message, so the watermark's read-then-write
+# is not atomic on its own: two messages arriving together would both read the same
+# watermark, claim the same window and answer it twice. Module-level and shared by
+# every chat, like `memory.handlers.MEMORY_UPDATE_LOCK` — the critical section is
+# short and ends before the LLM call.
 INITIATIVE_RUN_LOCK = asyncio.Lock()
 
 

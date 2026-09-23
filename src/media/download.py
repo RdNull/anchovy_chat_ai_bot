@@ -6,10 +6,8 @@ from pathlib import Path
 from telegram.ext import ContextTypes
 
 from src.logs import event, logger
-from src.models import (
-    AnimationDetectionData, ImageDetectionData, MediaDetectionData,
-    MessageMediaTypes,
-)
+from src.media.models import AnimationDetectionData, ImageDetectionData, MediaDetectionData
+from src.messages.models import MessageMediaTypes
 
 FILE_FORMATS = {
     MessageMediaTypes.IMAGE: {'jpg', 'jpeg', 'png', 'webp'},

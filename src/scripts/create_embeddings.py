@@ -4,8 +4,8 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from src.embeddings.messages import messages_embeddings_client
+from src.embeddings.repository import save_embedding_task
 from src.messages.repository import get_messages
-from src.processors.context.embeddings import save_embedding_task
 
 parser = argparse.ArgumentParser(description='Backfill message embeddings for a chat.')
 parser.add_argument('--date-from', type=str)

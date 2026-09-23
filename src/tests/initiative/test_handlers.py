@@ -9,7 +9,7 @@ from src.initiative import handlers
 from src.initiative.models import InitiativeVerdict
 from src.initiative.repository import get_last_initiative_run
 from src.messages.repository import save_message
-from src.models import Message, UserRole
+from src.messages.models import Message, UserRole
 
 
 def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1', created_at=None):
@@ -58,7 +58,7 @@ async def test_run_initiative_checks_does_not_save_watermark_when_pre_check_fail
 
 
 async def test_concurrent_checks_claim_the_same_window_only_once(mocker):
-    # Two messages arriving together spawn two `run_context_checks` tasks. Without a
+    # Two messages arriving together spawn two `run_followups` tasks. Without a
     # lock over the watermark's read-then-write both read the same watermark, claim
     # the same window and the bot answers it twice.
     mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)

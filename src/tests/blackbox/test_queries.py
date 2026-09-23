@@ -9,7 +9,7 @@ from src.blackbox import queries
 from src.embeddings.facts import facts_embedding_client
 from src.embeddings.messages import messages_embeddings_client
 from src.messages.repository import save_message
-from src.models import UserRole
+from src.messages.models import UserRole
 from src.tests.test_utils import make_message
 
 CHAT_ID = 1

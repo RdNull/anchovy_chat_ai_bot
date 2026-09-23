@@ -26,7 +26,7 @@ from src.embeddings.messages import messages_embeddings_client
 from src.facts.repository import get_fact_by_id
 from src.memory.keys import RECENT_FIELD, TRAITS_FIELD, normalize
 from src.messages.repository import get_messages, get_messages_by_ids
-from src.models import Message, UserRole
+from src.messages.models import Message, UserRole
 
 # Hard caps, enforced here as well as in the tool schemas: a tool that can return the
 # whole corpus will eventually return the whole corpus.

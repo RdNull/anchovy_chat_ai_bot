@@ -14,8 +14,10 @@ from src.characters.tools.answer import answer_text, send_sticker, set_reaction
 from src.characters.tools.context import _web_search_limiter
 from src.characters.tools.context import search_messages as search_messages_direct
 from src.embeddings.stickers import StickerSearchResult
-from src.models import Message, RelatedMessagesData, UserFact, UserRole
-from src.tools import ToolContext, ToolFailure, ToolRegistry
+from src.characters.tools.registry import ToolContext, ToolFailure, ToolRegistry
+from src.embeddings.models import RelatedMessagesData
+from src.facts.models import UserFact
+from src.messages.models import Message, UserRole
 
 
 def make_context(chat_id=123):
@@ -182,7 +184,7 @@ async def test_tool_registry_execute_logging(mocker):
     mock_tool.return_direct = False
     mock_tool.ainvoke = AsyncMock(return_value='res')
 
-    mock_logger = mocker.patch('src.tools.logger')
+    mock_logger = mocker.patch('src.characters.tools.registry.logger')
 
     context = make_context()
     registry = ToolRegistry(context_tools=[mock_tool], direct_tools=[], context=context)

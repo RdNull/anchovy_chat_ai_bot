@@ -6,15 +6,18 @@ from qdrant_client.http.models import QueryResponse, ScoredPoint
 
 from src import settings
 from src.embeddings.facts import FactsEmbeddingClient, FactsSearchResult
+from src.embeddings.handlers import update_chat_embeddings
 from src.embeddings.messages import MessageEmbeddingsClient, chunk_messages
+from src.embeddings.models import RelatedMessagesData
 from src.embeddings.stickers import (
     StickerEmbeddingsClient, StickerSearchResult, _point_id, sticker_embedding_text,
 )
-from src.models import (
-    MediaDescription, Message, MessageMedia, MessageMediaStatus, MessageMediaTypes,
-    RelatedMessagesData, UserFact, UserRole,
+from src.facts.models import UserFact
+from src.media.models import MediaDescription
+from src.messages.models import (
+    Message, MessageMedia, MessageMediaStatus, MessageMediaTypes, UserRole,
 )
-from src.processors.context.embeddings import search_related_messages, update_chat_embeddings
+from src.messages.repository import save_message
 
 
 def make_description(
@@ -130,13 +133,20 @@ async def test_embeddings_client_search(mocker):
     mock_qdrant = MagicMock()
     mock_qdrant.collection_exists = AsyncMock(return_value=True)
 
-    # Mock query_points response
+    # Real messages, hydrated back by `get_messages_by_ids` against `test_data` —
+    # only the Qdrant side (the query itself) is mocked, per the write-tests conventions.
+    saved_messages = []
+    for text in ('text 1', 'text 2'):
+        message = Message(chat_id=123, role=UserRole.USER, text=text, nickname='user')
+        await save_message(message)
+        saved_messages.append(message)
+
     mock_scored_point = ScoredPoint(
         id='chunk_id',
         version=1,
         score=0.9,
         payload={
-            'message_ids': ['1', '2'],
+            'message_ids': [str(m.id) for m in saved_messages],
             'chat_id': 123,
         }
     )
@@ -148,31 +158,20 @@ async def test_embeddings_client_search(mocker):
     client = MessageEmbeddingsClient('test_collection', 'test_model', 128)
     client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
 
-    # Mock get_messages from history
-    mock_messages = [
-        create_mock_message(1, 'text 1'),
-        create_mock_message(2, 'text 2')
-    ]
-    mock_get_messages = mocker.patch(  # todo replace by real db fetching
-        'src.embeddings.messages.get_messages_by_ids', AsyncMock(return_value=mock_messages)
-    )
-
     results = await client.search(123, 'test query', limit=5)
 
     assert len(results) == 1
     assert isinstance(results[0], RelatedMessagesData)
     assert results[0].score == 0.9
-    assert results[0].messages == mock_messages
-
-    assert mock_get_messages.call_count == 1
-    assert mock_get_messages.call_args == call(ids=['1', '2'], size=100, sort_order=-1)
+    assert {m.id for m in results[0].messages} == {str(m.id) for m in saved_messages}
+    assert {m.text for m in results[0].messages} == {'text 1', 'text 2'}
 
 
 async def test_update_chat_embeddings(mocker):
     mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
 
     # Mock DB
-    mock_db = mocker.patch('src.processors.context.embeddings.db')
+    mock_db = mocker.patch('src.embeddings.repository.db')
 
     # No last task
     mock_db.embedding_tasks.find_one = AsyncMock(return_value=None)
@@ -181,11 +180,11 @@ async def test_update_chat_embeddings(mocker):
     # Mock get_messages
     messages = [create_mock_message(1, 'text 1', chat_id=123)]
     mock_get_messages = mocker.patch(
-        'src.processors.context.embeddings.get_messages', AsyncMock(return_value=messages)
+        'src.embeddings.handlers.get_messages', AsyncMock(return_value=messages)
     )
 
     # Mock client
-    mock_client = mocker.patch('src.processors.context.embeddings.messages_embeddings_client')
+    mock_client = mocker.patch('src.embeddings.handlers.messages_embeddings_client')
     mock_client.save = AsyncMock()
 
     await update_chat_embeddings(123)
@@ -200,28 +199,6 @@ async def test_update_chat_embeddings(mocker):
     insert_args = mock_db.embedding_tasks.insert_one.call_args[0][0]
     assert insert_args['chat_id'] == 123
     assert insert_args['last_message_time'] == messages[0].created_at.timestamp()
-
-
-async def test_search_related_messages_media(mocker):
-    media = MessageMedia(
-        media_id='m1',
-        unique_id='mu1',
-        description='cat on a mat',
-        ocr_text='MEOW'
-    )
-    user_message = create_mock_message(1, 'look at this', chat_id=123)
-    user_message.media = media
-
-    mock_client = mocker.patch('src.processors.context.embeddings.messages_embeddings_client')
-    mock_client.search = AsyncMock(return_value=[])
-
-    await search_related_messages(user_message)
-
-    expected_query = 'look at this|cat on a mat|MEOW'
-    assert mock_client.search.call_count == 1
-    assert mock_client.search.call_args == call(
-        chat_id=123, query=expected_query, limit=ANY
-    )
 
 
 async def test_get_embedding_vectors_api(mocker):

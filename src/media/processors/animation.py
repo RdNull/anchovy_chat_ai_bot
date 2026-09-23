@@ -15,7 +15,7 @@ from lottie.importers.core import import_tgs
 
 from src import ai
 from src.logs import elapsed_ms, event, logger
-from src.models import AnimationDetectionData, MediaDescriptionData
+from src.media.models import AnimationDetectionData, MediaDescriptionData
 from src.prompt_manager import prompt_manager
 
 

@@ -8,22 +8,19 @@ from telegram import (
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes
 
-from src.characters.repository import CHARACTERS
+from src.characters.registry import CHARACTERS, get_chat_character, set_chat_character
 from src.log_context import log_context
 from src.logs import event, logger
-from src.models import UpdateMessage
-from .media.pipeline import handle_media_message
+from src.media.handlers import handle_media_message
+from src.messages.models import UpdateMessage
 from .parsing import parse_user_message
 from .repository import (
     get_message_by_tg_id, save_message,
     update_message, update_message_reactions,
 )
+from .followups import run_followups
 from .response import generate_answer
-from .utils import (
-    escape_markdown_v2, get_chat_character, restricted, send_action,
-    set_chat_character,
-)
-from ..processors.context.handlers import run_context_checks
+from .utils import escape_markdown_v2, restricted, send_action
 
 
 async def start(update: Update, context: CallbackContext):
@@ -135,7 +132,7 @@ async def handle_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     if user_message.media:
         asyncio.create_task(handle_media_message(user_message, context))
 
-    asyncio.create_task(run_context_checks(chat_id))
+    asyncio.create_task(run_followups(chat_id))
 
 
 @restricted
