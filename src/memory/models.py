@@ -50,7 +50,7 @@ class StructuredMemory(BaseModel):
     participants: dict[str, ParticipantInfo] = Field(default_factory=dict)
     state: ChatState = Field(default_factory=ChatState)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return any(
             (
                 self.state.active_topics,

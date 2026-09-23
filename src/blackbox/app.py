@@ -83,7 +83,7 @@ class BearerAuth:
     INFO: that is the client with a stale token after a rotation, or someone guessing.
     """
 
-    def __init__(self, app: ASGIApp, token: str):
+    def __init__(self, app: ASGIApp, token: str) -> None:
         self.app = app
         self._token = token.encode()
 

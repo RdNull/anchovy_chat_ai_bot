@@ -14,7 +14,7 @@ def chunk_messages(messages: list[Message], window=8, overlap=3) -> list[ChunkDa
 
     def get_chunk_id(_chunk: list[Message]) -> UUID:
         key = f'{chat_id}-{"-".join(str(m.id) for m in _chunk)}'
-        return UUID(hashlib.md5(key.encode()).hexdigest())
+        return UUID(hashlib.md5(key.encode(), usedforsecurity=False).hexdigest())
 
     chunks = []
     for i in range(0, len(messages), window - overlap):

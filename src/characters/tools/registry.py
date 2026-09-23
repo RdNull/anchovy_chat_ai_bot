@@ -34,7 +34,7 @@ class ToolRegistry:
         context_tools: Iterable[BaseTool],
         direct_tools: Iterable[BaseTool],
         context: ToolContext,
-    ):
+    ) -> None:
         self.context_tools = tuple(context_tools)
         self.direct_tools = tuple(direct_tools)
         self.tools = (*self.context_tools, *self.direct_tools)

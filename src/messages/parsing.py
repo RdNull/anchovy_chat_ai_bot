@@ -74,11 +74,10 @@ def _get_message_medium(tg_message: TgMessage) -> _BaseMedium | None:
 
     if photo_sizes := tg_message.photo:  # type: tuple[PhotoSize, ...]
         # selecting the biggest photo size that is less than 300_000 pixels ("magic number")
-        photo_size = next(s for s in reversed(photo_sizes) if s.height * s.width <= 300_000)
-        return photo_size
+        return next(s for s in reversed(photo_sizes) if s.height * s.width <= 300_000)
 
-    if animation := tg_message.animation:
-        if animation.duration <= 10:  # in seconds; long gifs will be ignored
-            return animation
+    # duration in seconds; long gifs are ignored
+    if (animation := tg_message.animation) and animation.duration <= 10:
+        return animation
 
     return None

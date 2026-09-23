@@ -5,7 +5,7 @@ _running_app: Application | None = None
 
 
 def set_running_app(application: Application) -> None:
-    global _running_app
+    global _running_app  # noqa: PLW0603 -- the module-level singleton this setter exists for
     _running_app = application
 
 

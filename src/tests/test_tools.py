@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -51,7 +51,7 @@ async def test_search_messages_tool(mocker):
         nickname='bob',
         role=UserRole.USER,
         text='hello world',
-        created_at=datetime.now(),
+        created_at=datetime.now(UTC),
     )
 
     related = [RelatedMessagesData(messages=[msg], score=0.9)]
@@ -539,7 +539,7 @@ def stub_sticker_search(mocker, probes, excluded=frozenset()):
     )
     mock_get = mocker.patch(
         'src.characters.tools.context.stickers_embedding_client.get_sticker',
-        side_effect=lambda unique_id: make_hit(unique_id),
+        side_effect=make_hit,
     )
     return mock_search, mock_get
 

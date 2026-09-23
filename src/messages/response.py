@@ -19,7 +19,7 @@ from .utils import send_action
 
 
 @send_action(ChatAction.TYPING)
-async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def generate_answer(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     user_message = await parse_user_message(update)
     if not user_message:
         return

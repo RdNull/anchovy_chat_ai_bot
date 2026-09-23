@@ -92,7 +92,7 @@ class Character:
         name: str,
         description: str,
         style_prompt: str,
-    ):
+    ) -> None:
         self.code = code
         self.name = name
         self.display_name = display_name

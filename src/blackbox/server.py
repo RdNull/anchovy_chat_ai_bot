@@ -7,7 +7,7 @@ Tool registration only. The logic lives in `queries.py`, auth and the HTTP trans
 import time
 from collections.abc import Awaitable
 from datetime import datetime
-from typing import Annotated, Any, TypeVar
+from typing import Annotated, Any
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -16,8 +16,6 @@ from pydantic import Field
 
 from src.blackbox import queries
 from src.logs import elapsed_ms, event, logger
-
-T = TypeVar('T')
 
 INSTRUCTIONS = (
     "Read-only access to a Telegram group-chat bot's own data: chat history, memory "
@@ -37,7 +35,7 @@ ChatId = Annotated[
 Moment = Annotated[datetime | None, Field(description='ISO 8601. A naive value is read as UTC.')]
 
 
-async def _run(name: str, query: Awaitable[T]) -> T:
+async def _run[T](name: str, query: Awaitable[T]) -> T:
     """Awaits a query, logs one line for it, and hands any failure's text to the model.
 
     The SDK withholds the message of every exception but `ToolError` and returns a bare
@@ -57,10 +55,11 @@ async def _run(name: str, query: Awaitable[T]) -> T:
     outcome = 'error'
     try:
         result = await query
-        outcome = 'ok'
-        return result
     except Exception as exc:
         raise ToolError(f'{type(exc).__name__}: {exc}') from exc
+    else:
+        outcome = 'ok'
+        return result
     finally:
         logger.info(
             'Blackbox tool finished',

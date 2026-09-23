@@ -29,8 +29,20 @@ async def describe_image(image: ImageDetectionData) -> MediaDescriptionData | No
     try:
         response: MediaDescriptionData = await model_with_structure.ainvoke(messages)
         if not response:
-            raise Exception('No response from model')
-
+            raise ValueError('No response from model')
+    except Exception:
+        logger.error(
+            'Error generating image description',
+            exc_info=True,
+            extra=event(
+                'MEDIA_DESCRIBE',
+                outcome='error',
+                kind='image',
+                content_hash=image.content_hash,
+            ),
+        )
+        return None
+    else:
         logger.debug(
             'Image description text',
             extra=event(
@@ -53,16 +65,3 @@ async def describe_image(image: ImageDetectionData) -> MediaDescriptionData | No
             ),
         )
         return response
-    except Exception:
-        logger.error(
-            'Error generating image description',
-            exc_info=True,
-            extra=event(
-                'MEDIA_DESCRIBE',
-                outcome='error',
-                kind='image',
-                content_hash=image.content_hash,
-            ),
-        )
-
-    return None

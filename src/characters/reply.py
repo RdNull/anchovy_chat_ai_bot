@@ -13,7 +13,9 @@ if TYPE_CHECKING:
 
 
 class Replier:
-    def __init__(self, bot: Bot, character: Character, chat_id: int, target: Message | None):
+    def __init__(
+        self, bot: Bot, character: Character, chat_id: int, target: Message | None
+    ) -> None:
         self.bot = bot
         self.character = character
         self.chat_id = chat_id

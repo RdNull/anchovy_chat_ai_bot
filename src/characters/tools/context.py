@@ -181,8 +181,8 @@ def _parse_fragments(response: AIMessage, limit: int) -> list[str]:
     JSON overrides that, and `_CLEANERS` is what holds if it ever comes back.
     """
     fragments = []
-    for line in _content_text(response).splitlines():
-        line = _clean(line)
+    for raw_line in _content_text(response).splitlines():
+        line = _clean(raw_line)
         if not line:
             continue
         if line.strip('.!:?"\'«»').casefold() == _NOT_FOUND:

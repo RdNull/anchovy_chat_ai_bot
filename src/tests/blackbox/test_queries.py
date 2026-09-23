@@ -84,7 +84,7 @@ async def test_chat_id_falls_back_to_the_configured_chat(mocker):
 async def test_missing_chat_id_without_a_default_raises(mocker):
     mocker.patch.object(settings, 'BLACKBOX_CHAT_ID', None)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='chat_id was not given'):
         await queries.list_snapshots()
 
 
@@ -221,7 +221,7 @@ async def test_get_window_clamps_each_side(mocker):
 
 
 async def test_get_window_unknown_message_raises():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r'message .+ not found'):
         await queries.get_window(str(ObjectId()), 'memory')
 
 
@@ -354,7 +354,7 @@ async def test_get_memory_unknown_nick_lists_the_participants():
 async def test_get_memory_before_any_snapshot_raises():
     await _save_snapshot(T0, {})
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='no memory snapshot for chat'):
         await queries.get_memory(CHAT_ID, at=T0 - timedelta(days=1))
 
 
@@ -488,7 +488,7 @@ async def test_diff_memory_reversed_bounds_raise():
 async def test_diff_memory_before_any_snapshot_raises():
     await _save_snapshot(T0, {})
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='no memory snapshot for chat'):
         await queries.diff_memory(T0 - timedelta(days=1), chat_id=CHAT_ID)
 
 

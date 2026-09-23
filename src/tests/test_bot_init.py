@@ -1,6 +1,7 @@
 import asyncio
+import contextlib
 import logging
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from src import settings
 from src.bot import ContextBindingApplication, log_sticker_corpus, main, setup_scheduler
@@ -29,14 +30,14 @@ async def test_main_initialization(mocker):
 
 
 async def test_setup_scheduler(mocker):
+    """`setup_scheduler` blocks forever after registering the jobs (an `asyncio.Event`
+    that is never set) -- `wait_for`'s own timeout is what ends the coroutine here,
+    not anything the mock controls.
+    """
     mock_scheduler = mocker.patch('src.bot.Scheduler')
-    mock_sleep = mocker.patch('asyncio.sleep', new_callable=AsyncMock)
-    mock_sleep.side_effect = [None, asyncio.CancelledError()]
 
-    try:
-        await asyncio.wait_for(setup_scheduler(), timeout=2.0)
-    except TimeoutError, asyncio.CancelledError:
-        pass
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(setup_scheduler(), timeout=0.05)
 
     assert mock_scheduler.call_count == 1
     assert mock_scheduler.return_value.weekly.call_count == 1

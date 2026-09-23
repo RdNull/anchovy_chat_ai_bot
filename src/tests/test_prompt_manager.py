@@ -26,16 +26,12 @@ def test_prompt_manager_loading(tmp_path):
 def test_prompt_manager_errors():
     manager = PromptManager()  # Uses default settings.PROMPTS_DIR
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(ValueError, match="Task 'non_existent_task' not found"):
         manager.get_prompt('non_existent_task', 'v1')
 
-    assert "Task 'non_existent_task' not found" in str(excinfo.value)
-
     # Assuming 'character_setup' exists from ls -R
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(ValueError, match="Version 'nope' not found for task 'character_setup'"):
         manager.get_prompt('character_setup', 'nope')
-
-    assert "Version 'nope' not found for task 'character_setup'" in str(excinfo.value)
 
 
 def test_character_setup_v1_rendering():

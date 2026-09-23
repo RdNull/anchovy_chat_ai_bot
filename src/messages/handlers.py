@@ -28,7 +28,7 @@ from .response import generate_answer
 from .utils import escape_markdown_v2, restricted, send_action
 
 
-async def start(update: Update, context: CallbackContext):
+async def start(update: Update, _context: CallbackContext):
     # chat_id/user_id are already bound by ContextBindingApplication.process_update
     # (src/bot.py) by the time this callback runs.
     logger.info('Command handled', extra=event('COMMAND_HANDLED', command='start'))
@@ -54,7 +54,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 @restricted
-async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def info(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     logger.info('Command handled', extra=event('COMMAND_HANDLED', command='info'))
     character = await get_chat_character(chat_id)
@@ -66,7 +66,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @restricted
-async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def list_characters(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     logger.info('Command handled', extra=event('COMMAND_HANDLED', command='list'))
     keyboard = [
         [InlineKeyboardButton(character.display_name, callback_data=f'select_char:{code}')]
@@ -78,7 +78,7 @@ async def list_characters(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @restricted
-async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def select_character(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     chat_id = update.effective_chat.id
     await query.answer()
@@ -95,7 +95,7 @@ async def select_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @restricted
-async def random_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def random_character(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     character_code = random.choice(list(CHARACTERS.keys()))
     logger.info(
@@ -157,7 +157,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @restricted
-async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message_reaction(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     logger.info('Handling message reaction', extra=event('REACTION_RECEIVED'))
     reaction_update = update.message_reaction
     if not reaction_update or not reaction_update.user:
@@ -174,7 +174,7 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
 
 
 @restricted
-async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message_edit(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     logger.info('Handling message edit', extra=event('MESSAGE_EDIT_RECEIVED'))
     if not update.edited_message:
         return

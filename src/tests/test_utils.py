@@ -1,6 +1,7 @@
 from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
+import pytest
 from telegram.constants import ChatAction
 
 from src import settings
@@ -273,8 +274,6 @@ def test_message_response_format_with_media_and_reactions():
 
 # --- Message._render_reactions ---
 
-import pytest
-
 BOT = settings.BOT_NICKNAME
 
 
@@ -283,7 +282,7 @@ def _msg(reactions):
 
 
 @pytest.mark.parametrize(
-    'reactions, expected',
+    ('reactions', 'expected'),
     [
         ({}, None),
         ({'🖕': [BOT]}, f'⤷ 🖕 {BOT}'),

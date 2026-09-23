@@ -68,8 +68,9 @@ async def setup_scheduler():
         dt.time(4, 0, tzinfo=const.TIMEZONE_ALMATY),
         tasks.memory.run_memory_cleanup,
     )
-    while True:
-        await asyncio.sleep(1)
+    # Keeps this task (and the event loop) alive forever; the scheduler runs jobs on its
+    # own timers. The event is never set, so this never wakes on its own.
+    await asyncio.Event().wait()
 
 
 async def post_init(application: Application) -> None:

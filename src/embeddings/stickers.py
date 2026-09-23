@@ -41,7 +41,7 @@ def _point_id(unique_id: str) -> UUID:
     `facts.py` uses `uuid4()` here and therefore duplicates every point on each
     backfill re-run; this follows `chunk_messages` instead.
     """
-    return UUID(hashlib.md5(unique_id.encode()).hexdigest())
+    return UUID(hashlib.md5(unique_id.encode(), usedforsecurity=False).hexdigest())
 
 
 class StickerEmbeddingsClient(EmbeddingsClient):

@@ -74,7 +74,7 @@ def test_chunk_messages():
     assert len(chunks[0].metadata['message_ids']) == 8
     assert len(chunks[1].metadata['message_ids']) == 5
     assert 'text 7' in chunks[0].payload
-    assert chunks[1].payload.startswith('') and 'text 5' in chunks[1].payload
+    assert 'text 5' in chunks[1].payload
 
     # Test small overlap handling
     # window=4, overlap=2
@@ -122,7 +122,7 @@ async def test_embeddings_client_save_embeddings(mocker):
 
     # With default window=8, all 5 messages should be in 1 chunk
     assert mock_qdrant.upsert.call_count == 1
-    args, kwargs = mock_qdrant.upsert.call_args
+    _args, kwargs = mock_qdrant.upsert.call_args
     assert kwargs['collection_name'] == 'test_collection'
     points = kwargs['points']
     assert len(points) == 1

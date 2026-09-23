@@ -56,10 +56,8 @@ def client():
 
 @pytest.mark.parametrize('token', [None, '', '   '])
 def test_build_app_refuses_a_missing_or_blank_token(token):
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(ValueError, match='BLACKBOX_MCP_ACCESS_TOKEN'):
         build_app(token)
-
-    assert 'BLACKBOX_MCP_ACCESS_TOKEN' in str(error.value)
 
 
 def test_request_without_a_token_is_rejected(client):

@@ -74,11 +74,8 @@ def test_get_model_settings_not_found(tmp_path):
 
     manager = ModelManager(models_dir=str(models_dir))
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(ValueError, match=r'No model settings found.*non_existent_task'):
         manager.get_model_settings('non_existent_task', 'v1')
-
-    assert 'No model settings found' in str(excinfo.value)
-    assert 'non_existent_task' in str(excinfo.value)
 
 
 def test_web_search_settings_keep_plugins():

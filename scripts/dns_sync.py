@@ -132,7 +132,9 @@ def main() -> int:
         try:
             sync(kube, linode, settings.DNS_SYNC_DOMAIN, settings.DNS_SYNC_RECORD)
         except DnsSyncError as exc:
-            logger.error('DNS sync failed', extra={'event': 'DNS_SYNC_FAILED', 'error': str(exc)})
+            logger.exception(
+                'DNS sync failed', extra={'event': 'DNS_SYNC_FAILED', 'error': str(exc)}
+            )
             return 1
     return 0
 

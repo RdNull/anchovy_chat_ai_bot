@@ -155,16 +155,16 @@ def test_event_round_trips_an_int_not_a_string():
 
 
 @pytest.mark.parametrize(
-    'bad_fields',
+    ('bad_fields', 'match'),
     [
-        {'module': 1},  # reserved LogRecord attribute
-        {'log': 1},  # owned by the collector's container operator
-        {'args': 1},  # reserved LogRecord attribute
-        {'Foo': 1},  # not [a-z][a-z0-9_]*
+        ({'module': 1}, 'reserved'),  # reserved LogRecord attribute
+        ({'log': 1}, 'collector'),  # owned by the collector's container operator
+        ({'args': 1}, 'reserved'),  # reserved LogRecord attribute
+        ({'Foo': 1}, 'not a valid field name'),  # not [a-z][a-z0-9_]*
     ],
 )
-def test_event_rejects_a_bad_field_name(bad_fields):
-    with pytest.raises(ValueError):
+def test_event_rejects_a_bad_field_name(bad_fields, match):
+    with pytest.raises(ValueError, match=match):
         event('SOME_EVENT', **bad_fields)
 
 

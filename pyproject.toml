@@ -146,6 +146,12 @@ ignore = [
   "RUF006",   # asyncio.create_task result not stored (~7 hits; fixing means holding task refs)
   "UP042",    # class(str, Enum) instead of StrEnum (~3 hits; changes str()/f-string output
               # of persisted enum values, needs a deliberate migration)
+  "ASYNC109", # wait_for_media_ready's explicit deadline check (media/repository.py) is
+              # relied on by test_wait_for_media_ready_times_out; asyncio.timeout() only
+              # delivers cancellation at the next await, which is a real behavior change
+  "TRY301",   # raise-inside-try-immediately-caught-by-the-same-except is a deliberate,
+              # repeated idiom here (media/processors/animation.py, image.py) for turning
+              # a falsy LLM response into the same generic error path as any other failure
 ]
 external = [ "WPS" ]
 
@@ -161,3 +167,6 @@ allow-star-arg-any = true
 "**/tests/**" = ["ANN", "SLF001", "ARG001"]
 "scripts/**" = ["INP001"]  # scripts/dns_sync.py runs as `python scripts/dns_sync.py`, not a package
 ".claude/hooks/**" = ["T20"]  # hook protocol writes to stdout
+# deliberately reaches into EmbeddingsClient._get_embedding_vectors to avoid
+# _search's side effect of creating a missing Qdrant collection - see the module docstring
+"src/blackbox/queries.py" = ["SLF001"]

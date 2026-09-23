@@ -21,13 +21,19 @@ module in the project, and this module is imported by `src/logs.py` in turn.
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
+from types import MappingProxyType
 from uuid import uuid4
 
-_LOG_CONTEXT: ContextVar[dict[str, object]] = ContextVar('log_context', default={})
+# A frozen empty mapping, not `{}`: a `ContextVar` default is one shared object handed back
+# by every `.get()` that has never had a value set on its context, so a plain mutable dict
+# here would be a shared, accidental-mutation trap for any future call site.
+_LOG_CONTEXT: ContextVar[Mapping[str, object]] = ContextVar(
+    'log_context', default=MappingProxyType({})
+)
 
 
-def _with_request_id(current: dict[str, object], fields: dict[str, object]) -> dict[str, object]:
+def _with_request_id(current: Mapping[str, object], fields: dict[str, object]) -> dict[str, object]:
     """`request_id` is generated here rather than by every call site: the first bind in a
     chain (the one where `request_id` is absent from both the current context and `fields`)
     mints one, and every nested bind inherits it unchanged. A call site that wants a fresh

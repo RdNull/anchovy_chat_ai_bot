@@ -54,8 +54,20 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
     try:
         response: MediaDescriptionData = await model_with_structure.ainvoke(messages)
         if not response:
-            raise Exception('No response from model')
-
+            raise ValueError('No response from model')
+    except Exception:
+        logger.error(
+            'Error generating animation description',
+            exc_info=True,
+            extra=event(
+                'MEDIA_DESCRIBE',
+                outcome='error',
+                kind='animation',
+                content_hash=animation.content_hash,
+            ),
+        )
+        return None
+    else:
         logger.debug(
             'Animation description text',
             extra=event(
@@ -78,19 +90,6 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
             ),
         )
         return response
-    except Exception:
-        logger.error(
-            'Error generating animation description',
-            exc_info=True,
-            extra=event(
-                'MEDIA_DESCRIBE',
-                outcome='error',
-                kind='animation',
-                content_hash=animation.content_hash,
-            ),
-        )
-
-    return None
 
 
 def _get_animation_key_frames(animation: AnimationDetectionData) -> list[str]:
@@ -124,7 +123,7 @@ def _extract_tgs_frames(tgs_bytes: bytes) -> list[str]:
         else:
             indices = [start, start + num_frames // 3, start + 2 * num_frames // 3, end]
 
-        indices = sorted(list(set(indices)))
+        indices = sorted(set(indices))
 
         with PngRenderer(animation, 96) as renderer:
             for i in indices:
@@ -163,7 +162,7 @@ def _extract_gif_frames(gif_bytes: bytes) -> list[str]:
                 indices = [0, num_frames // 3, 2 * num_frames // 3, num_frames - 1]
 
             # Remove duplicate indices for very short gifs that weren't caught by num_frames <= 5
-            indices = sorted(list(set(indices)))
+            indices = sorted(set(indices))
 
             for i in indices:
                 img.seek(i)
@@ -209,7 +208,7 @@ def _extract_video_frames(video_bytes: bytes) -> list[str]:
         else:
             indices = [0, total_frames // 3, 2 * total_frames // 3, total_frames - 1]
 
-        indices = sorted(list(set(indices)))
+        indices = sorted(set(indices))
 
         for i in indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, i)

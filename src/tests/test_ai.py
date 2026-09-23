@@ -32,7 +32,7 @@ def test_get_model_caching(mocker):
     assert model1 is model2
 
     # Different version - should initialize new
-    model3 = ai.get_model('v2')
+    ai.get_model('v2')
     assert ai.model_manager.get_model_settings.call_count == 2
     assert ai.model_manager.get_model_settings.call_args == call('chat', 'v2')
     assert mock_init.call_count == 2

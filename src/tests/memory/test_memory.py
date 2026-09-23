@@ -152,7 +152,7 @@ def test_prompt_format_relative_age_buckets():
         decay={
             '@alice': {
                 entry: DecayRecord(born=stamp, cycles=0, field='recent')
-                for entry, stamp in zip(entries, born)
+                for entry, stamp in zip(entries, born, strict=True)
             }
         },
     )

@@ -5,7 +5,6 @@ from uuid import UUID
 from cache import AsyncCache
 from httpx import AsyncClient
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.grpc import VectorParams
 from qdrant_client.http.models import (
     FieldCondition,
     Filter,
@@ -33,7 +32,7 @@ class EmbeddingSearchDataItem:
 
 
 class EmbeddingsClient:
-    def __init__(self, collection_name: str, model_name: str, vector_size: int):
+    def __init__(self, collection_name: str, model_name: str, vector_size: int) -> None:
         self.collection_name = collection_name
         self.model_name = model_name
         self.vector_size = vector_size

@@ -20,6 +20,7 @@ async def answer_text(text: str) -> ToolFailure | None:
 
     tool_context: ToolContext = answer_text.metadata['context']
     await tool_context.replier.reply_message(text)
+    return None
 
 
 SET_REACTION_DESCRIPTION = """
@@ -55,6 +56,8 @@ async def set_reaction(emoji: ReactionEmoji) -> ToolFailure | None:
             extra=event('TOOL_REACTION_SET', outcome='error', emoji=emoji),
         )
         return ToolFailure('не получилось поставить реакцию')
+
+    return None
 
 
 SEND_STICKER_DESCRIPTION = """
