@@ -35,7 +35,129 @@ dev = [
     "pytest-env",
     "pytest-mock",
     "freezegun",
+    "ruff",
+    "pre-commit",
 ]
 
 [tool.uv]
 package = false
+
+[tool.ruff]
+# Ruff config: https://docs.astral.sh/ruff/settings
+fix = true
+force-exclude = true  # recommended for pre-commit compatibility
+line-length = 100
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "ANN",   # flake8-annotations
+  "ARG",   # flake8-unused-arguments
+  "ASYNC", # flake8-async
+  "B",     # flake8-bugbear
+  "C4",    # flake8-comprehensions
+  "COM",   # flake8-commas
+  "D",     # pydocstyle
+  "DTZ",   # flake8-datetimez
+  "E",     # pycodestyle errors
+  "ERA",   # flake8-eradicate
+  "EXE",   # flake8-executable
+  "F",     # pyflakes
+  "FIX",   # flake8-fixme
+  "FLY",   # pyflint
+  "FURB",  # refurb
+  "G",     # flake8-logging-format
+  "ICN",   # flake8-import-conventions
+  "INP",   # flake8-no-pep420
+  "LOG",   # flake8-logging
+  "N",     # pep8-naming
+  "PIE",   # flake8-pie
+  "PL",    # pylint
+  "PT",    # flake8-pytest-style
+  "PTH",   # flake8-use-pathlib
+  "Q",     # flake8-quotes
+  "RET",   # flake8-return
+  "RUF",   # ruff
+  "S",     # flake8-bandit
+  "SIM",   # flake8-simpify
+  "SLF",   # flake8-self
+  "SLOT",  # flake8-slots
+  "T100",  # flake8-debugger
+  "T20",   # flake8-print
+  "TC",    # flake8-type-checking
+  "TID",   # flake8-tidy-imports
+  "TRY",   # tryceratops
+  "UP",    # pyupgrade
+  "W",     # pycodestyle warnings
+  "YTT",   # flake8-2020
+]
+ignore = [
+  "ANN002",   # allow untyped *args
+  "ANN003",   # allow untyped **kwargs
+  "ANN401",   # allow typing.Any
+  "ARG003",   # allow unused arguments in class method
+  "ASYNC230", # allow open in async functions
+  "B024",     # allow abstract class without abstract methods
+  "B904",     # allow raise exception without from
+  "COM812",   # trailing comma, conflicts with `ruff format`
+  "D100",     # missing docstring in public module
+  "D101",     # missing docstring in public class
+  "D102",     # missing docstring in public method
+  "D103",     # missing docstring in public function
+  "D104",     # missing docstring in public package
+  "D105",     # missing docstring in magic method
+  "D106",     # missing docstring in public nested class
+  "D107",     # missing docstring in __init__
+  "D200",     # one-line docstring should fit on one line
+  "D203",     # 1 blank line required before class docstring
+  "D205",     # blank line required between one-line summary and description
+  "D212",     # multi-line docstring summary should start at the first line
+  "D415",     # allow docstrings without punctuations
+  "D417",     # recomended for pydocstyle.convention = "google"
+  "E501",     # pycodestyle line too long
+  "PLR09",    # we have our own complexity rules; positional-arg constructors
+              # (e.g. Replier(bot, character, chat_id, target)) are the norm here
+  "PLR2004",  # do not report magic numbers
+  "PLR6301",  # do not require classmethod / staticmethod when self not used
+  "PT019",    # allow _undescrore unused fixtures
+  "RUF001",   # ambiguous unicode - false positives on Cyrillic (bot is Russian-language)
+  "RUF002",   # ambiguous unicode in docstrings - same
+  "RUF003",   # ambiguous unicode in comments - same
+  "RUF012",   # allow mutable class attributes
+  "RUF013",   # allow implicit optional
+  "S101",     # allow asserts in code
+  "S105",     # allow possible hardcoded secrets in code - too many false positives
+  "S311",     # random is used for picking characters/replies, never crypto
+  "TC001",    # disable force moving to type-checking block
+  "TC002",    # same - pydantic/langchain @tool evaluate annotations at runtime
+  "TC003",    # same
+  "TRY003",   # allow long exception messages
+  "FIX002",   # alow to do comments
+  "PLC0415",  # allow imports outside top-level
+  "N818",     # allow any exception names
+
+  # TODO: re-enable and fix incrementally; left off to land the initial ruff config clean.
+  "ANN001",   # missing type annotation for function argument (~16 hits)
+  "ANN201",   # missing return type for public function (~46 hits)
+  "ANN202",   # missing return type for private function (~12 hits)
+  "PTH",      # os.path / open instead of pathlib (~28 hits)
+  "RUF006",   # asyncio.create_task result not stored (~7 hits; fixing means holding task refs)
+  "UP042",    # class(str, Enum) instead of StrEnum (~3 hits; changes str()/f-string output
+              # of persisted enum values, needs a deliberate migration)
+]
+external = [ "WPS" ]
+
+# Plugin configs:
+flake8-quotes.inline-quotes = "single"
+pydocstyle.convention = "google"
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402", "F401"]
+"**/tests/**" = ["ANN", "SLF001", "ARG001"]
+"scripts/**" = ["INP001"]  # scripts/dns_sync.py runs as `python scripts/dns_sync.py`, not a package
+".claude/hooks/**" = ["T20"]  # hook protocol writes to stdout
