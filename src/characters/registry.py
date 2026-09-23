@@ -30,6 +30,12 @@ def get_character(
     character_name: str = None,
     memory: MemoryData | None = None,
 ) -> Character:
+    # TODO: `CHARACTERS` holds one `Character` singleton per code, and this stamps
+    # `.memory` onto it — two chats sharing a character can race between this
+    # assignment and the read in `respond()`, each seeing the other's snapshot.
+    # Pre-existing, not introduced by this refactor; fixing it means a per-call
+    # copy of `Character` (or moving `memory` off the instance entirely), not a
+    # smaller edit here.
     character = CHARACTERS[character_name or random.choice(list(CHARACTERS.keys()))]
     character.memory = memory
     return character

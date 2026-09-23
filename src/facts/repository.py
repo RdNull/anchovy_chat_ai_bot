@@ -78,6 +78,11 @@ async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
         fact = UserFact.model_validate(fact_data)
         new_confidence = round(fact.confidence - decay_amount, 10)
         if new_confidence <= 0:
+            # TODO: only the Mongo row is deleted here — the matching Qdrant point in
+            # `facts_embedding_client` (src/embeddings/facts.py) is left behind, so a
+            # deleted fact can still surface as a `search_facts` hit and get
+            # reinforced back into existence. Pre-existing, not introduced by this
+            # refactor.
             await mongo.facts.delete_one({'_id': fact_data['_id']})
             logger.info(
                 'Fact deleted, confidence decayed to zero',
