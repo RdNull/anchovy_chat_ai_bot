@@ -1,4 +1,4 @@
-from telegram import Message as TgMessage, PhotoSize, Sticker
+from telegram import Message as TgMessage, Sticker
 from telegram._files._basemedium import _BaseMedium
 
 from src.messages.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole
@@ -12,11 +12,16 @@ async def parse_user_message(update) -> Message | None:
     reply = None
     if update.message.reply_to_message:
         reply_msg = update.message.reply_to_message
-        reply_nickname = reply_msg.from_user.username or reply_msg.from_user.first_name if reply_msg.from_user else 'unknown'
+        reply_nickname = (
+            reply_msg.from_user.username or reply_msg.from_user.first_name
+            if reply_msg.from_user
+            else 'unknown'
+        )
         reply_media = None
         if reply_medium := _get_message_medium(reply_msg):
             reply_media = await get_message_media_data(
-                reply_medium.file_id, reply_medium.file_unique_id,
+                reply_medium.file_id,
+                reply_medium.file_unique_id,
             )
             _mark_sticker(reply_media, reply_medium)
 
@@ -42,7 +47,7 @@ async def parse_user_message(update) -> Message | None:
         text=message_text,
         reply=reply,
         nickname=user_nickname,
-        media=media
+        media=media,
     )
 
 
@@ -69,11 +74,10 @@ def _get_message_medium(tg_message: TgMessage) -> _BaseMedium | None:
 
     if photo_sizes := tg_message.photo:  # type: tuple[PhotoSize, ...]
         # selecting the biggest photo size that is less than 300_000 pixels ("magic number")
-        photo_size = next(s for s in reversed(photo_sizes) if s.height * s.width <= 300_000)
-        return photo_size
+        return next(s for s in reversed(photo_sizes) if s.height * s.width <= 300_000)
 
-    if animation := tg_message.animation:
-        if animation.duration <= 10:  # in seconds; long gifs will be ignored
-            return animation
+    # duration in seconds; long gifs are ignored
+    if (animation := tg_message.animation) and animation.duration <= 10:
+        return animation
 
     return None

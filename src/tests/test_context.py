@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
 from src import settings
@@ -31,6 +31,7 @@ def mock_embeddings_client(mocker):
 
 # --- run_followups stage isolation ---
 
+
 async def test_run_followups_survives_an_initiative_failure(mocker):
     # The initiative stage runs first, and the caller is a bare create_task — an
     # unhandled failure there used to take the memory and embedding passes with it,
@@ -52,6 +53,7 @@ async def test_run_followups_survives_an_initiative_failure(mocker):
 
 
 # --- run_followups threshold logic ---
+
 
 async def test_run_followups_below_threshold_no_update(mocker):
     mocker.patch.object(settings, 'MEMORY_TRIGGER_SIZE', 2)
@@ -127,11 +129,10 @@ async def test_last_messages_size_no_longer_drives_either_trigger(mocker):
 
 # --- update_chat_memory ---
 
+
 async def test_update_chat_memory_saves_to_db(mocker):
     mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
-    expected = StructuredMemory(
-        state=ChatState(open_questions=['oppa'])
-    )
+    expected = StructuredMemory(state=ChatState(open_questions=['oppa']))
     mock_memory_llm(mocker, return_value=expected)
     mocker.patch('src.memory.handlers.update_user_facts')
 
@@ -183,22 +184,23 @@ async def test_update_chat_memory_disabled_saves_empty_memory(mocker):
 
 async def test_update_chat_memory_disabled_stamps_wall_clock(mocker):
     """No window is processed by the model when memory is disabled, so the empty
-    snapshot is stamped with wall clock rather than a message timestamp."""
+    snapshot is stamped with wall clock rather than a message timestamp.
+    """
     mocker.patch.object(settings, 'ENABLE_MEMORY_PROCESSING', False)
     mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
     mocker.patch('src.memory.handlers.update_user_facts')
-    stale = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    stale = datetime(2020, 1, 1, tzinfo=UTC)
     message = make_message()
     message.created_at = stale
     mocker.patch('src.memory.handlers.get_messages', AsyncMock(return_value=[message]))
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
 
     await update_chat_memory(1)
 
     saved = await get_last_memory(1)
     assert saved is not None
     assert saved.created_at != stale
-    assert before <= saved.created_at <= datetime.now(timezone.utc)
+    assert before <= saved.created_at <= datetime.now(UTC)
 
 
 async def test_update_chat_memory_disabled_still_runs_facts(mocker):
@@ -215,6 +217,7 @@ async def test_update_chat_memory_disabled_still_runs_facts(mocker):
 
 # --- window intake: ordering, watermark, and the two loss paths ---
 
+
 def some_memory() -> StructuredMemory:
     """A non-empty snapshot — `StructuredMemory.__bool__` makes an empty one falsy."""
     return StructuredMemory(state=ChatState(open_questions=['кто платит']))
@@ -225,9 +228,7 @@ async def test_update_chat_memory_fetches_oldest_first(mocker):
     mocker.patch.object(settings, 'LAST_MESSAGES_MIN_SIZE', 1)
     mock_memory_llm(mocker, return_value=some_memory())
     mocker.patch('src.memory.handlers.update_user_facts')
-    mock_get = mocker.patch(
-        'src.memory.handlers.get_messages', return_value=[make_message()]
-    )
+    mock_get = mocker.patch('src.memory.handlers.get_messages', return_value=[make_message()])
 
     await update_chat_memory(1)
 
@@ -268,9 +269,7 @@ async def test_message_arriving_during_the_llm_call_lands_in_the_next_window(moc
         return some_memory()
 
     llm = MagicMock()
-    llm.with_structured_output.return_value.ainvoke = AsyncMock(
-        side_effect=save_a_message_mid_call
-    )
+    llm.with_structured_output.return_value.ainvoke = AsyncMock(side_effect=save_a_message_mid_call)
     mocker.patch('src.memory.processors.ai.get_memory_model', return_value=llm)
 
     await save_message(make_message(text='in the window'))
@@ -289,9 +288,7 @@ async def test_backlog_past_the_cap_is_deferred_not_dropped(mocker):
     mocker.patch.object(settings, 'MESSAGES_MEMORY_MAX_SIZE', 3)
     mock_memory_llm(mocker, return_value=some_memory())
     mocker.patch('src.memory.handlers.update_user_facts')
-    mock_extract = mocker.patch(
-        'src.memory.handlers.extract_memory', side_effect=extract_memory
-    )
+    mock_extract = mocker.patch('src.memory.handlers.extract_memory', side_effect=extract_memory)
 
     for i in range(5):
         await save_message(make_message(text=f'msg{i}'))
@@ -326,6 +323,7 @@ async def test_consecutive_snapshots_strictly_increase(mocker):
 
 
 # --- update_chat_embeddings ---
+
 
 async def test_update_chat_embeddings_calls_save_embeddings(mocker):
     mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
@@ -418,7 +416,8 @@ async def test_update_chat_embeddings_concurrent_calls_save_once(mocker):
     """The bug: `run_followups` is a detached task per message, so concurrent calls
     used to all read the same checkpoint and each pay for the same embedding pass
     (observed at 8x in prod). The lock serializes them; the second call re-reads
-    the advanced watermark and finds nothing left to embed."""
+    the advanced watermark and finds nothing left to embed.
+    """
     mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
     mock_save = mock_embeddings_client(mocker)
 
@@ -434,7 +433,8 @@ async def test_update_chat_embeddings_concurrent_calls_save_once(mocker):
 
 async def test_update_chat_embeddings_failed_save_leaves_checkpoint_unadvanced(mocker):
     """The lock is held across the save, not released before it: a failed save must
-    not advance the watermark, so the same window is retried rather than lost."""
+    not advance the watermark, so the same window is retried rather than lost.
+    """
     mocker.patch.object(settings, 'EMBEDDINGS_MIN_SIZE', 1)
     mock_save = mocker.patch(
         'src.embeddings.handlers.messages_embeddings_client.save',
@@ -471,25 +471,21 @@ async def test_update_chat_memory_lock_held(mocker):
 
     assert mock_logger.error.call_count == 1
     assert mock_logger.error.call_args.kwargs['extra'] == {
-        'event': 'MEMORY_UPDATE', 'outcome': 'error',
+        'event': 'MEMORY_UPDATE',
+        'outcome': 'error',
     }
 
 
 async def test_update_chat_memory_db_error(mocker):
     mocker.patch(
-        'src.memory.handlers.save_memory',
-        AsyncMock(side_effect=Exception('DB memory error'))
+        'src.memory.handlers.save_memory', AsyncMock(side_effect=Exception('DB memory error'))
     )
     mock_logger = mocker.patch('src.memory.handlers.logger')
     mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
 
-    mock_memory_llm(
-        mocker,
-        return_value=StructuredMemory(state=ChatState(open_questions=['oppa']))
-    )
+    mock_memory_llm(mocker, return_value=StructuredMemory(state=ChatState(open_questions=['oppa'])))
     mocker.patch(
-        'src.memory.handlers.get_messages',
-        AsyncMock(return_value=[make_message(text='hi')] * 10)
+        'src.memory.handlers.get_messages', AsyncMock(return_value=[make_message(text='hi')] * 10)
     )
     mocker.patch('src.memory.handlers.update_user_facts')
 
@@ -497,11 +493,13 @@ async def test_update_chat_memory_db_error(mocker):
 
     assert mock_logger.error.call_count == 1
     assert mock_logger.error.call_args.kwargs['extra'] == {
-        'event': 'MEMORY_EXTRACT', 'outcome': 'error',
+        'event': 'MEMORY_EXTRACT',
+        'outcome': 'error',
     }
 
 
 # --- extract_memory ---
+
 
 async def test_extract_memory_caps_oversized_lists(mocker):
     data_items = [str(i) for i in range(8)]
@@ -548,23 +546,21 @@ async def test_extract_memory_falls_back_to_wall_clock_without_timestamps(mocker
     """`Message.created_at` is optional; an unstamped window must not crash."""
     mock_memory_llm(mocker, return_value=StructuredMemory(state=ChatState(active_topics=['t'])))
     mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
 
     unstamped = make_message()
     unstamped.created_at = None
     result = await extract_memory(chat_id=1, current_memory=None, new_messages=[unstamped])
 
     assert result is not None
-    assert before <= result.created_at <= datetime.now(timezone.utc)
+    assert before <= result.created_at <= datetime.now(UTC)
 
 
 async def test_extract_memory_renders_the_context_window_into_the_prompt(mocker):
     """`v4.j2` used to hardcode «~20», wrong in every deployment."""
     mocker.patch.object(settings, 'LAST_MESSAGES_SIZE', 14)
     mock_memory_llm(mocker, return_value=StructuredMemory(state=ChatState(active_topics=['t'])))
-    mock_prompt = mocker.patch(
-        'src.memory.processors.prompt_manager.get_prompt', return_value='p'
-    )
+    mock_prompt = mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
 
     await extract_memory(chat_id=1, current_memory=None, new_messages=[make_message()])
 
@@ -573,7 +569,8 @@ async def test_extract_memory_renders_the_context_window_into_the_prompt(mocker)
 
 async def test_extract_memory_prompt_renders_the_real_template(mocker):
     """No stub: every other `extract_memory` test mocks `get_prompt`, so none of
-    them would notice `v4.j2` losing the variable and rendering an empty gap."""
+    them would notice `v4.j2` losing the variable and rendering an empty gap.
+    """
     mocker.patch.object(settings, 'LAST_MESSAGES_SIZE', 14)
     mock_llm = mock_memory_llm(
         mocker, return_value=StructuredMemory(state=ChatState(active_topics=['t']))
@@ -602,7 +599,7 @@ async def test_extract_memory_resolves_attribution_before_eviction(mocker):
     valid = [f't{i}' for i in range(1, 11)]
     current = MemoryData(
         chat_id=1,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         content=StructuredMemory(participants={'@bob': ParticipantInfo(traits=['дубль'])}),
     )
     llm_result = StructuredMemory(
@@ -624,13 +621,21 @@ async def test_extract_memory_resolves_attribution_before_eviction(mocker):
     assert result.content.participants['@bob'].traits == ['дубль']
 
     conflict_logs = [
-        c.kwargs['extra'] for c in mock_logger.info.call_args_list
+        c.kwargs['extra']
+        for c in mock_logger.info.call_args_list
         if c.kwargs.get('extra', {}).get('event') == 'MEMORY_ATTRIBUTION_CONFLICT'
     ]
-    assert conflict_logs == [{
-        'event': 'MEMORY_ATTRIBUTION_CONFLICT', 'action': 'dropped', 'reason': 'incumbent_wins',
-        'owner': '@alice', 'kept': '@bob', 'field': 'traits', 'text': 'Дубль!',
-    }]
+    assert conflict_logs == [
+        {
+            'event': 'MEMORY_ATTRIBUTION_CONFLICT',
+            'action': 'dropped',
+            'reason': 'incumbent_wins',
+            'owner': '@alice',
+            'kept': '@bob',
+            'field': 'traits',
+            'text': 'Дубль!',
+        }
+    ]
 
 
 async def test_extract_memory_logs_churn_and_would_evict(mocker):
@@ -643,14 +648,16 @@ async def test_extract_memory_logs_churn_and_would_evict(mocker):
     """
     current = MemoryData(
         chat_id=1,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         content=StructuredMemory(
             participants={'@alice': ParticipantInfo(recent=['ездил в Лондон', 'опоздал'])}
         ),
-        decay={'@alice': {
-            'ездил в лондон': DecayRecord(born='26-04-24 18:00', cycles=3, field='recent'),
-            'опоздал': DecayRecord(born='26-04-30 18:00', cycles=1, field='recent'),
-        }},
+        decay={
+            '@alice': {
+                'ездил в лондон': DecayRecord(born='26-04-24 18:00', cycles=3, field='recent'),
+                'опоздал': DecayRecord(born='26-04-30 18:00', cycles=1, field='recent'),
+            }
+        },
     )
     llm_result = StructuredMemory(
         participants={'@alice': ParticipantInfo(recent=['купил велосипед', 'ездил в Лондон'])}
@@ -670,24 +677,43 @@ async def test_extract_memory_logs_churn_and_would_evict(mocker):
     # «купил велосипед» is deleted by the baseline this cycle, so it is not `added`.
     churn = next(e for e in extras if e['event'] == 'MEMORY_CHURN')
     assert churn == {
-        'event': 'MEMORY_CHURN', 'nicks': 1, 'carried': 1, 'added': 0, 'vanished': 1,
-        'lost_recent': 1, 'promoted': 0, 'promote_candidates': 0,
+        'event': 'MEMORY_CHURN',
+        'nicks': 1,
+        'carried': 1,
+        'added': 0,
+        'vanished': 1,
+        'lost_recent': 1,
+        'promoted': 0,
+        'promote_candidates': 0,
     }
 
     lost = [e for e in extras if e['event'] == 'MEMORY_CHURN_LOST']
-    assert lost == [{
-        'event': 'MEMORY_CHURN_LOST', 'nick': '@alice', 'field': 'recent', 'text': 'опоздал',
-    }]
+    assert lost == [
+        {
+            'event': 'MEMORY_CHURN_LOST',
+            'nick': '@alice',
+            'field': 'recent',
+            'text': 'опоздал',
+        }
+    ]
 
     decayed = [e for e in extras if e['event'] == 'MEMORY_DECAY']
     assert decayed == [
         {
-            'event': 'MEMORY_DECAY', 'nick': '@alice', 'field': 'recent', 'action': 'evicted',
-            'reason': 'baseline', 'text': 'купил велосипед',
+            'event': 'MEMORY_DECAY',
+            'nick': '@alice',
+            'field': 'recent',
+            'action': 'evicted',
+            'reason': 'baseline',
+            'text': 'купил велосипед',
         },
         {
-            'event': 'MEMORY_DECAY', 'nick': '@alice', 'field': 'recent', 'action': 'would_evict',
-            'reason': 'cap', 'text': 'ездил в Лондон',
+            'event': 'MEMORY_DECAY',
+            'nick': '@alice',
+            'field': 'recent',
+            'action': 'would_evict',
+            'reason': 'cap',
+            'text': 'ездил в Лондон',
         },
     ]
     assert result.content.participants['@alice'].recent == ['ездил в Лондон']

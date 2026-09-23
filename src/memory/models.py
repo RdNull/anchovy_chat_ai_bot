@@ -50,15 +50,13 @@ class StructuredMemory(BaseModel):
     participants: dict[str, ParticipantInfo] = Field(default_factory=dict)
     state: ChatState = Field(default_factory=ChatState)
 
-    def __bool__(self):
-        return any(
-            (
-                self.state.active_topics,
-                self.state.open_questions,
-                self.state.running_jokes,
-                self.participants,
-            )
-        )
+    def __bool__(self) -> bool:
+        return any((
+            self.state.active_topics,
+            self.state.open_questions,
+            self.state.running_jokes,
+            self.participants,
+        ))
 
 
 def _relative_age(born: str, now: datetime) -> str | None:
@@ -73,7 +71,7 @@ def _relative_age(born: str, now: datetime) -> str | None:
     """
     try:
         born_at = datetime.strptime(born, TIMESTAMP_FORMAT).replace(tzinfo=TIMEZONE_ALMATY)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
     days = (now.astimezone(TIMEZONE_ALMATY).date() - born_at.date()).days

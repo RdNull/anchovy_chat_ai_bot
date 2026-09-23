@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from src import settings
 from src.initiative.models import InitiativeVerdict
@@ -13,7 +13,7 @@ def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1', c
     return Message(chat_id=chat_id, role=role, text=text, nickname=nickname, created_at=created_at)
 
 
-BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+BASE = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def at(minutes: float, text='hi') -> Message:
@@ -21,6 +21,7 @@ def at(minutes: float, text='hi') -> Message:
 
 
 # --- split_at_gap ---
+
 
 def test_split_at_gap_empty_input_returns_empty():
     assert split_at_gap([], 15) == []
@@ -63,6 +64,7 @@ def test_split_at_gap_exactly_equal_to_threshold_is_not_cut():
 
 # --- pre_check: trigger size ---
 
+
 async def test_pre_check_fails_when_not_enough_messages(mocker):
     mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 5)
     messages = [make_message() for _ in range(4)]
@@ -78,6 +80,7 @@ async def test_pre_check_passes_the_trigger_size_gate_at_exactly_the_threshold(m
 
 
 # --- pre_check: other conditions ---
+
 
 async def test_pre_check_fails_when_last_message_is_from_ai(mocker):
     mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
@@ -157,8 +160,9 @@ async def test_pre_check_passes_when_cooldown_and_gap_satisfied(mocker):
 
 # --- pre_check: daily limit (last gate, after the other four) ---
 
+
 async def _seed_replied_run(chat_id=222):
-    run_id = await save_initiative_run(chat_id, last_message_time=datetime.now(timezone.utc))
+    run_id = await save_initiative_run(chat_id, last_message_time=datetime.now(UTC))
     await mark_initiative_replied(run_id)
 
 
@@ -188,6 +192,7 @@ async def test_pre_check_fails_at_the_daily_limit(mocker, caplog):
 
 
 # --- decide ---
+
 
 async def test_decide_true_when_score_meets_threshold(mocker):
     mocker.patch.object(settings, 'INITIATIVE_SCORE_THRESHOLD', 0.5)

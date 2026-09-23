@@ -24,7 +24,8 @@ async def create_sticker_embeddings(batch_size: int):
     """
     push_log_context()  # one CLI process, asyncio.run's own fresh task -- nothing to reset
     query = {
-        'type': MessageMediaTypes.STICKER.value, 'status': MessageMediaStatus.READY.value,
+        'type': MessageMediaTypes.STICKER.value,
+        'status': MessageMediaStatus.READY.value,
     }
     total = await mongo.media_descriptions.count_documents(query)
     started = time.monotonic()
@@ -39,14 +40,19 @@ async def create_sticker_embeddings(batch_size: int):
             logger.info(
                 'Backfill progress',
                 extra=event(
-                    'BACKFILL_PROGRESS', kind='stickers', processed=processed, total=total,
+                    'BACKFILL_PROGRESS',
+                    kind='stickers',
+                    processed=processed,
+                    total=total,
                 ),
             )
 
     logger.info(
         'Backfill finished',
         extra=event(
-            'BACKFILL_DONE', kind='stickers', processed=processed,
+            'BACKFILL_DONE',
+            kind='stickers',
+            processed=processed,
             elapsed_ms=elapsed_ms(started),
         ),
     )

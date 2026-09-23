@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from src import mongo
 from src.logs import event, logger
@@ -34,20 +34,18 @@ async def save_memory(
             nick: {key: record.model_dump() for key, record in records.items()}
             for nick, records in (decay or {}).items()
         },
-        'created_at': (created_at or datetime.now(timezone.utc)).timestamp()
+        'created_at': (created_at or datetime.now(UTC)).timestamp(),
     }
     await mongo.memory.insert_one(data)
 
 
 async def get_last_memory(chat_id: int) -> MemoryData | None:
     logger.debug('Fetching last memory', extra=event('MEMORY_READ'))
-    memory = await mongo.memory.find_one(
-        {'chat_id': chat_id}, sort=[('created_at', -1)]
-    )
+    memory = await mongo.memory.find_one({'chat_id': chat_id}, sort=[('created_at', -1)])
     if not memory:
         return None
 
     # MongoDB stores created_at as float (timestamp)
     # Pydantic MemoryData expects datetime for created_at
-    memory['created_at'] = datetime.fromtimestamp(memory['created_at'], tz=timezone.utc)
+    memory['created_at'] = datetime.fromtimestamp(memory['created_at'], tz=UTC)
     return MemoryData(**memory)

@@ -14,11 +14,11 @@ def chunk_messages(messages: list[Message], window=8, overlap=3) -> list[ChunkDa
 
     def get_chunk_id(_chunk: list[Message]) -> UUID:
         key = f'{chat_id}-{"-".join(str(m.id) for m in _chunk)}'
-        return UUID(hashlib.md5(key.encode()).hexdigest())
+        return UUID(hashlib.md5(key.encode(), usedforsecurity=False).hexdigest())
 
     chunks = []
     for i in range(0, len(messages), window - overlap):
-        chunk_messages_ = messages[i:i + window]
+        chunk_messages_ = messages[i : i + window]
         if len(chunk_messages_) < overlap // 2:
             continue
 
@@ -51,12 +51,7 @@ class MessageEmbeddingsClient(EmbeddingsClient):
                 size=100,
                 sort_order=-1,
             )
-            result.append(
-                RelatedMessagesData(
-                    messages=messages,
-                    score=search_result['score']
-                )
-            )
+            result.append(RelatedMessagesData(messages=messages, score=search_result['score']))
 
         return result
 

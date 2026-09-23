@@ -17,14 +17,15 @@ SUPPORTED_FORMATS = set(chain(*FILE_FORMATS.values()))
 
 
 async def get_message_media(
-    file_id: str,
-    context: ContextTypes.DEFAULT_TYPE
+    file_id: str, context: ContextTypes.DEFAULT_TYPE
 ) -> MediaDetectionData | None:
     media_file = await context.bot.get_file(file_id)
     file_format = Path(media_file.file_path).suffix[1:].lower()
     file_type = _get_file_type(file_format)
     if not file_type:
-        logger.warning('Unsupported media sent', extra=event('MEDIA_UNSUPPORTED', file_format=file_format))
+        logger.warning(
+            'Unsupported media sent', extra=event('MEDIA_UNSUPPORTED', file_format=file_format)
+        )
         return None
 
     with io.BytesIO() as file_bytes:

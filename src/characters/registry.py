@@ -10,7 +10,7 @@ from src.memory.models import MemoryData
 
 CHARACTERS = {}
 for path in Path(settings.CHARACTERS_DIRECTORY).rglob('*.yaml'):
-    with open(str(path), 'r') as f:
+    with open(str(path)) as f:
         character_data = yaml.safe_load(f)
 
     character_code = path.stem
@@ -22,7 +22,7 @@ for path in Path(settings.CHARACTERS_DIRECTORY).rglob('*.yaml'):
         name=character_data['name'],
         display_name=character_data['display_name'],
         description=character_data['description'],
-        style_prompt=character_data['prompt']
+        style_prompt=character_data['prompt'],
     )
 
 

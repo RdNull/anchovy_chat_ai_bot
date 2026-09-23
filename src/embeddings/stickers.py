@@ -18,6 +18,7 @@ class StickerSearchResult:
     query embeddings are not calibrated against each other — keeping the field would
     invite exactly the score-sorted merge that fusion exists to avoid.
     """
+
     unique_id: str
     emoji: str | None
     description: str
@@ -40,7 +41,7 @@ def _point_id(unique_id: str) -> UUID:
     `facts.py` uses `uuid4()` here and therefore duplicates every point on each
     backfill re-run; this follows `chunk_messages` instead.
     """
-    return UUID(hashlib.md5(unique_id.encode()).hexdigest())
+    return UUID(hashlib.md5(unique_id.encode(), usedforsecurity=False).hexdigest())
 
 
 class StickerEmbeddingsClient(EmbeddingsClient):
@@ -50,7 +51,9 @@ class StickerEmbeddingsClient(EmbeddingsClient):
             logger.info(
                 'Nothing to embed for sticker, skipping',
                 extra=event(
-                    'STICKER_EMBED_SKIPPED', reason='nothing_to_embed', media_id=description.media_id,
+                    'STICKER_EMBED_SKIPPED',
+                    reason='nothing_to_embed',
+                    media_id=description.media_id,
                 ),
             )
             return
@@ -59,7 +62,9 @@ class StickerEmbeddingsClient(EmbeddingsClient):
             logger.info(
                 'Sticker not ready, skipping',
                 extra=event(
-                    'STICKER_EMBED_SKIPPED', reason='not_ready', media_id=description.media_id,
+                    'STICKER_EMBED_SKIPPED',
+                    reason='not_ready',
+                    media_id=description.media_id,
                 ),
             )
             return
@@ -82,7 +87,9 @@ class StickerEmbeddingsClient(EmbeddingsClient):
         returned it and once more for every candidate the fusion then discards.
         """
         search_results = await self._search(
-            query, limit=limit, score_threshold=settings.STICKER_SCORE_THRESHOLD,
+            query,
+            limit=limit,
+            score_threshold=settings.STICKER_SCORE_THRESHOLD,
         )
 
         found = []

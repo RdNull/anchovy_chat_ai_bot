@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -28,8 +28,9 @@ def make_user_message(chat_id=1, text='hello'):
 
 
 def make_replier(chat_id=1, target=_NOT_SET):
-    """target defaults to a fresh message — production always has one for a normal
-    reply; pass target=None to exercise the harness for an untargeted send."""
+    """Target defaults to a fresh message — production always has one for a normal
+    reply; pass target=None to exercise the harness for an untargeted send.
+    """
     replier = MagicMock()
     replier.chat_id = chat_id
     replier.target_message = make_user_message(chat_id=chat_id) if target is _NOT_SET else target
@@ -51,26 +52,38 @@ def mock_chat_llm(mocker, responses):
 
 
 def answer_tool_call(text='ответ', tc_id='tc1'):
-    return AIMessage(content='', tool_calls=[{
-        'id': tc_id, 'name': 'answer_text', 'args': {'text': text}, 'type': 'tool_call'
-    }])
+    return AIMessage(
+        content='',
+        tool_calls=[
+            {'id': tc_id, 'name': 'answer_text', 'args': {'text': text}, 'type': 'tool_call'}
+        ],
+    )
 
 
 def search_tool_call(query='test', tc_id='tc2'):
-    return AIMessage(content='', tool_calls=[{
-        'id': tc_id, 'name': 'search_messages', 'args': {'search_query': query, 'limit': 3},
-        'type': 'tool_call'
-    }])
+    return AIMessage(
+        content='',
+        tool_calls=[
+            {
+                'id': tc_id,
+                'name': 'search_messages',
+                'args': {'search_query': query, 'limit': 3},
+                'type': 'tool_call',
+            }
+        ],
+    )
 
 
 # --- respond() ---
+
 
 async def test_respond_adds_version_tag_to_run_tree(mocker, mock_langsmith):
     mock_chat_llm(mocker, [answer_tool_call()])
     mocker.patch('src.characters.character.random.choice', return_value='test-version')
     mocker.patch.object(
-        ToolRegistry, 'execute',
-        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None))
+        ToolRegistry,
+        'execute',
+        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None)),
     )
     replier = make_replier()
 
@@ -83,8 +96,9 @@ async def test_respond_calls_answer_tool(mocker):
     llm = mock_chat_llm(mocker, [answer_tool_call(text='привет!')])
     replier = make_replier()
     mock_execute = mocker.patch.object(
-        ToolRegistry, 'execute',
-        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None))
+        ToolRegistry,
+        'execute',
+        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None)),
     )
 
     await make_character().respond(replier, last_messages=[replier.target_message])
@@ -109,8 +123,11 @@ async def test_respond_with_history(mocker):
         Message(chat_id=1, role=UserRole.AI, text='ок', nickname='bot'),
         replier.target_message,
     ]
-    mocker.patch.object(ToolRegistry, 'execute',
-                        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None)))
+    mocker.patch.object(
+        ToolRegistry,
+        'execute',
+        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None)),
+    )
 
     await make_character().respond(replier, last_messages=history)
 
@@ -192,8 +209,9 @@ async def test_respond_not_rate_limited_proceeds(mocker):
     mocker.patch('src.rate_limit.SlidingWindowRateLimiter.is_exceeded', return_value=False)
     mock_chat_llm(mocker, [answer_tool_call(text='ответ')])
     mock_execute = mocker.patch.object(
-        ToolRegistry, 'execute',
-        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None))
+        ToolRegistry,
+        'execute',
+        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None)),
     )
     replier = make_replier()
 
@@ -218,15 +236,18 @@ async def test_respond_no_tool_calls_stays_silent(mocker):
 
 
 async def test_respond_multiple_direct_tools_tags_langsmith(mocker, mock_langsmith):
-    both_calls = AIMessage(content='', tool_calls=[
-        {'id': 'tc1', 'name': 'answer_text', 'args': {'text': 'hi'}, 'type': 'tool_call'},
-        {'id': 'tc2', 'name': 'set_reaction', 'args': {'emoji': '🤡'}, 'type': 'tool_call'},
-    ])
+    both_calls = AIMessage(
+        content='',
+        tool_calls=[
+            {'id': 'tc1', 'name': 'answer_text', 'args': {'text': 'hi'}, 'type': 'tool_call'},
+            {'id': 'tc2', 'name': 'set_reaction', 'args': {'emoji': '🤡'}, 'type': 'tool_call'},
+        ],
+    )
     mock_chat_llm(mocker, [both_calls])
     mocker.patch.object(
         ToolRegistry,
         'execute',
-        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None))
+        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content=''), None)),
     )
     replier = make_replier()
 
@@ -239,11 +260,18 @@ async def test_respond_mixed_batch_logs_every_tool_name(mocker):
     # A context tool and a direct tool emitted in the same batch: the context tool
     # still runs (a paid Qdrant/Mongo call spent for nothing), and the event has to
     # name the whole batch to tell this apart from two direct tools racing.
-    mixed_calls = AIMessage(content='', tool_calls=[
-        {'id': 'tc1', 'name': 'search_messages', 'args': {'search_query': 'q', 'limit': 3},
-         'type': 'tool_call'},
-        {'id': 'tc2', 'name': 'answer_text', 'args': {'text': 'hi'}, 'type': 'tool_call'},
-    ])
+    mixed_calls = AIMessage(
+        content='',
+        tool_calls=[
+            {
+                'id': 'tc1',
+                'name': 'search_messages',
+                'args': {'search_query': 'q', 'limit': 3},
+                'type': 'tool_call',
+            },
+            {'id': 'tc2', 'name': 'answer_text', 'args': {'text': 'hi'}, 'type': 'tool_call'},
+        ],
+    )
     mock_chat_llm(mocker, [mixed_calls])
     mock_warning = mocker.patch('src.characters.character.logger.warning')
     mocker.patch.object(ToolRegistry, 'execute', new=execute_returning('[]', None))
@@ -251,19 +279,22 @@ async def test_respond_mixed_batch_logs_every_tool_name(mocker):
 
     await make_character().respond(replier, last_messages=[])
 
-    assert mock_warning.call_args_list == [call(
-        'Multiple tools called in one batch',
-        extra={
-            'event': 'LLM_MULTIPLE_TOOL_CALLS',
-            'tool': 'answer_text',
-            'tools': ['search_messages', 'answer_text'],
-        },
-    )]
+    assert mock_warning.call_args_list == [
+        call(
+            'Multiple tools called in one batch',
+            extra={
+                'event': 'LLM_MULTIPLE_TOOL_CALLS',
+                'tool': 'answer_text',
+                'tools': ['search_messages', 'answer_text'],
+            },
+        )
+    ]
 
 
 # --- _format_previous_messages ---
 # The bot may eventually answer a chat without pointing at any one message; when
 # that happens replier.target_message is None and this must not crash.
+
 
 def test_format_previous_messages_marks_only_the_target_message():
     replier = make_replier()
@@ -303,6 +334,7 @@ def test_format_previous_messages_handles_missing_target():
 # --- sticker tool binding ---
 # No corpus-size gate: an empty result is a permanent condition rather than a startup
 # one, so the empty case is handled on every call regardless.
+
 
 def captured_registry(mocker):
     """Captures the ToolRegistry the loop is built with, without running the loop."""
@@ -352,7 +384,11 @@ async def test_base_tools_are_always_bound(mocker):
     registry = await respond_and_capture(mocker, enabled=False)
 
     assert tool_names(registry) == {
-        'search_messages', 'get_user_facts', 'search_web', 'answer_text', 'set_reaction',
+        'search_messages',
+        'get_user_facts',
+        'search_web',
+        'answer_text',
+        'set_reaction',
     }
 
 
@@ -369,12 +405,14 @@ async def test_set_reaction_not_bound_without_a_target_message(mocker):
 
 # --- direct-tool failure recovery ---
 
+
 def execute_returning(*results):
     """Patches ToolRegistry.execute to hand back (ToolMessage, raw) pairs in order."""
-    return AsyncMock(side_effect=[
-        (ToolMessage(tool_call_id=f'tc{i}', content=str(r)), r)
-        for i, r in enumerate(results)
-    ])
+    return AsyncMock(
+        side_effect=[
+            (ToolMessage(tool_call_id=f'tc{i}', content=str(r)), r) for i, r in enumerate(results)
+        ]
+    )
 
 
 async def test_direct_tool_returning_none_terminates_immediately(mocker):
@@ -390,7 +428,9 @@ async def test_direct_tool_returning_none_terminates_immediately(mocker):
 async def test_direct_tool_failure_gives_the_model_another_turn(mocker):
     llm = mock_chat_llm(mocker, [answer_tool_call(tc_id='first'), answer_tool_call(tc_id='second')])
     mocker.patch.object(
-        ToolRegistry, 'execute', new=execute_returning(ToolFailure('стикер недоступен'), None),
+        ToolRegistry,
+        'execute',
+        new=execute_returning(ToolFailure('стикер недоступен'), None),
     )
     replier = make_replier()
 
@@ -406,7 +446,9 @@ async def test_direct_tool_failure_gives_the_model_another_turn(mocker):
 async def test_direct_tool_failure_then_success_terminates(mocker):
     llm = mock_chat_llm(mocker, [answer_tool_call(), answer_tool_call(), answer_tool_call()])
     mocker.patch.object(
-        ToolRegistry, 'execute', new=execute_returning(ToolFailure('boom'), None),
+        ToolRegistry,
+        'execute',
+        new=execute_returning(ToolFailure('boom'), None),
     )
 
     await make_character().respond(make_replier(), last_messages=[])
@@ -419,9 +461,14 @@ async def test_direct_tool_failing_every_turn_stops_at_the_depth_cap(mocker):
     # because a direct tool always returned.
     llm = mock_chat_llm(mocker, [answer_tool_call() for _ in range(50)])
     mocker.patch.object(
-        ToolRegistry, 'execute',
-        new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content='fail'),
-                                    ToolFailure('всегда падает'))),
+        ToolRegistry,
+        'execute',
+        new=AsyncMock(
+            return_value=(
+                ToolMessage(tool_call_id='tc1', content='fail'),
+                ToolFailure('всегда падает'),
+            )
+        ),
     )
     mock_error = mocker.patch('src.characters.character.logger.error')
 
@@ -435,13 +482,18 @@ async def test_failed_direct_tool_falls_through_to_the_next_in_the_batch(mocker)
     # Two direct tools in one response: the first fails, so the loop keeps going and the
     # second delivers. The turn ends there and is still tagged as a multi-direct answer,
     # because one of them did answer.
-    both_calls = AIMessage(content='', tool_calls=[
-        {'id': 'tc1', 'name': 'answer_text', 'args': {'text': 'hi'}, 'type': 'tool_call'},
-        {'id': 'tc2', 'name': 'set_reaction', 'args': {'emoji': '🤡'}, 'type': 'tool_call'},
-    ])
+    both_calls = AIMessage(
+        content='',
+        tool_calls=[
+            {'id': 'tc1', 'name': 'answer_text', 'args': {'text': 'hi'}, 'type': 'tool_call'},
+            {'id': 'tc2', 'name': 'set_reaction', 'args': {'emoji': '🤡'}, 'type': 'tool_call'},
+        ],
+    )
     llm = mock_chat_llm(mocker, [both_calls, answer_tool_call()])
     mock_execute = mocker.patch.object(
-        ToolRegistry, 'execute', new=execute_returning(ToolFailure('boom'), None),
+        ToolRegistry,
+        'execute',
+        new=execute_returning(ToolFailure('boom'), None),
     )
 
     await make_character().respond(make_replier(), last_messages=[])
@@ -463,6 +515,7 @@ async def test_context_tool_result_is_unaffected_by_the_tuple_return(mocker):
 
 
 # --- system_message ---
+
 
 def test_system_message_contains_style_prompt():
     character = make_character()
@@ -502,10 +555,8 @@ def test_system_message_with_memory_includes_memory_section():
     character = make_character()
     character.memory = MemoryData(
         chat_id=1,
-        created_at=datetime.now(timezone.utc),
-        content=StructuredMemory(
-            state=ChatState(open_questions=['oppa'])
-        )
+        created_at=datetime.now(UTC),
+        content=StructuredMemory(state=ChatState(open_questions=['oppa'])),
     )
 
     assert 'ПАМЯТЬ' in character.system_message.content

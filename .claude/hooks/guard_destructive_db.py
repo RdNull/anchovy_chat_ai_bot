@@ -36,7 +36,9 @@ def main() -> int:
 
     if VOLUME_WIPE.search(command):
         reason = 'removes Docker volumes, which hold the local MongoDB and Qdrant data'
-    elif DESTRUCTIVE.search(command) and EXECUTES.search(command) and not TEST_TARGET.search(command):
+    elif (
+        DESTRUCTIVE.search(command) and EXECUTES.search(command) and not TEST_TARGET.search(command)
+    ):
         reason = 'runs code that drops or bulk-deletes MongoDB data outside the test database'
     else:
         return 0

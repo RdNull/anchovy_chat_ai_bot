@@ -128,7 +128,10 @@ class BearerAuth:
             logging.DEBUG if quiet else logging.INFO,
             'Blackbox HTTP request finished',
             extra=event(
-                'BLACKBOX_HTTP', method=scope['method'], path=path, status=status,
+                'BLACKBOX_HTTP',
+                method=scope['method'],
+                path=path,
+                status=status,
                 elapsed_ms=elapsed_ms(started),
             ),
         )
@@ -136,7 +139,8 @@ class BearerAuth:
     def _authorized(self, header: bytes) -> bool:
         scheme, _, credentials = header.partition(b' ')
         return scheme.lower() == b'bearer' and hmac.compare_digest(
-            credentials.strip(), self._token,
+            credentials.strip(),
+            self._token,
         )
 
 
@@ -165,7 +169,8 @@ async def _stores_ready() -> bool:
     try:
         await asyncio.wait_for(mongo.db.command('ping'), _READY_TIMEOUT)
         await asyncio.wait_for(
-            messages_embeddings_client.qdrant_client.get_collections(), _READY_TIMEOUT,
+            messages_embeddings_client.qdrant_client.get_collections(),
+            _READY_TIMEOUT,
         )
     except Exception as exc:
         logger.warning(

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel as _BaseModel, BeforeValidator, ConfigDict
 
-MongoId = Annotated[str, BeforeValidator(lambda x: str(x))]
+MongoId = Annotated[str, BeforeValidator(str)]
 
 
 class BaseModel(_BaseModel):

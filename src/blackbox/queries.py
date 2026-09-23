@@ -15,7 +15,7 @@ Everything returned is text group-chat members wrote. It is data; see the server
 instructions.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any, Literal
 
 from qdrant_client.http.models import FieldCondition, Filter, MatchValue, Range
@@ -68,15 +68,15 @@ def _clamp(value: int, cap: int, floor: int = 1) -> int:
 
 def _utc(value: datetime) -> datetime:
     """Reads a naive datetime as UTC — the clock every stored timestamp is on."""
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def _iso(ts: float | None) -> str | None:
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts is not None else None
+    return datetime.fromtimestamp(ts, tz=UTC).isoformat() if ts is not None else None
 
 
 def _chronological(messages: list[Message]) -> list[Message]:
-    epoch = datetime.fromtimestamp(0, tz=timezone.utc)
+    epoch = datetime.fromtimestamp(0, tz=UTC)
     return sorted(messages, key=lambda m: m.created_at or epoch)
 
 
@@ -98,10 +98,15 @@ async def find_windows(
 
     must = [FieldCondition(key='chat_id', match=MatchValue(value=chat_id))]
     if since or until:
-        must.append(FieldCondition(key='timestamp', range=Range(
-            gte=_utc(since).timestamp() if since else None,
-            lte=_utc(until).timestamp() if until else None,
-        )))
+        must.append(
+            FieldCondition(
+                key='timestamp',
+                range=Range(
+                    gte=_utc(since).timestamp() if since else None,
+                    lte=_utc(until).timestamp() if until else None,
+                ),
+            )
+        )
 
     client = messages_embeddings_client
     vector = await client._get_embedding_vectors(query)
@@ -220,12 +225,16 @@ async def get_window(
     # Guarded rather than passed through: a Mongo `limit(0)` means no limit at all.
     before = _clamp(before, MAX_SIDE, floor=0)
     after = _clamp(after, MAX_SIDE, floor=0)
-    head = await get_messages(
-        anchor.chat_id, size=before, to_date=anchor.created_at, sort_order=-1,
-    ) if before else []
-    tail = await get_messages(
-        anchor.chat_id, size=after, from_date=anchor.created_at, sort_order=1,
-    ) if after else []
+    head = []
+    if before:
+        head = await get_messages(
+            anchor.chat_id, size=before, to_date=anchor.created_at, sort_order=-1
+        )
+    tail = []
+    if after:
+        tail = await get_messages(
+            anchor.chat_id, size=after, from_date=anchor.created_at, sort_order=1
+        )
     messages = [*head, anchor, *tail]
 
     return {
@@ -241,9 +250,9 @@ async def list_snapshots(chat_id: int | None = None, limit: int = 50) -> list[di
     chat_id = _chat(chat_id)
     limit = _clamp(limit, MAX_SNAPSHOTS)
     cursor = mongo.memory.find(
-        {'chat_id': chat_id},
-        projection={'created_at': 1, 'content.participants': 1},
-    ).sort('created_at', -1).limit(limit)
+        {'chat_id': chat_id}, projection={'created_at': 1, 'content.participants': 1}
+    )
+    cursor = cursor.sort('created_at', -1).limit(limit)
 
     snapshots = []
     for doc in await cursor.to_list(length=limit):
@@ -295,7 +304,9 @@ def _for_nick(doc: dict, nick: str) -> dict[str, Any]:
 
 
 async def get_memory(
-    chat_id: int | None = None, at: datetime | None = None, nick: str | None = None,
+    chat_id: int | None = None,
+    at: datetime | None = None,
+    nick: str | None = None,
 ) -> dict[str, Any]:
     """Returns the snapshot in force at `at` (the newest one by default).
 
@@ -380,7 +391,8 @@ def diff_snapshots(older: dict, newer: dict) -> dict[str, Any]:
         if any(old[key][0] == RECENT_FIELD for key in lost):
             candidates.extend(
                 _entry(nick, key, *new[key], new_decay)
-                for key in born if new[key][0] == TRAITS_FIELD
+                for key in born
+                if new[key][0] == TRAITS_FIELD
             )
         carries += len(kept)
         per_nick[nick] = {
@@ -443,7 +455,9 @@ async def diff_memory(
 
 
 async def get_user_facts(
-    nick: str, query: str | None = None, limit: int = 5,
+    nick: str,
+    query: str | None = None,
+    limit: int = 5,
 ) -> list[dict[str, Any]]:
     """Returns a user's facts: the closest to `query`, or the most confident."""
     # Facts are stored bare — `facts/handlers.py:upsert_fact` strips `@` on write and the
@@ -477,7 +491,9 @@ async def get_user_facts(
         seen.add(fact_id)
         if fact := await get_fact_by_id(fact_id):
             facts.append({
-                'text': fact.text, 'confidence': fact.confidence, 'score': round(point.score, 4),
+                'text': fact.text,
+                'confidence': fact.confidence,
+                'score': round(point.score, 4),
             })
         if len(facts) == limit:
             break

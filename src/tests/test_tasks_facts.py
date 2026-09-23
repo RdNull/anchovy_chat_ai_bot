@@ -4,10 +4,7 @@ from src.tasks.facts import run_fact_decay
 
 
 async def test_run_fact_decay_calls_decay(mocker):
-    mock_decay = mocker.patch(
-        'src.tasks.facts.decay_all_facts',
-        AsyncMock()
-    )
+    mock_decay = mocker.patch('src.tasks.facts.decay_all_facts', AsyncMock())
 
     await run_fact_decay()
 
@@ -15,10 +12,7 @@ async def test_run_fact_decay_calls_decay(mocker):
 
 
 async def test_run_fact_decay_handles_errors(mocker):
-    mocker.patch(
-        'src.tasks.facts.decay_all_facts',
-        AsyncMock(side_effect=RuntimeError('db error'))
-    )
+    mocker.patch('src.tasks.facts.decay_all_facts', AsyncMock(side_effect=RuntimeError('db error')))
     mock_logger = mocker.patch('src.tasks.facts.logger')
 
     await run_fact_decay()

@@ -13,9 +13,12 @@ async def run_memory_cleanup():
         try:
             await delete_old_memories(settings.MEMORY_RETENTION_DAYS)
             logger.info(
-                'Scheduled task finished', extra=event('TASK_DONE', elapsed_ms=elapsed_ms(started)),
+                'Scheduled task finished',
+                extra=event('TASK_DONE', elapsed_ms=elapsed_ms(started)),
             )
         except Exception:
             logger.error(
-                'Failed to run memory cleanup', exc_info=True, extra=event('TASK_FAILED'),
+                'Failed to run memory cleanup',
+                exc_info=True,
+                extra=event('TASK_FAILED'),
             )

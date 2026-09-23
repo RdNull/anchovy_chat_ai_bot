@@ -1,6 +1,6 @@
 import asyncio
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from src import mongo, settings
 from src.facts.handlers import update_user_facts
@@ -19,9 +19,7 @@ MEMORY_UPDATE_LOCK = asyncio.Lock()
 async def run_memory_checks(chat_id: int):
     last_memory = await get_last_memory(chat_id)
     if last_memory:
-        messages_count = await get_messages_count_since(
-            chat_id, last_memory.created_at.timestamp()
-        )
+        messages_count = await get_messages_count_since(chat_id, last_memory.created_at.timestamp())
     else:
         messages_count = await get_messages_count(chat_id)
 
@@ -29,7 +27,9 @@ async def run_memory_checks(chat_id: int):
         logger.info(
             'Triggering periodic memory update',
             extra=event(
-                'MEMORY_TRIGGERED', count=messages_count, trigger_size=settings.MEMORY_TRIGGER_SIZE,
+                'MEMORY_TRIGGERED',
+                count=messages_count,
+                trigger_size=settings.MEMORY_TRIGGER_SIZE,
             ),
         )
         await update_chat_memory(chat_id)
@@ -42,7 +42,9 @@ async def update_chat_memory(chat_id: int):
             await _update_chat_memory(chat_id)
     except Exception:
         logger.error(
-            'Error updating memory', exc_info=True, extra=event('MEMORY_UPDATE', outcome='error'),
+            'Error updating memory',
+            exc_info=True,
+            extra=event('MEMORY_UPDATE', outcome='error'),
         )
 
 
@@ -78,20 +80,26 @@ async def _update_chat_memory(chat_id: int):
         if updated_memory:
             try:
                 await save_memory(
-                    chat_id, updated_memory.content, updated_memory.decay,
+                    chat_id,
+                    updated_memory.content,
+                    updated_memory.decay,
                     created_at=updated_memory.created_at,
                 )
                 logger.info(
                     'Memory updated and saved',
                     extra=event(
-                        'MEMORY_EXTRACT', outcome='ok', elapsed_ms=elapsed_ms(started),
-                        model=MEMORY_MODEL_NAME, version=MEMORY_MODEL_VERSION,
+                        'MEMORY_EXTRACT',
+                        outcome='ok',
+                        elapsed_ms=elapsed_ms(started),
+                        model=MEMORY_MODEL_NAME,
+                        version=MEMORY_MODEL_VERSION,
                         window=len(new_messages),
                     ),
                 )
             except Exception:
                 logger.error(
-                    'Failed to parse memory JSON', exc_info=True,
+                    'Failed to parse memory JSON',
+                    exc_info=True,
                     extra=event('MEMORY_EXTRACT', outcome='error'),
                 )
                 # The raw model output is chat-derived content, not diagnostic metadata --
@@ -107,7 +115,7 @@ async def _update_chat_memory(chat_id: int):
 
 
 async def delete_old_memories(retention_days: int) -> None:
-    cutoff_ts = (datetime.now(timezone.utc) - timedelta(days=retention_days)).timestamp()
+    cutoff_ts = (datetime.now(UTC) - timedelta(days=retention_days)).timestamp()
 
     cursor = await mongo.memory.aggregate([
         {'$sort': {'created_at': -1}},

@@ -22,7 +22,9 @@ class Replier:
     async def reply_message(self, text: str) -> Message:
         # The full text is chat content, not diagnostic metadata -- it moves to its own
         # DEBUG line so an INFO-level stream never carries a reply body.
-        logger.info('Replying to user message', extra=event('REPLY_SENT', kind='text', text_len=len(text)))
+        logger.info(
+            'Replying to user message', extra=event('REPLY_SENT', kind='text', text_len=len(text))
+        )
         logger.debug('Reply text', extra=event('REPLY_TEXT', text=text))
 
         reply = await self.bot.send_message(
@@ -45,7 +47,9 @@ class Replier:
         return await self._save_message(
             reply.message_id,
             media=MessageMedia(
-                media_id=file_id, unique_id=unique_id, type=MessageMediaTypes.STICKER,
+                media_id=file_id,
+                unique_id=unique_id,
+                type=MessageMediaTypes.STICKER,
             ),
         )
 
@@ -57,14 +61,16 @@ class Replier:
             chat_id=self.chat_id,
             message_id=self.target_message.telegram_id,
             reaction=emoji,
-            is_big=is_big
+            is_big=is_big,
         )
         if not result:
             return False
 
         # Logged only on confirmed delivery -- otherwise a rejected reaction would
         # still count as sent in the REPLY_SENT Axiom metric.
-        logger.info('Setting reaction', extra=event('REPLY_SENT', kind='reaction', emoji=str(emoji)))
+        logger.info(
+            'Setting reaction', extra=event('REPLY_SENT', kind='reaction', emoji=str(emoji))
+        )
         await add_bot_reaction(self.target_message, settings.BOT_NICKNAME, str(emoji))
         return True
 
@@ -88,7 +94,7 @@ class Replier:
                 telegram_id=self.target_message.telegram_id,
                 text=self.target_message.text,
                 nickname=self.target_message.nickname,
-                media=self.target_message.media
+                media=self.target_message.media,
             )
 
         message = Message(

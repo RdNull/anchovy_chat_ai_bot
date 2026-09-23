@@ -77,7 +77,7 @@ constructing `Message` inline.
 from unittest.mock import AsyncMock, MagicMock
 from langchain_core.messages import AIMessage
 
-llm = MagicMock()               # NOT AsyncMock — bind_tools() must be sync
+llm = MagicMock()  # NOT AsyncMock — bind_tools() must be sync
 llm.bind_tools.return_value = llm
 llm.ainvoke = AsyncMock(side_effect=[AIMessage(content='reply')])
 mocker.patch('src.characters.character.ai.get_model', return_value=llm)
@@ -93,9 +93,7 @@ Patch `ai.get_memory_model` on `src.memory.processors` — not on `src.ai`, and 
 from src.memory.models import StructuredMemory
 
 mock_llm = MagicMock()
-mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
-    return_value=StructuredMemory()
-)
+mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=StructuredMemory())
 mocker.patch('src.memory.processors.ai.get_memory_model', return_value=mock_llm)
 ```
 `src/tests/test_context.py` wraps exactly this in a local `mock_memory_llm(mocker, return_value=None)`
@@ -145,8 +143,12 @@ from src.characters.tools.registry import ToolFailure
 mocker.patch.object(
     ToolRegistry,
     'execute',
-    new=AsyncMock(return_value=(ToolMessage(tool_call_id='tc1', content='fail'),
-                                ToolFailure('стикер недоступен'))),
+    new=AsyncMock(
+        return_value=(
+            ToolMessage(tool_call_id='tc1', content='fail'),
+            ToolFailure('стикер недоступен'),
+        )
+    ),
 )
 ```
 
@@ -164,6 +166,7 @@ directly, from the test layer:
 def reset_web_search_limiter():
     """For tests."""
     _web_search_limiter._call_times.clear()
+
 
 # GOOD — src/tests/test_tools.py
 @pytest.fixture(autouse=True)

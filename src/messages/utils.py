@@ -3,7 +3,7 @@ from functools import wraps
 
 from telegram import Message, Update
 from telegram.constants import ChatAction
-from telegram.ext import (ContextTypes, filters)
+from telegram.ext import ContextTypes, filters
 
 from src import settings
 from src.logs import event, logger
@@ -13,17 +13,17 @@ from src.running_app import get_bot
 class ReplyToBotFilter(filters.MessageFilter):
     def filter(self, message: Message) -> bool:
         return bool(
-            message.reply_to_message and
-            message.reply_to_message.from_user and
-            message.reply_to_message.from_user.is_bot and
-            message.reply_to_message.from_user.username == settings.BOT_NICKNAME
+            message.reply_to_message
+            and message.reply_to_message.from_user
+            and message.reply_to_message.from_user.is_bot
+            and message.reply_to_message.from_user.username == settings.BOT_NICKNAME
         )
 
 
 def escape_markdown_v2(text: str) -> str:
     """Escapes Telegram MarkdownV2 special characters."""
     escape_chars = r'_*[]()~`>#+-=|{}.!'
-    return "".join(str(c) if c not in escape_chars else f"\\{c}" for c in str(text))
+    return ''.join(str(c) if c not in escape_chars else f'\\{c}' for c in str(text))
 
 
 def restricted(func):
@@ -53,12 +53,12 @@ def restricted(func):
             logger.warning('Unauthorized access', extra=event('ACCESS_DENIED'))
             if update.effective_message:
                 await update.effective_message.reply_text(
-                    f"Сорян, тебе нельзя пользоваться этим ботом\n"
-                    f"Твой ID: `{user_id}`\n"
-                    f"ID чата: `{chat_id}`",
-                    parse_mode="MarkdownV2"
+                    f'Сорян, тебе нельзя пользоваться этим ботом\n'
+                    f'Твой ID: `{user_id}`\n'
+                    f'ID чата: `{chat_id}`',
+                    parse_mode='MarkdownV2',
                 )
-            return
+            return None
 
         return await func(update, context, *args, **kwargs)
 
@@ -70,12 +70,7 @@ def send_action(action: ChatAction):
 
     def decorator(func):
         @wraps(func)
-        async def command_func(
-            update: Update,
-            context: ContextTypes.DEFAULT_TYPE,
-            *args,
-            **kwargs
-        ):
+        async def command_func(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
             chat_id = update.effective_chat.id
             bot = context.bot
 
@@ -93,7 +88,8 @@ def send_action(action: ChatAction):
                     pass
                 except Exception:
                     logger.error(
-                        'Error in send_action_loop', exc_info=True,
+                        'Error in send_action_loop',
+                        exc_info=True,
                         extra=event('TYPING_LOOP_FAILED'),
                     )
 

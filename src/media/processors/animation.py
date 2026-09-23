@@ -4,7 +4,6 @@ import math
 import os
 import tempfile
 import time
-from typing import List
 
 import cv2
 from PIL import Image
@@ -32,7 +31,9 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
     logger.debug(
         'Generating animation description',
         extra=event(
-            'MEDIA_DESCRIBE_START', kind='animation', frames=len(key_frames),
+            'MEDIA_DESCRIBE_START',
+            kind='animation',
+            frames=len(key_frames),
             content_hash=animation.content_hash,
         ),
     )
@@ -41,51 +42,57 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
 
     messages = [
         SystemMessage(content=prompt_manager.get_prompt('animation_describe')),
-        HumanMessage(content_blocks=[
-            ImageContentBlock(
-                type="image",
-                mime_type='image/jpeg',
-                base64=key_frame
-            )
-            for key_frame in key_frames
-        ])
+        HumanMessage(
+            content_blocks=[
+                ImageContentBlock(type='image', mime_type='image/jpeg', base64=key_frame)
+                for key_frame in key_frames
+            ]
+        ),
     ]
 
     started = time.monotonic()
     try:
         response: MediaDescriptionData = await model_with_structure.ainvoke(messages)
         if not response:
-            raise Exception("No response from model")
-
+            raise ValueError('No response from model')
+    except Exception:
+        logger.error(
+            'Error generating animation description',
+            exc_info=True,
+            extra=event(
+                'MEDIA_DESCRIBE',
+                outcome='error',
+                kind='animation',
+                content_hash=animation.content_hash,
+            ),
+        )
+        return None
+    else:
         logger.debug(
             'Animation description text',
             extra=event(
-                'MEDIA_DESCRIBE_TEXT', content_hash=animation.content_hash,
-                description=response.description, ocr_text=response.ocr_text,
+                'MEDIA_DESCRIBE_TEXT',
+                content_hash=animation.content_hash,
+                description=response.description,
+                ocr_text=response.ocr_text,
             ),
         )
         logger.info(
             'Animation description generated',
             extra=event(
-                'MEDIA_DESCRIBE', outcome='ok', kind='animation',
-                content_hash=animation.content_hash, desc_len=len(response.description or ''),
-                ocr_len=len(response.ocr_text or ''), elapsed_ms=elapsed_ms(started),
+                'MEDIA_DESCRIBE',
+                outcome='ok',
+                kind='animation',
+                content_hash=animation.content_hash,
+                desc_len=len(response.description or ''),
+                ocr_len=len(response.ocr_text or ''),
+                elapsed_ms=elapsed_ms(started),
             ),
         )
         return response
-    except Exception:
-        logger.error(
-            'Error generating animation description', exc_info=True,
-            extra=event(
-                'MEDIA_DESCRIBE', outcome='error', kind='animation',
-                content_hash=animation.content_hash,
-            ),
-        )
-
-    return None
 
 
-def _get_animation_key_frames(animation: AnimationDetectionData) -> List[str]:
+def _get_animation_key_frames(animation: AnimationDetectionData) -> list[str]:
     """
     Extracts key frames from GIF or video (without sound).
     The number of frames depends on the animation length: 1 to 4.
@@ -101,7 +108,7 @@ def _get_animation_key_frames(animation: AnimationDetectionData) -> List[str]:
             return _extract_video_frames(animation.content)
 
 
-def _extract_tgs_frames(tgs_bytes: bytes) -> List[str]:
+def _extract_tgs_frames(tgs_bytes: bytes) -> list[str]:
     frames = []
     try:
         with io.BytesIO(tgs_bytes) as tgs_file:
@@ -116,7 +123,7 @@ def _extract_tgs_frames(tgs_bytes: bytes) -> List[str]:
         else:
             indices = [start, start + num_frames // 3, start + 2 * num_frames // 3, end]
 
-        indices = sorted(list(set(indices)))
+        indices = sorted(set(indices))
 
         with PngRenderer(animation, 96) as renderer:
             for i in indices:
@@ -125,7 +132,7 @@ def _extract_tgs_frames(tgs_bytes: bytes) -> List[str]:
                 png_file.seek(0)
                 try:
                     with Image.open(png_file) as img:
-                        frame = img.convert("RGB")
+                        frame = img.convert('RGB')
                         frame = _resize_frame_if_needed(frame)
                         frames.append(_image_to_base64(frame))
                 except Exception:
@@ -135,17 +142,18 @@ def _extract_tgs_frames(tgs_bytes: bytes) -> List[str]:
                     )
     except Exception:
         logger.error(
-            'Error extracting frames from TGS', exc_info=True,
+            'Error extracting frames from TGS',
+            exc_info=True,
             extra=event('MEDIA_FRAME_EXTRACT', outcome='error', format='tgs'),
         )
     return frames
 
 
-def _extract_gif_frames(gif_bytes: bytes) -> List[str]:
+def _extract_gif_frames(gif_bytes: bytes) -> list[str]:
     frames = []
     try:
         with Image.open(io.BytesIO(gif_bytes)) as img:
-            num_frames = getattr(img, "n_frames", 1)
+            num_frames = getattr(img, 'n_frames', 1)
             # Short animations (up to 5 frames) -> 1 key frame
             # Long animations -> up to 4 key frames
             if num_frames <= 10:
@@ -154,25 +162,26 @@ def _extract_gif_frames(gif_bytes: bytes) -> List[str]:
                 indices = [0, num_frames // 3, 2 * num_frames // 3, num_frames - 1]
 
             # Remove duplicate indices for very short gifs that weren't caught by num_frames <= 5
-            indices = sorted(list(set(indices)))
+            indices = sorted(set(indices))
 
             for i in indices:
                 img.seek(i)
-                frame = img.convert("RGB")
+                frame = img.convert('RGB')
                 frame = _resize_frame_if_needed(frame)
                 frames.append(_image_to_base64(frame))
     except Exception:
         logger.error(
-            'Error extracting frames from GIF', exc_info=True,
+            'Error extracting frames from GIF',
+            exc_info=True,
             extra=event('MEDIA_FRAME_EXTRACT', outcome='error', format='gif'),
         )
     return frames
 
 
-def _extract_video_frames(video_bytes: bytes) -> List[str]:
+def _extract_video_frames(video_bytes: bytes) -> list[str]:
     frames = []
     # OpenCV cannot read directly from BytesIO, need a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as temp_video:
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.tmp') as temp_video:
         temp_video.write(video_bytes)
         temp_video_path = temp_video.name
 
@@ -182,7 +191,9 @@ def _extract_video_frames(video_bytes: bytes) -> List[str]:
             logger.error(
                 'Could not open video file with OpenCV',
                 extra=event(
-                    'MEDIA_FRAME_EXTRACT', outcome='error', format='video',
+                    'MEDIA_FRAME_EXTRACT',
+                    outcome='error',
+                    format='video',
                     reason='opencv_open_failed',
                 ),
             )
@@ -197,7 +208,7 @@ def _extract_video_frames(video_bytes: bytes) -> List[str]:
         else:
             indices = [0, total_frames // 3, 2 * total_frames // 3, total_frames - 1]
 
-        indices = sorted(list(set(indices)))
+        indices = sorted(set(indices))
 
         for i in indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, i)
@@ -211,7 +222,8 @@ def _extract_video_frames(video_bytes: bytes) -> List[str]:
         cap.release()
     except Exception:
         logger.error(
-            'Error extracting frames from video', exc_info=True,
+            'Error extracting frames from video',
+            exc_info=True,
             extra=event('MEDIA_FRAME_EXTRACT', outcome='error', format='video'),
         )
     finally:
@@ -233,5 +245,5 @@ def _resize_frame_if_needed(img: Image.Image, max_pixels: int = 300_000) -> Imag
 
 def _image_to_base64(img: Image.Image) -> str:
     with io.BytesIO() as output:
-        img.save(output, format="JPEG", quality=85)
+        img.save(output, format='JPEG', quality=85)
         return base64.b64encode(output.getvalue()).decode('utf-8')

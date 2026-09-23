@@ -130,7 +130,7 @@ class Message(BaseModel):
 
             bot_reacted = bot_nickname in nicknames
             others = [n for n in nicknames if n != bot_nickname]
-            named = ([bot_nickname] if bot_reacted else [])
+            named = [bot_nickname] if bot_reacted else []
             if len(others) <= 3:
                 named.extend(others)
             unnamed_count = len(nicknames) - len(named)
@@ -143,7 +143,7 @@ class Message(BaseModel):
 
             parts.append(part)
 
-        return f"⤷ {' · '.join(parts)}" if parts else None
+        return f'⤷ {" · ".join(parts)}' if parts else None
 
 
 class UpdateMessage(BaseModel):

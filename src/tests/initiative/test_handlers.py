@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
 from telegram.constants import ChatAction
@@ -14,11 +14,12 @@ from src.messages.models import Message, UserRole
 
 def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1', created_at=None):
     message = Message(chat_id=chat_id, role=role, text=text, nickname=nickname)
-    message.created_at = created_at or datetime.now(timezone.utc)
+    message.created_at = created_at or datetime.now(UTC)
     return message
 
 
 # --- run_initiative_checks: kill switch gates everything, up front ---
+
 
 async def test_run_initiative_checks_noop_when_checks_disabled(mocker):
     mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', False)
@@ -32,6 +33,7 @@ async def test_run_initiative_checks_noop_when_checks_disabled(mocker):
 
 
 # --- run_initiative_checks: pre_check gates the watermark save ---
+
 
 async def test_run_initiative_checks_does_not_save_watermark_when_pre_check_fails(mocker):
     # Regression: save_initiative_run used to run before pre_check, so a chat that
@@ -85,6 +87,7 @@ async def test_concurrent_checks_claim_the_same_window_only_once(mocker):
 
 # --- run_initiative_checks: character memory + low score ---
 
+
 async def test_run_initiative_checks_passes_memory_to_character_and_stops_on_low_score(mocker):
     # Regression: get_chat_character used to be called with no memory=, so
     # evaluate_initiative crashed on character.memory being None.
@@ -92,7 +95,9 @@ async def test_run_initiative_checks_passes_memory_to_character_and_stops_on_low
     mocker.patch('src.initiative.handlers.get_last_initiative_run', AsyncMock(return_value=None))
     newest = make_message()
     mocker.patch('src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[newest]))
-    mock_save_run = mocker.patch('src.initiative.handlers.save_initiative_run', new_callable=AsyncMock)
+    mock_save_run = mocker.patch(
+        'src.initiative.handlers.save_initiative_run', new_callable=AsyncMock
+    )
     mocker.patch('src.initiative.handlers.pre_check', AsyncMock(return_value=True))
     sentinel_memory = object()
     mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=sentinel_memory))
@@ -114,24 +119,21 @@ async def test_run_initiative_checks_passes_memory_to_character_and_stops_on_low
 
 # --- run_initiative_checks: happy path ---
 
+
 def _mock_full_pass(mocker, score=0.9):
     mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
     mocker.patch('src.initiative.handlers.get_last_initiative_run', AsyncMock(return_value=None))
     mocker.patch(
         'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[make_message()])
     )
-    mocker.patch(
-        'src.initiative.handlers.save_initiative_run', AsyncMock(return_value='run-id')
-    )
+    mocker.patch('src.initiative.handlers.save_initiative_run', AsyncMock(return_value='run-id'))
     mocker.patch('src.initiative.handlers.mark_initiative_replied', new_callable=AsyncMock)
     mocker.patch('src.initiative.handlers.pre_check', AsyncMock(return_value=True))
     mocker.patch('src.initiative.handlers.get_last_memory', AsyncMock(return_value=None))
     character = MagicMock()
     mocker.patch('src.initiative.handlers.get_chat_character', AsyncMock(return_value=character))
     evaluation = InitiativeVerdict(target_message=None, score=score, reason='r')
-    mocker.patch(
-        'src.initiative.handlers.evaluate_initiative', AsyncMock(return_value=evaluation)
-    )
+    mocker.patch('src.initiative.handlers.evaluate_initiative', AsyncMock(return_value=evaluation))
     mocker.patch('src.initiative.handlers.decide', AsyncMock(return_value=True))
     return character, evaluation
 
@@ -175,10 +177,9 @@ async def test_run_initiative_checks_dry_run_when_initiative_disabled(mocker):
 
 # --- _get_messages: cold start vs. resuming from a watermark ---
 
+
 async def test_get_messages_anchors_on_newest_when_no_prior_run(mocker):
-    mock_fetch = mocker.patch(
-        'src.initiative.handlers.fetch_last_messages', new_callable=AsyncMock
-    )
+    mock_fetch = mocker.patch('src.initiative.handlers.fetch_last_messages', new_callable=AsyncMock)
 
     await handlers._get_messages(222, None)
 
@@ -192,15 +193,20 @@ async def test_get_messages_resumes_from_watermark_and_also_reads_context(mocker
     mock_fetch = mocker.patch(
         'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[])
     )
-    watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+    watermark = datetime.now(UTC) - timedelta(hours=1)
 
     await handlers._get_messages(222, watermark)
 
     assert mock_fetch.call_args_list == [
-        call(222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, from_date=watermark, sort_order=-1),
         call(
-            222, size=settings.INITIATIVE_CONTEXT_SIZE,
-            to_date=watermark, to_date_inclusive=True, sort_order=-1,
+            222, size=settings.INITIATIVE_RUN_MESSAGES_MAX_SIZE, from_date=watermark, sort_order=-1
+        ),
+        call(
+            222,
+            size=settings.INITIATIVE_CONTEXT_SIZE,
+            to_date=watermark,
+            to_date_inclusive=True,
+            sort_order=-1,
         ),
     ]
 
@@ -209,7 +215,7 @@ async def test_get_messages_takes_the_newest_of_a_backlog_past_the_cap(mocker):
     # Regression: an oldest-first read after a cooldown-blocked stretch judged the
     # conversation from an hour ago rather than the one happening now.
     mocker.patch.object(settings, 'INITIATIVE_RUN_MESSAGES_MAX_SIZE', 3)
-    watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+    watermark = datetime.now(UTC) - timedelta(hours=1)
     for i in range(1, 6):
         await save_message(make_message(text=f'm{i}'))
 
@@ -220,7 +226,7 @@ async def test_get_messages_takes_the_newest_of_a_backlog_past_the_cap(mocker):
 
 # --- _split_window: the gap cut, then re-partitioned around the watermark ---
 
-BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+BASE = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def at(minutes: float, text='hi') -> Message:
@@ -234,7 +240,9 @@ def test_split_window_cut_inside_candidate_region_empties_context():
     late_candidate = at(1 + 30, 'c2')  # 30min gap past the default 15min threshold
 
     context, candidates = handlers._split_window(
-        222, [old_context, early_candidate, late_candidate], watermark,
+        222,
+        [old_context, early_candidate, late_candidate],
+        watermark,
     )
 
     assert context == []
@@ -248,7 +256,9 @@ def test_split_window_cut_inside_context_region_trims_context_only():
     candidate = at(1, 'c1')
 
     context, candidates = handlers._split_window(
-        222, [ancient_context, recent_context, candidate], watermark,
+        222,
+        [ancient_context, recent_context, candidate],
+        watermark,
     )
 
     assert context == [recent_context]
@@ -278,16 +288,18 @@ def test_split_window_no_cut_keeps_everything_partitioned_by_watermark():
 
 # --- _claim_window: the split runs before pre_check ---
 
+
 async def test_claim_window_does_not_advance_watermark_when_pre_check_fails_after_the_cut(mocker):
     mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
-    watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+    watermark = datetime.now(UTC) - timedelta(hours=1)
     mocker.patch(
         'src.initiative.handlers.get_last_initiative_run',
         AsyncMock(return_value=MagicMock(last_message_time=watermark)),
     )
     old_candidate = make_message(text='old', created_at=watermark + timedelta(minutes=1))
     new_candidate = make_message(
-        text='new', created_at=watermark + timedelta(minutes=1) + timedelta(minutes=30),
+        text='new',
+        created_at=watermark + timedelta(minutes=1) + timedelta(minutes=30),
     )
     mocker.patch(
         'src.initiative.handlers.fetch_last_messages',
@@ -325,8 +337,10 @@ async def test_claim_window_returns_the_claimed_run_id_on_success(mocker):
 
 # --- _run_initiative_reply ---
 
+
 async def test_run_initiative_reply_builds_replier_targeting_the_evaluated_message(
-    mocker, make_bot,
+    mocker,
+    make_bot,
 ):
     bot = make_bot()
     mocker.patch('src.initiative.handlers.get_bot', return_value=bot)
@@ -388,6 +402,7 @@ async def test_run_initiative_reply_sends_typing_action(mocker, make_bot):
 
 
 # --- _with_target: the evaluation window is wider than the reply window ---
+
 
 def test_with_target_prepends_a_target_that_fell_out_of_the_reply_window():
     # INITIATIVE_RUN_MESSAGES_MAX_SIZE > LAST_MESSAGES_SIZE, so a target picked from

@@ -9,6 +9,7 @@ test body would leak into the interpreter's ambient context and bleed into later
 `asyncio.run` gives the coroutine its own task with its own *copy* of that context, so
 whatever it sets there dies with the task.
 """
+
 import asyncio
 import logging
 
@@ -17,8 +18,13 @@ from src.log_context import LogContextFilter, log_context, push_log_context
 
 def make_record(name: str = 'bot') -> logging.LogRecord:
     return logging.LogRecord(
-        name=name, level=logging.INFO, pathname='x.py', lineno=1,
-        msg='handled', args=(), exc_info=None,
+        name=name,
+        level=logging.INFO,
+        pathname='x.py',
+        lineno=1,
+        msg='handled',
+        args=(),
+        exc_info=None,
     )
 
 

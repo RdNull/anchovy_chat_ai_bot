@@ -29,7 +29,8 @@ async def run_embedding_checks(chat_id: int):
         logger.info(
             'Triggering periodic embedding update',
             extra=event(
-                'EMBEDDING_TRIGGERED', count=messages_count,
+                'EMBEDDING_TRIGGERED',
+                count=messages_count,
                 trigger_size=settings.EMBEDDINGS_TRIGGER_SIZE,
             ),
         )
@@ -66,12 +67,16 @@ async def update_chat_embeddings(chat_id: int):
             logger.info(
                 'Embeddings updated',
                 extra=event(
-                    'EMBEDDING_UPDATE', outcome='ok', elapsed_ms=elapsed_ms(started),
-                    messages=len(messages), chunks=chunks,
+                    'EMBEDDING_UPDATE',
+                    outcome='ok',
+                    elapsed_ms=elapsed_ms(started),
+                    messages=len(messages),
+                    chunks=chunks,
                 ),
             )
         except Exception:
             logger.error(
-                'Error updating embeddings', exc_info=True,
+                'Error updating embeddings',
+                exc_info=True,
                 extra=event('EMBEDDING_UPDATE', outcome='error'),
             )

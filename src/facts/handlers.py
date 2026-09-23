@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from src.embeddings.facts import facts_embedding_client
 from src.facts.processors import extract_facts
@@ -18,13 +18,16 @@ async def update_user_facts(new_messages: list[Message]) -> None:
         logger.info(
             'Extracted and saved facts',
             extra=event(
-                'FACT_EXTRACT', outcome='ok', count=len(facts),
+                'FACT_EXTRACT',
+                outcome='ok',
+                count=len(facts),
                 elapsed_ms=elapsed_ms(started),
             ),
         )
     except Exception:
         logger.error(
-            'Error extracting facts from messages', exc_info=True,
+            'Error extracting facts from messages',
+            exc_info=True,
             extra=event('FACT_EXTRACT', outcome='error'),
         )
 
@@ -34,7 +37,9 @@ async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
         logger.warning(
             'Skipping fact with invalid confidence',
             extra=event(
-                'FACT_REJECTED', reason='invalid_confidence', confidence=confidence,
+                'FACT_REJECTED',
+                reason='invalid_confidence',
+                confidence=confidence,
                 nickname=nickname,
             ),
         )
@@ -51,7 +56,9 @@ async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
             await update_fact(similar_fact.fact.id, confidence=new_confidence)
             logger.info(
                 'Reinforced fact confidence',
-                extra=event('FACT_REINFORCED', fact_id=similar_fact.fact.id, confidence=new_confidence),
+                extra=event(
+                    'FACT_REINFORCED', fact_id=similar_fact.fact.id, confidence=new_confidence
+                ),
             )
         else:
             await update_fact(similar_fact.fact.id, confidence=confidence, text=text)
@@ -67,5 +74,5 @@ async def upsert_fact(nickname: str, text: str, confidence: float) -> None:
 
 
 async def decay_all_facts(decay_amount: float = 0.1) -> None:
-    one_week_ago_ts = datetime.now(timezone.utc) - timedelta(weeks=1)
+    one_week_ago_ts = datetime.now(UTC) - timedelta(weeks=1)
     await decay_facts(one_week_ago_ts, decay_amount)

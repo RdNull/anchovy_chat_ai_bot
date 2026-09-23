@@ -25,7 +25,7 @@ class ImageDetectionData(MediaDetectionData):
 
     @property
     def content_hash(self):
-        return hashlib.md5(self.content.encode('utf-8')).hexdigest()
+        return hashlib.md5(self.content.encode('utf-8'), usedforsecurity=False).hexdigest()
 
 
 class AnimationDetectionData(MediaDetectionData):
@@ -34,7 +34,7 @@ class AnimationDetectionData(MediaDetectionData):
 
     @property
     def content_hash(self):
-        return hashlib.md5(self.content).hexdigest()
+        return hashlib.md5(self.content, usedforsecurity=False).hexdigest()
 
 
 class MediaDescription(BaseModel):

@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from telegram.ext import ContextTypes
 
@@ -8,7 +8,10 @@ from src.embeddings.stickers import stickers_embedding_client
 from src.logs import elapsed_ms, event, logger
 from src.media.download import get_message_media
 from src.media.models import (
-    AnimationDetectionData, ImageDetectionData, MediaDescription, MediaDescriptionData,
+    AnimationDetectionData,
+    ImageDetectionData,
+    MediaDescription,
+    MediaDescriptionData,
     MediaDetectionData,
 )
 from src.media.processors.animation import describe_animation
@@ -64,7 +67,8 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
                 logger.debug(
                     'Cached media description text',
                     extra=event(
-                        'MEDIA_DESCRIPTION_TEXT', description=media_description.description,
+                        'MEDIA_DESCRIPTION_TEXT',
+                        description=media_description.description,
                     ),
                 )
                 return
@@ -103,7 +107,8 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
 
 
 def _stored_type(
-    message: Message, media_detection_data: MediaDetectionData,
+    message: Message,
+    media_detection_data: MediaDetectionData,
 ) -> MessageMediaTypes:
     """The label the row carries, which is not the decoder that produced it.
 
@@ -118,7 +123,8 @@ def _stored_type(
 
 
 async def _backfill_sticker(
-    message: Message, media_description: MediaDescription,
+    message: Message,
+    media_description: MediaDescription,
 ) -> MediaDescription:
     """Retypes and indexes a sticker whose row predates the sticker unit.
 
@@ -153,7 +159,8 @@ def _skip_media_description_generation(description: MediaDescription) -> bool:
     """READY always skips; PROCESSING skips only while it's still plausibly in
     flight. A crash or pod restart between the PROCESSING write and the describe
     call would otherwise leave a row that is never retried and that
-    `wait_for_media_ready` polls to its full timeout on every future sighting."""
+    `wait_for_media_ready` polls to its full timeout on every future sighting.
+    """
     if description.status == MessageMediaStatus.READY:
         return True
     if description.status == MessageMediaStatus.PROCESSING:
@@ -166,7 +173,7 @@ def _is_processing_stale(updated_at: datetime | None) -> bool:
     # stale rather than raising, so a legacy row is retried instead of stuck.
     if updated_at is None:
         return True
-    age = datetime.now(timezone.utc) - updated_at
+    age = datetime.now(UTC) - updated_at
     return age > timedelta(minutes=settings.MEDIA_PROCESSING_STALE_MINUTES)
 
 
@@ -180,8 +187,11 @@ async def _generate_media_description(
         logger.info(
             'Media description generated',
             extra=event(
-                'MEDIA_DESCRIBE', kind='image', media_id=message.media.media_id,
-                elapsed_ms=elapsed_ms(started), outcome='ok' if result else 'error',
+                'MEDIA_DESCRIBE',
+                kind='image',
+                media_id=message.media.media_id,
+                elapsed_ms=elapsed_ms(started),
+                outcome='ok' if result else 'error',
             ),
         )
         return result
@@ -191,8 +201,11 @@ async def _generate_media_description(
         logger.info(
             'Media description generated',
             extra=event(
-                'MEDIA_DESCRIBE', kind='animation', media_id=message.media.media_id,
-                elapsed_ms=elapsed_ms(started), outcome='ok' if result else 'error',
+                'MEDIA_DESCRIBE',
+                kind='animation',
+                media_id=message.media.media_id,
+                elapsed_ms=elapsed_ms(started),
+                outcome='ok' if result else 'error',
             ),
         )
         return result

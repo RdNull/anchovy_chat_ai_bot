@@ -14,11 +14,9 @@ def test_resolve_env_vars():
     manager = ModelManager()
     config = {
         'api_key': 'env:TEST_API_KEY',
-        'nested': {
-            'value': 'env:TEST_NESTED_VAR'
-        },
+        'nested': {'value': 'env:TEST_NESTED_VAR'},
         'list': ['env:TEST_LIST_VAR', 'plain_string'],
-        'plain': 'value'
+        'plain': 'value',
     }
 
     test_env = {
@@ -31,11 +29,9 @@ def test_resolve_env_vars():
 
     assert resolved == {
         'api_key': 'secret',
-        'nested': {
-            'value': 'nested_secret'
-        },
+        'nested': {'value': 'nested_secret'},
         'list': ['list_secret', 'plain_string'],
-        'plain': 'value'
+        'plain': 'value',
     }
 
 
@@ -78,11 +74,8 @@ def test_get_model_settings_not_found(tmp_path):
 
     manager = ModelManager(models_dir=str(models_dir))
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(ValueError, match=r'No model settings found.*non_existent_task'):
         manager.get_model_settings('non_existent_task', 'v1')
-
-    assert 'No model settings found' in str(excinfo.value)
-    assert 'non_existent_task' in str(excinfo.value)
 
 
 def test_web_search_settings_keep_plugins():

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -94,7 +96,7 @@ class _Settings(BaseSettings):
     # Where the blackbox HTTP server listens. It only ever runs in a container, so the
     # bind is all interfaces; what is actually reachable is decided by the compose port
     # mapping or the k8s Service in front of it.
-    BLACKBOX_HOST: str = '0.0.0.0'
+    BLACKBOX_HOST: str = '0.0.0.0'  # noqa: S104 -- container-only; see the comment above
     BLACKBOX_PORT: int = 8000
     # Optional here only because the bot shares this class. The blackbox refuses to start
     # without it (`src/blackbox/http.py:build_app`): with `env_ignore_empty=True` a blanked
@@ -138,7 +140,7 @@ class _Settings(BaseSettings):
 
     @field_validator('ALLOWED_CHAT_IDS', 'ALLOWED_USER_IDS', mode='before')
     @classmethod
-    def _coerce_to_str_list(cls, v):
+    def _coerce_to_str_list(cls, v) -> Any:
         if isinstance(v, list):
             return [str(i) for i in v]
         return v
@@ -157,9 +159,7 @@ class _Settings(BaseSettings):
         if self.MESSAGES_EMBEDDINGS_MAX_SIZE < self.EMBEDDINGS_TRIGGER_SIZE:
             raise ValueError('MESSAGES_EMBEDDINGS_MAX_SIZE must be >= EMBEDDINGS_TRIGGER_SIZE')
         if self.INITIATIVE_RUN_MESSAGES_MAX_SIZE < self.INITIATIVE_TRIGGER_SIZE:
-            raise ValueError(
-                'INITIATIVE_RUN_MESSAGES_MAX_SIZE must be >= INITIATIVE_TRIGGER_SIZE'
-            )
+            raise ValueError('INITIATIVE_RUN_MESSAGES_MAX_SIZE must be >= INITIATIVE_TRIGGER_SIZE')
         return self
 
 

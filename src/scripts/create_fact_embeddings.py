@@ -1,4 +1,5 @@
 """Backfill embeddings for user fact documents in the database."""
+
 import argparse
 import asyncio
 import time
@@ -42,7 +43,10 @@ async def create_fact_embeddings(nickname: str | None, batch_size: int):
     logger.info(
         'Backfill finished',
         extra=event(
-            'BACKFILL_DONE', kind='facts', processed=processed, elapsed_ms=elapsed_ms(started),
+            'BACKFILL_DONE',
+            kind='facts',
+            processed=processed,
+            elapsed_ms=elapsed_ms(started),
         ),
     )
 

@@ -1,15 +1,21 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from src import mongo
 from src.messages.repository import (
-    get_last_message, get_message_by_tg_id, get_messages, get_messages_count,
-    get_messages_count_since, save_message, update_message,
+    get_last_message,
+    get_message_by_tg_id,
+    get_messages,
+    get_messages_count,
+    get_messages_count_since,
+    save_message,
+    update_message,
 )
 from src.messages.models import Message, MessageReply, UpdateMessage, UserRole
 from src.tests.test_utils import make_message
 
 
 # --- save_message ---
+
 
 async def test_save_message_persists_fields():
     replied_msg = Message(
@@ -31,7 +37,7 @@ async def test_save_message_persists_fields():
             telegram_id=405,
             text='quoted text',
             nickname='other_user',
-        )
+        ),
     )
     assert msg.id is None
     await save_message(msg)
@@ -61,7 +67,7 @@ async def test_save_message_reply_skipped_when_original_not_in_db():
             telegram_id=999,
             text='original text not in db',
             nickname='ghost_user',
-        )
+        ),
     )
     await save_message(msg)
 
@@ -81,7 +87,7 @@ async def test_parse_old_format_reply():
         'reply_nickname': 'old_user',
         'reply_media_id': None,
         'reply_media_unique_id': None,
-        'created_at': datetime.now(timezone.utc).timestamp(),
+        'created_at': datetime.now(UTC).timestamp(),
     }
     await mongo.messages.insert_one(old_doc)
 
@@ -94,6 +100,7 @@ async def test_parse_old_format_reply():
 
 # --- get_messages ---
 
+
 async def test_get_messages_order():
     await save_message(make_message(text='first'))
     await save_message(make_message(text='second'))
@@ -105,7 +112,7 @@ async def test_get_messages_order():
 
 async def test_get_messages_from_date():
     await save_message(make_message(text='old'))
-    cutoff = datetime.now(timezone.utc)
+    cutoff = datetime.now(UTC)
     await save_message(make_message(text='new'))
     history = await get_messages(1, from_date=cutoff)
     assert len(history) == 1
@@ -114,7 +121,7 @@ async def test_get_messages_from_date():
 
 async def test_get_messages_to_date():
     await save_message(make_message(text='old'))
-    cutoff = datetime.now(timezone.utc)
+    cutoff = datetime.now(UTC)
     await save_message(make_message(text='new'))
     history = await get_messages(1, to_date=cutoff)
     assert [m.text for m in history] == ['old']
@@ -144,9 +151,9 @@ async def test_get_messages_role_and_nickname_filters():
 
 async def test_get_messages_between_dates():
     await save_message(make_message(text='before'))
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     await save_message(make_message(text='inside'))
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     await save_message(make_message(text='after'))
     history = await get_messages(1, from_date=start, to_date=end)
     assert [m.text for m in history] == ['inside']
@@ -201,7 +208,7 @@ async def test_get_messages_is_chronological_under_both_sort_orders():
 async def test_get_messages_ascending_respects_from_date():
     """The memory pass combines both: everything after the watermark, oldest first."""
     await save_message(make_message(text='before'))
-    cutoff = datetime.now(timezone.utc)
+    cutoff = datetime.now(UTC)
     for i in range(3):
         await save_message(make_message(text=f'after{i}'))
 
@@ -211,6 +218,7 @@ async def test_get_messages_ascending_respects_from_date():
 
 
 # --- get_last_message ---
+
 
 async def test_get_last_message():
     await save_message(make_message(role=UserRole.USER, text='user msg'))
@@ -246,6 +254,7 @@ async def test_get_message_by_telegram_id():
 
 # --- get_messages_count / get_messages_count_since ---
 
+
 async def test_get_messages_count():
     for _ in range(3):
         await save_message(make_message())
@@ -256,7 +265,7 @@ async def test_get_messages_count():
 async def test_get_messages_count_since():
     await save_message(make_message(text='old1'))
     await save_message(make_message(text='old2'))
-    cutoff = datetime.now(timezone.utc)
+    cutoff = datetime.now(UTC)
     await save_message(make_message(text='recent'))
 
     assert await get_messages_count_since(1, cutoff.timestamp()) == 1
@@ -277,5 +286,3 @@ async def test_message_update():
     fetched_message = await get_last_message(old_message.chat_id)
     assert fetched_message
     assert fetched_message.text == 'updated text'
-
-

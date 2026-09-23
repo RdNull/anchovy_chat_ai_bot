@@ -19,7 +19,7 @@ from .utils import send_action
 
 
 @send_action(ChatAction.TYPING)
-async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def generate_answer(update: Update, _context: ContextTypes.DEFAULT_TYPE):
     user_message = await parse_user_message(update)
     if not user_message:
         return
@@ -39,7 +39,7 @@ async def generate_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         last_memory = await get_last_memory(chat_id)
         character: Character = await get_chat_character(
             chat_id=chat_id,
-            memory=last_memory if last_memory else None,
+            memory=last_memory or None,
         )
         replier = Replier(bot=bot, character=character, chat_id=chat_id, target=user_message)
 

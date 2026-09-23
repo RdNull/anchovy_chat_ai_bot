@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from bson import ObjectId
 
@@ -39,7 +39,7 @@ async def update_fact(
     if not update_data:
         return
 
-    update_data['updated_at'] = datetime.now(timezone.utc).timestamp()
+    update_data['updated_at'] = datetime.now(UTC).timestamp()
     await mongo.facts.update_one({'_id': ObjectId(fact_id)}, {'$set': update_data})
 
 
@@ -50,7 +50,7 @@ async def create_fact(nickname: str, text: str, confidence: float) -> UserFact:
 
 
 async def save_fact(fact: UserFact) -> UserFact:
-    now_ts = datetime.now(timezone.utc).timestamp()
+    now_ts = datetime.now(UTC).timestamp()
     data = {
         'nickname': fact.nickname,
         'text': fact.text,
@@ -87,11 +87,12 @@ async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
             logger.info(
                 'Fact deleted, confidence decayed to zero',
                 extra=event(
-                    'FACT_DELETED', fact_id=str(fact_data['_id']), reason='confidence_zero',
+                    'FACT_DELETED',
+                    fact_id=str(fact_data['_id']),
+                    reason='confidence_zero',
                 ),
             )
         else:
             await mongo.facts.update_one(
-                {'_id': fact_data['_id']},
-                {'$set': {'confidence': new_confidence}}
+                {'_id': fact_data['_id']}, {'$set': {'confidence': new_confidence}}
             )

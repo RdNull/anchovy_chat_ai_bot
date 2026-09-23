@@ -25,11 +25,7 @@ async def extract_facts(new_messages: list[Message]) -> list[ExtractedFact]:
     )
 
     formatted_messages = '\n'.join([m.ai_format for m in new_messages])
-    system_prompt = prompt_manager.get_prompt(
-        'facts', version='v2', messages=formatted_messages
-    )
+    system_prompt = prompt_manager.get_prompt('facts', version='v2', messages=formatted_messages)
 
-    result: ExtractedFacts = await llm_chain.ainvoke([
-        SystemMessage(content=system_prompt)
-    ])
+    result: ExtractedFacts = await llm_chain.ainvoke([SystemMessage(content=system_prompt)])
     return result.facts

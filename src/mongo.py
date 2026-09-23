@@ -6,14 +6,14 @@ from pymongo.asynchronous.collection import AsyncCollection
 from src import settings
 
 __all__ = (
-    'messages',
-    'memory',
-    'chats',
-    'media_descriptions',
-    'embedding_tasks',
-    'initiative_runs',
-    'facts',
     'chat_settings',
+    'chats',
+    'embedding_tasks',
+    'facts',
+    'initiative_runs',
+    'media_descriptions',
+    'memory',
+    'messages',
 )
 
 _codec_options = CodecOptions(type_registry=TypeRegistry([DecimalDecoder()]))

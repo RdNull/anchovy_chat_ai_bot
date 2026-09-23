@@ -1,6 +1,7 @@
 import asyncio
+import contextlib
 import logging
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from src import settings
 from src.bot import ContextBindingApplication, log_sticker_corpus, main, setup_scheduler
@@ -14,10 +15,7 @@ async def test_main_initialization(mocker):
     mock_builder = mocker.patch('src.bot.ApplicationBuilder')
 
     mock_app = MagicMock()
-    chain = (
-        mock_builder.return_value.token.return_value
-        .application_class.return_value.http_version.return_value
-    )
+    chain = mock_builder.return_value.token.return_value.application_class.return_value.http_version.return_value
     chain.post_init.return_value.build.return_value = mock_app
 
     main()
@@ -32,14 +30,14 @@ async def test_main_initialization(mocker):
 
 
 async def test_setup_scheduler(mocker):
+    """`setup_scheduler` blocks forever after registering the jobs (an `asyncio.Event`
+    that is never set) -- `wait_for`'s own timeout is what ends the coroutine here,
+    not anything the mock controls.
+    """
     mock_scheduler = mocker.patch('src.bot.Scheduler')
-    mock_sleep = mocker.patch('asyncio.sleep', new_callable=AsyncMock)
-    mock_sleep.side_effect = [None, asyncio.CancelledError()]
 
-    try:
-        await asyncio.wait_for(setup_scheduler(), timeout=2.0)
-    except (asyncio.CancelledError, asyncio.TimeoutError):
-        pass
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(setup_scheduler(), timeout=0.05)
 
     assert mock_scheduler.call_count == 1
     assert mock_scheduler.return_value.weekly.call_count == 1
@@ -54,7 +52,9 @@ async def test_log_sticker_corpus_reports_size_and_flag(mocker):
     await log_sticker_corpus()
 
     assert mock_logger.info.call_args.kwargs['extra'] == {
-        'event': 'STICKER_CORPUS', 'size': 7, 'enabled': True,
+        'event': 'STICKER_CORPUS',
+        'size': 7,
+        'enabled': True,
     }
 
 
@@ -66,20 +66,28 @@ async def test_log_sticker_corpus_on_a_cold_start(mocker):
     await log_sticker_corpus()
 
     assert mock_logger.info.call_args.kwargs['extra'] == {
-        'event': 'STICKER_CORPUS', 'size': 0, 'enabled': False,
+        'event': 'STICKER_CORPUS',
+        'size': 0,
+        'enabled': False,
     }
 
 
 async def test_context_binding_application_binds_ids_before_delegating(mocker):
     """Only our own override is under test here -- not PTB's dispatch internals, which
     `create_task`'s own context-copying (already pinned down in test_log_context.py)
-    is what makes correct for every handler group and the error handler alike."""
+    is what makes correct for every handler group and the error handler alike.
+    """
     observed = {}
 
     async def fake_process_update(self, update):
         record = logging.LogRecord(
-            name='bot', level=logging.INFO, pathname='x.py', lineno=1,
-            msg='handled', args=(), exc_info=None,
+            name='bot',
+            level=logging.INFO,
+            pathname='x.py',
+            lineno=1,
+            msg='handled',
+            args=(),
+            exc_info=None,
         )
         LogContextFilter().filter(record)
         observed['chat_id'] = getattr(record, 'chat_id', None)
