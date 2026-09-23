@@ -32,7 +32,7 @@ class EmbeddingSearchDataItem:
 
 
 class EmbeddingsClient:
-    def __init__(self, collection_name: str, model_name: str, vector_size: int) -> None:
+    def __init__(self, collection_name: str, model_name: str, vector_size: int):
         self.collection_name = collection_name
         self.model_name = model_name
         self.vector_size = vector_size

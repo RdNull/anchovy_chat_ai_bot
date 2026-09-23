@@ -131,20 +131,18 @@ async def test_describe_image(mocker, sample_jpg):
     assert mock_model.ainvoke.call_count == 1
 
     # Verify messages
-    assert mock_model.ainvoke.call_args == call(
-        [
-            SystemMessage(content='test prompt'),
-            HumanMessage(
-                content=[
-                    {
-                        'type': 'image',
-                        'mime_type': 'image/jpg',
-                        'base64': base64.b64encode(sample_jpg).decode('utf-8'),
-                    }
-                ]
-            ),
-        ]
-    )
+    assert mock_model.ainvoke.call_args == call([
+        SystemMessage(content='test prompt'),
+        HumanMessage(
+            content=[
+                {
+                    'type': 'image',
+                    'mime_type': 'image/jpg',
+                    'base64': base64.b64encode(sample_jpg).decode('utf-8'),
+                }
+            ]
+        ),
+    ])
 
 
 async def test_describe_animation(mocker, sample_tgs):
@@ -169,13 +167,16 @@ async def test_describe_animation(mocker, sample_tgs):
     expected_human_content = []
     frames = _extract_tgs_frames(sample_tgs)
     for frame_b64 in frames:
-        expected_human_content.append(
-            {'type': 'image', 'mime_type': 'image/jpeg', 'base64': frame_b64}
-        )
+        expected_human_content.append({
+            'type': 'image',
+            'mime_type': 'image/jpeg',
+            'base64': frame_b64,
+        })
 
-    assert mock_model.ainvoke.call_args == call(
-        [SystemMessage(content='anim prompt'), HumanMessage(content=expected_human_content)]
-    )
+    assert mock_model.ainvoke.call_args == call([
+        SystemMessage(content='anim prompt'),
+        HumanMessage(content=expected_human_content),
+    ])
 
 
 def test_extract_gif_frames_short():

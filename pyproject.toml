@@ -50,6 +50,8 @@ line-length = 100
 
 [tool.ruff.format]
 quote-style = "single"
+preview = true  # hug_parens_with_braces_and_square_brackets: keeps `foo({...})` on one
+                # brace pair instead of exploding onto its own indented line
 
 [tool.ruff.lint]
 select = [
@@ -96,6 +98,8 @@ select = [
 ignore = [
   "ANN002",   # allow untyped *args
   "ANN003",   # allow untyped **kwargs
+  "ANN204",   # allow missing -> None on __init__ and friends - annotating "returns
+              # nothing" is rarely worth it; a real return type is still welcome by hand
   "ANN401",   # allow typing.Any
   "ARG003",   # allow unused arguments in class method
   "ASYNC230", # allow open in async functions
@@ -122,6 +126,7 @@ ignore = [
   "PLR2004",  # do not report magic numbers
   "PLR6301",  # do not require classmethod / staticmethod when self not used
   "PT019",    # allow _undescrore unused fixtures
+  "RET503",   # allow falling off the end of a function instead of an explicit `return None`
   "RUF001",   # ambiguous unicode - false positives on Cyrillic (bot is Russian-language)
   "RUF002",   # ambiguous unicode in docstrings - same
   "RUF003",   # ambiguous unicode in comments - same
@@ -130,6 +135,8 @@ ignore = [
   "S101",     # allow asserts in code
   "S105",     # allow possible hardcoded secrets in code - too many false positives
   "S311",     # random is used for picking characters/replies, never crypto
+  "SIM102",   # allow nested ifs - a stacked boolean condition across several parenthesized
+              # lines is harder to read than mild nesting or an extracted variable
   "TC001",    # disable force moving to type-checking block
   "TC002",    # same - pydantic/langchain @tool evaluate annotations at runtime
   "TC003",    # same

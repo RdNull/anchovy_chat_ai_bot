@@ -28,14 +28,12 @@ async def _seed_chat(count: int) -> list:
 
 
 async def _save_snapshot(created_at: datetime, content: dict, decay: dict | None = None):
-    await mongo.memory.insert_one(
-        {
-            'chat_id': CHAT_ID,
-            'content': content,
-            'decay': decay or {},
-            'created_at': created_at.timestamp(),
-        }
-    )
+    await mongo.memory.insert_one({
+        'chat_id': CHAT_ID,
+        'content': content,
+        'decay': decay or {},
+        'created_at': created_at.timestamp(),
+    })
 
 
 def _points(*hits):
@@ -496,13 +494,11 @@ async def test_diff_memory_before_any_snapshot_raises():
 
 
 async def test_get_user_facts_without_query_orders_by_confidence(facts_qdrant):
-    await mongo.facts.insert_many(
-        [
-            {'nickname': 'alice', 'text': 'low', 'confidence': 0.5},
-            {'nickname': 'alice', 'text': 'high', 'confidence': 0.9},
-            {'nickname': 'bob', 'text': 'other', 'confidence': 1.0},
-        ]
-    )
+    await mongo.facts.insert_many([
+        {'nickname': 'alice', 'text': 'low', 'confidence': 0.5},
+        {'nickname': 'alice', 'text': 'high', 'confidence': 0.9},
+        {'nickname': 'bob', 'text': 'other', 'confidence': 1.0},
+    ])
 
     facts = await queries.get_user_facts('alice')
 
@@ -515,9 +511,11 @@ async def test_get_user_facts_without_query_orders_by_confidence(facts_qdrant):
 
 async def test_get_user_facts_accepts_the_memory_form_of_a_nick(facts_qdrant):
     """Memory keys participants as `@nick`; facts are stored bare, since `upsert_fact` strips it."""
-    result = await mongo.facts.insert_one(
-        {'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8}
-    )
+    result = await mongo.facts.insert_one({
+        'nickname': 'alice',
+        'text': 'likes coffee',
+        'confidence': 0.8,
+    })
     facts_qdrant.query_points.return_value = _points((0.9, {'id': str(result.inserted_id)}))
 
     by_confidence = await queries.get_user_facts('@alice')
@@ -529,12 +527,10 @@ async def test_get_user_facts_accepts_the_memory_form_of_a_nick(facts_qdrant):
 
 
 async def test_get_user_facts_with_query_dedupes_duplicated_points(facts_qdrant):
-    result = await mongo.facts.insert_many(
-        [
-            {'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8},
-            {'nickname': 'alice', 'text': 'owns a bike', 'confidence': 0.6},
-        ]
-    )
+    result = await mongo.facts.insert_many([
+        {'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8},
+        {'nickname': 'alice', 'text': 'owns a bike', 'confidence': 0.6},
+    ])
     coffee, bike = (str(i) for i in result.inserted_ids)
     facts_qdrant.query_points.return_value = _points(
         (0.9, {'id': coffee}),

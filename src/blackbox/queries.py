@@ -133,15 +133,13 @@ async def find_windows(
             continue
 
         anchor = messages[len(messages) // 2]
-        windows.append(
-            {
-                'message_id': anchor.id,
-                'ts': anchor.created_at.isoformat() if anchor.created_at else None,
-                'participants': sorted({m.nickname for m in messages}),
-                'score': round(point.score, 4),
-                'preview': '\n'.join(m.embedding_text for m in messages)[:PREVIEW_CHARS],
-            }
-        )
+        windows.append({
+            'message_id': anchor.id,
+            'ts': anchor.created_at.isoformat() if anchor.created_at else None,
+            'participants': sorted({m.nickname for m in messages}),
+            'score': round(point.score, 4),
+            'preview': '\n'.join(m.embedding_text for m in messages)[:PREVIEW_CHARS],
+        })
         if len(windows) == limit:
             break
 
@@ -227,26 +225,16 @@ async def get_window(
     # Guarded rather than passed through: a Mongo `limit(0)` means no limit at all.
     before = _clamp(before, MAX_SIDE, floor=0)
     after = _clamp(after, MAX_SIDE, floor=0)
-    head = (
-        await get_messages(
-            anchor.chat_id,
-            size=before,
-            to_date=anchor.created_at,
-            sort_order=-1,
+    head = []
+    if before:
+        head = await get_messages(
+            anchor.chat_id, size=before, to_date=anchor.created_at, sort_order=-1
         )
-        if before
-        else []
-    )
-    tail = (
-        await get_messages(
-            anchor.chat_id,
-            size=after,
-            from_date=anchor.created_at,
-            sort_order=1,
+    tail = []
+    if after:
+        tail = await get_messages(
+            anchor.chat_id, size=after, from_date=anchor.created_at, sort_order=1
         )
-        if after
-        else []
-    )
     messages = [*head, anchor, *tail]
 
     return {
@@ -261,28 +249,22 @@ async def list_snapshots(chat_id: int | None = None, limit: int = 50) -> list[di
     """Lists memory snapshots newest first, without their content."""
     chat_id = _chat(chat_id)
     limit = _clamp(limit, MAX_SNAPSHOTS)
-    cursor = (
-        mongo.memory.find(
-            {'chat_id': chat_id},
-            projection={'created_at': 1, 'content.participants': 1},
-        )
-        .sort('created_at', -1)
-        .limit(limit)
+    cursor = mongo.memory.find(
+        {'chat_id': chat_id}, projection={'created_at': 1, 'content.participants': 1}
     )
+    cursor = cursor.sort('created_at', -1).limit(limit)
 
     snapshots = []
     for doc in await cursor.to_list(length=limit):
         participants = (doc.get('content') or {}).get('participants') or {}
-        snapshots.append(
-            {
-                'created_at': _iso(doc.get('created_at')),
-                'nicks': sorted(participants),
-                'entry_count': sum(
-                    len(info.get(TRAITS_FIELD) or []) + len(info.get(RECENT_FIELD) or [])
-                    for info in participants.values()
-                ),
-            }
-        )
+        snapshots.append({
+            'created_at': _iso(doc.get('created_at')),
+            'nicks': sorted(participants),
+            'entry_count': sum(
+                len(info.get(TRAITS_FIELD) or []) + len(info.get(RECENT_FIELD) or [])
+                for info in participants.values()
+            ),
+        })
     return snapshots
 
 
@@ -465,12 +447,10 @@ async def diff_memory(
     diff = diff_snapshots(older, newer)
     # "Newest" moves between calls — this chat writes a snapshot every few minutes — so a
     # pair a caller believed adjacent may not be. The count makes a skipped one visible.
-    diff['snapshots_between'] = await mongo.memory.count_documents(
-        {
-            'chat_id': chat_id,
-            'created_at': {'$gt': older['created_at'], '$lt': newer['created_at']},
-        }
-    )
+    diff['snapshots_between'] = await mongo.memory.count_documents({
+        'chat_id': chat_id,
+        'created_at': {'$gt': older['created_at'], '$lt': newer['created_at']},
+    })
     return diff
 
 
@@ -510,13 +490,11 @@ async def get_user_facts(
             continue
         seen.add(fact_id)
         if fact := await get_fact_by_id(fact_id):
-            facts.append(
-                {
-                    'text': fact.text,
-                    'confidence': fact.confidence,
-                    'score': round(point.score, 4),
-                }
-            )
+            facts.append({
+                'text': fact.text,
+                'confidence': fact.confidence,
+                'score': round(point.score, 4),
+            })
         if len(facts) == limit:
             break
     return facts

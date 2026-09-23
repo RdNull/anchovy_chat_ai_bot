@@ -27,12 +27,10 @@ async def save_message(message: Message):
         'created_at': datetime.now(UTC).timestamp(),
     }
     if message.reply:
-        reply_doc = await mongo.messages.find_one(
-            {
-                'chat_id': chat_id,
-                'telegram_id': message.reply.telegram_id,
-            }
-        )
+        reply_doc = await mongo.messages.find_one({
+            'chat_id': chat_id,
+            'telegram_id': message.reply.telegram_id,
+        })
         if reply_doc:
             data['reply_id'] = reply_doc['_id']
 
@@ -192,12 +190,10 @@ async def get_message_by_tg_id(chat_id: int, telegram_id: int) -> Message | None
         'Fetching message by telegram id',
         extra=event('DB_MESSAGE_FETCH_BY_TG_ID', telegram_id=telegram_id),
     )
-    message = await mongo.messages.find_one(
-        {
-            'chat_id': chat_id,
-            'telegram_id': telegram_id,
-        }
-    )
+    message = await mongo.messages.find_one({
+        'chat_id': chat_id,
+        'telegram_id': telegram_id,
+    })
     if not message:
         return None
 

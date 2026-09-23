@@ -117,20 +117,16 @@ async def _update_chat_memory(chat_id: int):
 async def delete_old_memories(retention_days: int) -> None:
     cutoff_ts = (datetime.now(UTC) - timedelta(days=retention_days)).timestamp()
 
-    cursor = await mongo.memory.aggregate(
-        [
-            {'$sort': {'created_at': -1}},
-            {'$group': {'_id': '$chat_id', 'latest_id': {'$first': '$_id'}}},
-        ]
-    )
+    cursor = await mongo.memory.aggregate([
+        {'$sort': {'created_at': -1}},
+        {'$group': {'_id': '$chat_id', 'latest_id': {'$first': '$_id'}}},
+    ])
     latest_ids = {doc['latest_id'] async for doc in cursor}
 
-    result = await mongo.memory.delete_many(
-        {
-            'created_at': {'$lt': cutoff_ts},
-            '_id': {'$nin': list(latest_ids)},
-        }
-    )
+    result = await mongo.memory.delete_many({
+        'created_at': {'$lt': cutoff_ts},
+        '_id': {'$nin': list(latest_ids)},
+    })
     logger.info(
         'Memory cleanup finished',
         extra=event('MEMORY_CLEANUP', deleted=result.deleted_count, retention_days=retention_days),

@@ -51,14 +51,12 @@ class StructuredMemory(BaseModel):
     state: ChatState = Field(default_factory=ChatState)
 
     def __bool__(self) -> bool:
-        return any(
-            (
-                self.state.active_topics,
-                self.state.open_questions,
-                self.state.running_jokes,
-                self.participants,
-            )
-        )
+        return any((
+            self.state.active_topics,
+            self.state.open_questions,
+            self.state.running_jokes,
+            self.participants,
+        ))
 
 
 def _relative_age(born: str, now: datetime) -> str | None:

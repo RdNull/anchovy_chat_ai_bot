@@ -40,9 +40,9 @@ async def evaluate_initiative(
 
     started = time.monotonic()
     try:
-        evaluation_result: InitiativeDecision = await model_with_structure.ainvoke(
-            [SystemMessage(content=system_prompt)]
-        )
+        evaluation_result: InitiativeDecision = await model_with_structure.ainvoke([
+            SystemMessage(content=system_prompt)
+        ])
     except Exception:
         logger.error(
             'Error while evaluating initiative',

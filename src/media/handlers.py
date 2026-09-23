@@ -57,23 +57,21 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
         return
 
     content_hash = media_detection_data.content_hash
-    if (
-        not media_description
-        and (media_description := await get_media_descriptions_by_hash(content_hash))
-        and _skip_media_description_generation(media_description)
-    ):
-        logger.info(
-            'Media description found (cached)',
-            extra=event('MEDIA_DESCRIPTION_CACHED', content_hash=content_hash),
-        )
-        logger.debug(
-            'Cached media description text',
-            extra=event(
-                'MEDIA_DESCRIPTION_TEXT',
-                description=media_description.description,
-            ),
-        )
-        return
+    if not media_description:
+        if media_description := await get_media_descriptions_by_hash(content_hash):
+            if _skip_media_description_generation(media_description):
+                logger.info(
+                    'Media description found (cached)',
+                    extra=event('MEDIA_DESCRIPTION_CACHED', content_hash=content_hash),
+                )
+                logger.debug(
+                    'Cached media description text',
+                    extra=event(
+                        'MEDIA_DESCRIPTION_TEXT',
+                        description=media_description.description,
+                    ),
+                )
+                return
 
     if not media_description:
         media_description = await create_media_description(

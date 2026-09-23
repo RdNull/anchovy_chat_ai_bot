@@ -14,7 +14,7 @@ class SlidingWindowRateLimiter:
     alone does not say which one bound.
     """
 
-    def __init__(self, rate_limit: int = 1, name: str = 'chat') -> None:
+    def __init__(self, rate_limit: int = 1, name: str = 'chat'):
         self._call_times: dict[int, deque] = defaultdict(deque)
         self.rate_limit = rate_limit
         self.name = name

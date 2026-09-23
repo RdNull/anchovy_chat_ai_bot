@@ -161,14 +161,8 @@ def _domain_id(linode: httpx.Client, domain: str) -> int:
 
 def _a_record(linode: httpx.Client, domain_id: int, name: str) -> dict[str, Any]:
     """The one A record named `name`. Every other record is left alone, and none is deleted."""
-    page = (
-        linode.get(
-            f'/domains/{domain_id}/records',
-            params={'page_size': 500},
-        )
-        .raise_for_status()
-        .json()
-    )
+    response = linode.get(f'/domains/{domain_id}/records', params={'page_size': 500})
+    page = response.raise_for_status().json()
     if page.get('pages', 1) > 1:
         raise DnsSyncError(f'domain {domain_id} has more than one page of records')
 

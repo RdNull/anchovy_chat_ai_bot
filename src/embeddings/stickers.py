@@ -71,15 +71,13 @@ class StickerEmbeddingsClient(EmbeddingsClient):
 
         # The payload carries identity only. The sendable `file_id` is resolved from
         # `messages` at send time, so a re-issued id never needs a reindex.
-        await self._save(
-            [
-                ChunkData(
-                    chunk_id=_point_id(description.media_id),
-                    payload=text,
-                    metadata={'unique_id': description.media_id},
-                )
-            ]
-        )
+        await self._save([
+            ChunkData(
+                chunk_id=_point_id(description.media_id),
+                payload=text,
+                metadata={'unique_id': description.media_id},
+            )
+        ])
 
     async def search_sticker_ids(self, query: str, limit: int) -> list[str]:
         """One probe's ranked identities, most relevant first.

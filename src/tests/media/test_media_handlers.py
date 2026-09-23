@@ -36,17 +36,15 @@ from src.mongo import media_descriptions, messages
 
 
 async def insert_carrier(unique_id, file_id, created_at, chat_id=123, role=UserRole.USER):
-    await messages.insert_one(
-        {
-            'chat_id': chat_id,
-            'role': role.value,
-            'text': None,
-            'nickname': 'someone',
-            'media_id': file_id,
-            'media_unique_id': unique_id,
-            'created_at': created_at,
-        }
-    )
+    await messages.insert_one({
+        'chat_id': chat_id,
+        'role': role.value,
+        'text': None,
+        'nickname': 'someone',
+        'media_id': file_id,
+        'media_unique_id': unique_id,
+        'created_at': created_at,
+    })
 
 
 @pytest.fixture
@@ -230,18 +228,16 @@ async def test_handle_media_message_retries_a_stale_processing_row(
     row that is polled forever — past the staleness window it is retried instead.
     """
     stale = (datetime.now(UTC) - timedelta(minutes=10)).timestamp()
-    await media_descriptions.insert_one(
-        {
-            'hash': None,
-            'description': None,
-            'ocr_text': None,
-            'media_id': 'unique_id_123',
-            'type': MessageMediaTypes.IMAGE.value,
-            'status': MessageMediaStatus.PROCESSING.value,
-            'sticker_emoji': None,
-            'updated_at': stale,
-        }
-    )
+    await media_descriptions.insert_one({
+        'hash': None,
+        'description': None,
+        'ocr_text': None,
+        'media_id': 'unique_id_123',
+        'type': MessageMediaTypes.IMAGE.value,
+        'status': MessageMediaStatus.PROCESSING.value,
+        'sticker_emoji': None,
+        'updated_at': stale,
+    })
     mocker.patch.object(settings, 'MEDIA_PROCESSING_STALE_MINUTES', 5)
     mocker.patch(
         'src.media.handlers.get_message_media',
@@ -270,17 +266,15 @@ async def test_handle_media_message_retries_a_processing_row_without_updated_at(
     """A row written before `updated_at` existed has no way to prove it's fresh, so
     it must be treated as stale rather than polled forever.
     """
-    await media_descriptions.insert_one(
-        {
-            'hash': None,
-            'description': None,
-            'ocr_text': None,
-            'media_id': 'unique_id_123',
-            'type': MessageMediaTypes.IMAGE.value,
-            'status': MessageMediaStatus.PROCESSING.value,
-            'sticker_emoji': None,
-        }
-    )
+    await media_descriptions.insert_one({
+        'hash': None,
+        'description': None,
+        'ocr_text': None,
+        'media_id': 'unique_id_123',
+        'type': MessageMediaTypes.IMAGE.value,
+        'status': MessageMediaStatus.PROCESSING.value,
+        'sticker_emoji': None,
+    })
     mocker.patch(
         'src.media.handlers.get_message_media',
         return_value=ImageDetectionData(
@@ -320,16 +314,14 @@ async def test_create_media_description_persists_the_sticker_type_and_emoji():
 
 async def test_parse_media_description_on_legacy_row_without_sticker_fields():
     # Every row written before this unit has none of the three keys.
-    await media_descriptions.insert_one(
-        {
-            'hash': None,
-            'description': 'a cat',
-            'ocr_text': None,
-            'media_id': 'legacy_uid',
-            'type': MessageMediaTypes.IMAGE.value,
-            'status': MessageMediaStatus.READY.value,
-        }
-    )
+    await media_descriptions.insert_one({
+        'hash': None,
+        'description': 'a cat',
+        'ocr_text': None,
+        'media_id': 'legacy_uid',
+        'type': MessageMediaTypes.IMAGE.value,
+        'status': MessageMediaStatus.READY.value,
+    })
 
     parsed = await get_media_description_by_media_id('legacy_uid')
 
@@ -556,17 +548,15 @@ async def test_get_sendable_file_id_unknown_id_returns_none():
 async def test_get_recent_sticker_ids_only_bot_messages_with_media():
     await insert_carrier('bot_recent', 'fid1', created_at=300.0, role=UserRole.AI)
     await insert_carrier('user_sent', 'fid2', created_at=200.0, role=UserRole.USER)
-    await messages.insert_one(
-        {
-            'chat_id': 123,
-            'role': UserRole.AI.value,
-            'text': 'just text',
-            'nickname': 'bot',
-            'media_id': None,
-            'media_unique_id': None,
-            'created_at': 250.0,
-        }
-    )
+    await messages.insert_one({
+        'chat_id': 123,
+        'role': UserRole.AI.value,
+        'text': 'just text',
+        'nickname': 'bot',
+        'media_id': None,
+        'media_unique_id': None,
+        'created_at': 250.0,
+    })
 
     recent = await get_recent_sticker_ids(123, limit=10)
 

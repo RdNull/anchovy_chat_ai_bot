@@ -4,7 +4,7 @@ from typing import Any
 
 
 class ModelManager:
-    def __init__(self, models_dir: str = 'src/models') -> None:
+    def __init__(self, models_dir: str = 'src/models'):
         self.models_dir = models_dir
 
     def get_model_settings(self, task: str, version: str = 'v1') -> dict[str, Any]:

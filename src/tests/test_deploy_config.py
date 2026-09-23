@@ -32,20 +32,18 @@ _STEP_LEVEL = frozenset({'IMAGE_TAG'})
 
 # Settings the bot ConfigMap deliberately does not carry — each for its own reason,
 # not an oversight the reverse-direction test below should catch.
-_CONFIGMAP_EXEMPT = frozenset(
-    {
-        # Secrets: manifests/secrets.yaml, guarded by deploy-k8s.sh, never a ConfigMap.
-        'TELEGRAM_TOKEN',
-        'DATABASE_URL',
-        'OPENROUTER_API_KEY',
-        'QDRANT_URL',
-        # Set only in manifests/blackbox/, read only by that process.
-        'BLACKBOX_CHAT_ID',
-        'BLACKBOX_HOST',
-        'BLACKBOX_PORT',
-        'BLACKBOX_MCP_ACCESS_TOKEN',
-    }
-)
+_CONFIGMAP_EXEMPT = frozenset({
+    # Secrets: manifests/secrets.yaml, guarded by deploy-k8s.sh, never a ConfigMap.
+    'TELEGRAM_TOKEN',
+    'DATABASE_URL',
+    'OPENROUTER_API_KEY',
+    'QDRANT_URL',
+    # Set only in manifests/blackbox/, read only by that process.
+    'BLACKBOX_CHAT_ID',
+    'BLACKBOX_HOST',
+    'BLACKBOX_PORT',
+    'BLACKBOX_MCP_ACCESS_TOKEN',
+})
 
 
 def required_vars() -> dict[str, set[str]]:

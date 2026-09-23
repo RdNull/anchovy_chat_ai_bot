@@ -6,7 +6,13 @@ from collections.abc import Generator, Sequence
 
 import langsmith
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolCall,  # noqa: F401 -- referenced only in the type comment below, for the IDE
+)
 from langsmith import traceable
 
 from src import ai, settings
@@ -92,7 +98,7 @@ class Character:
         name: str,
         description: str,
         style_prompt: str,
-    ) -> None:
+    ):
         self.code = code
         self.name = name
         self.display_name = display_name
@@ -221,7 +227,7 @@ class Character:
             return
 
         messages.append(response)
-        for tool_call in response.tool_calls:
+        for tool_call in response.tool_calls:  # type: ToolCall
             tool_message, tool_result = await tools_registry.execute(tool_call)
             if tools_registry.is_return_direct(tool_call):
                 if not isinstance(tool_result, ToolFailure):

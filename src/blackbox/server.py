@@ -33,6 +33,17 @@ ChatId = Annotated[
     Field(description='Telegram chat id. Omit to use the configured default chat.'),
 ]
 Moment = Annotated[datetime | None, Field(description='ISO 8601. A naive value is read as UTC.')]
+MinScore = Annotated[
+    float,
+    Field(
+        ge=0,
+        le=1,
+        description=(
+            'Similarity floor; weaker hits are dropped. Real matches here score around 0.45. '
+            'An empty result means nothing reached it, so lower it to see weaker matches.'
+        ),
+    ),
+]
 
 
 async def _run[T](name: str, query: Awaitable[T]) -> T:
@@ -79,17 +90,7 @@ async def find_windows(
     limit: Annotated[int, Field(ge=1, le=queries.MAX_HITS)] = 10,
     since: Moment = None,
     until: Moment = None,
-    min_score: Annotated[
-        float,
-        Field(
-            ge=0,
-            le=1,
-            description=(
-                'Similarity floor; weaker hits are dropped. Real matches here score around 0.45. '
-                'An empty result means nothing reached it, so lower it to see weaker matches.'
-            ),
-        ),
-    ] = queries.DEFAULT_MIN_SCORE,
+    min_score: MinScore = queries.DEFAULT_MIN_SCORE,
 ) -> list[dict[str, Any]]:
     """Semantic search over chat history. Returns one row per distinct conversation window.
 

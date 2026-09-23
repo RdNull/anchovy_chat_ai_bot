@@ -154,9 +154,9 @@ async def extract_memory(
         context_window=settings.LAST_MESSAGES_SIZE,
     )
 
-    updated_memory: StructuredMemory = await model_with_structure.ainvoke(
-        [SystemMessage(content=system_prompt)]
-    )
+    updated_memory: StructuredMemory = await model_with_structure.ainvoke([
+        SystemMessage(content=system_prompt)
+    ])
     if not updated_memory:
         logger.error('No memory extracted', extra=event('MEMORY_EXTRACT', outcome='empty'))
         return None

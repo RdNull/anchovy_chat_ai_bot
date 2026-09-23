@@ -405,13 +405,11 @@ async def test_search_sticker_ids_empty_collection_returns_empty(mocker):
 
 
 async def test_search_sticker_ids_returns_identities_in_score_order(mocker):
-    qdrant = make_sticker_qdrant(
-        [
-            make_point('mid', 0.5),
-            make_point('best', 0.9),
-            make_point('worst', 0.3),
-        ]
-    )
+    qdrant = make_sticker_qdrant([
+        make_point('mid', 0.5),
+        make_point('best', 0.9),
+        make_point('worst', 0.3),
+    ])
     client = make_sticker_client(mocker, qdrant)
 
     assert await client.search_sticker_ids('кот', limit=5) == ['best', 'mid', 'worst']
@@ -430,12 +428,10 @@ async def test_search_sticker_ids_does_not_read_mongo(mocker):
 
 
 async def test_search_sticker_ids_skips_points_without_identity(mocker):
-    qdrant = make_sticker_qdrant(
-        [
-            ScoredPoint(id='p1', version=1, score=0.9, payload={}),
-            make_point('ok', 0.8),
-        ]
-    )
+    qdrant = make_sticker_qdrant([
+        ScoredPoint(id='p1', version=1, score=0.9, payload={}),
+        make_point('ok', 0.8),
+    ])
     client = make_sticker_client(mocker, qdrant)
 
     assert await client.search_sticker_ids('кот', limit=5) == ['ok']

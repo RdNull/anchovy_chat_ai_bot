@@ -65,14 +65,12 @@ async def save_fact(fact: UserFact) -> UserFact:
 
 async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
     up_to_date_ts = up_to_date.timestamp()
-    cursor = mongo.facts.find(
-        {
-            '$or': [
-                {'updated_at': {'$lt': up_to_date_ts}},
-                {'updated_at': {'$exists': False}, 'created_at': {'$lt': up_to_date_ts}},
-            ]
-        }
-    )
+    cursor = mongo.facts.find({
+        '$or': [
+            {'updated_at': {'$lt': up_to_date_ts}},
+            {'updated_at': {'$exists': False}, 'created_at': {'$lt': up_to_date_ts}},
+        ]
+    })
     facts = await cursor.to_list(length=1000)
     logger.info('Decaying stale facts', extra=event('FACT_DECAY_RUN', count=len(facts)))
 

@@ -83,7 +83,7 @@ class BearerAuth:
     INFO: that is the client with a stale token after a rotation, or someone guessing.
     """
 
-    def __init__(self, app: ASGIApp, token: str) -> None:
+    def __init__(self, app: ASGIApp, token: str):
         self.app = app
         self._token = token.encode()
 
@@ -153,13 +153,11 @@ def _authorization(scope: Scope) -> bytes | None:
 
 
 async def _empty(send: Send, status: int, headers: list[tuple[bytes, bytes]] | None = None):
-    await send(
-        {
-            'type': 'http.response.start',
-            'status': status,
-            'headers': [(b'content-length', b'0'), *(headers or [])],
-        }
-    )
+    await send({
+        'type': 'http.response.start',
+        'status': status,
+        'headers': [(b'content-length', b'0'), *(headers or [])],
+    })
     await send({'type': 'http.response.body', 'body': b''})
 
 

@@ -18,18 +18,16 @@ async def create_media_description(
     status: MessageMediaStatus = MessageMediaStatus.PENDING,
     sticker_emoji: str | None = None,
 ):
-    result = await media_descriptions.insert_one(
-        {
-            'hash': content_hash or None,
-            'description': description or None,
-            'ocr_text': ocr_text or None,
-            'media_id': media_id,
-            'type': type.value,
-            'status': status.value,
-            'sticker_emoji': sticker_emoji,
-            'updated_at': datetime.now(UTC).timestamp(),
-        }
-    )
+    result = await media_descriptions.insert_one({
+        'hash': content_hash or None,
+        'description': description or None,
+        'ocr_text': ocr_text or None,
+        'media_id': media_id,
+        'type': type.value,
+        'status': status.value,
+        'sticker_emoji': sticker_emoji,
+        'updated_at': datetime.now(UTC).timestamp(),
+    })
     return await get_media_description(result.inserted_id)
 
 

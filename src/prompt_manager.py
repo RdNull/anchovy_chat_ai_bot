@@ -7,7 +7,7 @@ from src import settings
 
 
 class PromptManager:
-    def __init__(self, prompts_dir: str = settings.PROMPTS_DIR) -> None:
+    def __init__(self, prompts_dir: str = settings.PROMPTS_DIR):
         self.prompts_dir = prompts_dir
         self._prompts = defaultdict(dict)
         self.load_prompts()

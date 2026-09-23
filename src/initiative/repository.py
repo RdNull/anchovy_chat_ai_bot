@@ -45,6 +45,7 @@ async def mark_initiative_replied(run_id: str) -> None:
 
 async def count_replied_since(chat_id: int, window: timedelta) -> int:
     since = datetime.now(UTC) - window
-    return await db.initiative_runs.count_documents(
-        {'chat_id': chat_id, 'replied_at': {'$gte': since.timestamp()}}
-    )
+    return await db.initiative_runs.count_documents({
+        'chat_id': chat_id,
+        'replied_at': {'$gte': since.timestamp()},
+    })

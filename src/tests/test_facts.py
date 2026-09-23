@@ -216,15 +216,13 @@ async def test_upsert_fact_updates_existing_lower_confidence(mocker):
 
 async def test_decay_reduces_confidence_for_stale_facts():
     old_ts = (datetime.now(UTC) - timedelta(weeks=2)).timestamp()
-    await mongo.facts.insert_one(
-        {
-            'nickname': 'alice',
-            'text': 'likes coffee',
-            'confidence': 0.8,
-            'created_at': old_ts,
-            'updated_at': old_ts,
-        }
-    )
+    await mongo.facts.insert_one({
+        'nickname': 'alice',
+        'text': 'likes coffee',
+        'confidence': 0.8,
+        'created_at': old_ts,
+        'updated_at': old_ts,
+    })
 
     await decay_all_facts()
 
@@ -235,15 +233,13 @@ async def test_decay_reduces_confidence_for_stale_facts():
 
 async def test_decay_deletes_fact_when_confidence_reaches_zero():
     old_ts = (datetime.now(UTC) - timedelta(weeks=2)).timestamp()
-    await mongo.facts.insert_one(
-        {
-            'nickname': 'alice',
-            'text': 'old fact',
-            'confidence': 0.1,
-            'created_at': old_ts,
-            'updated_at': old_ts,
-        }
-    )
+    await mongo.facts.insert_one({
+        'nickname': 'alice',
+        'text': 'old fact',
+        'confidence': 0.1,
+        'created_at': old_ts,
+        'updated_at': old_ts,
+    })
 
     await decay_all_facts()
 
@@ -253,15 +249,13 @@ async def test_decay_deletes_fact_when_confidence_reaches_zero():
 
 async def test_decay_skips_recently_updated_facts():
     recent_ts = datetime.now(UTC).timestamp()
-    await mongo.facts.insert_one(
-        {
-            'nickname': 'alice',
-            'text': 'fresh fact',
-            'confidence': 0.8,
-            'created_at': recent_ts,
-            'updated_at': recent_ts,
-        }
-    )
+    await mongo.facts.insert_one({
+        'nickname': 'alice',
+        'text': 'fresh fact',
+        'confidence': 0.8,
+        'created_at': recent_ts,
+        'updated_at': recent_ts,
+    })
 
     await decay_all_facts()
 
@@ -272,14 +266,12 @@ async def test_decay_skips_recently_updated_facts():
 
 async def test_decay_falls_back_to_created_at_when_no_updated_at():
     old_ts = (datetime.now(UTC) - timedelta(weeks=2)).timestamp()
-    await mongo.facts.insert_one(
-        {
-            'nickname': 'alice',
-            'text': 'legacy fact',
-            'confidence': 0.8,
-            'created_at': old_ts,
-        }
-    )
+    await mongo.facts.insert_one({
+        'nickname': 'alice',
+        'text': 'legacy fact',
+        'confidence': 0.8,
+        'created_at': old_ts,
+    })
 
     await decay_all_facts()
 
@@ -305,14 +297,12 @@ def test_user_fact_model_validate_decimal_confidence():
 
 
 async def test_get_facts_handles_decimal128_stored_in_mongo():
-    await mongo.facts.insert_one(
-        {
-            'nickname': 'alice',
-            'text': 'likes coffee',
-            'confidence': Decimal128('0.9'),
-            'created_at': datetime.now(UTC).timestamp(),
-        }
-    )
+    await mongo.facts.insert_one({
+        'nickname': 'alice',
+        'text': 'likes coffee',
+        'confidence': Decimal128('0.9'),
+        'created_at': datetime.now(UTC).timestamp(),
+    })
     facts = await get_facts('alice')
     assert len(facts) == 1
     assert isinstance(facts[0].confidence, float)
