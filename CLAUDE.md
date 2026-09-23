@@ -29,6 +29,10 @@ uv run pre-commit install        # once, so both run on every commit
 Ruff config is in `pyproject.toml`'s `[tool.ruff]`. A block of rules is ignored under a
 `# TODO` comment (missing annotations, `os.path`, dangling `create_task`, `str, Enum`) —
 fix incrementally rather than re-disabling one of these on the next unrelated change.
+`format.preview = true` is set specifically for ruff's `hug_parens_with_braces_and_square_brackets`
+style (`foo({...})` keeps the brace hugging the call's parens instead of exploding onto its
+own indented line); it's format-only, no effect on lint. See **Code Style** below for the
+rules ignored for house style rather than for codebase fit.
 `.pre-commit-config.yaml` pins the same ruff version as `uv.lock`; bump both together when
 running `uv lock --upgrade` (see **Refresh dependencies** below).
 
@@ -212,3 +216,9 @@ Full test-suite breakdown by module: `src/tests/CLAUDE.md`. Use the [write-tests
 - Use single quotes for strings.
 - Always use `src/settings.py` for config access — never read env vars directly.
 - It's forbidden to use line splitting for long strings (`\`).
+- No explicit `-> None` on `__init__` and friends — annotating "returns nothing" is rarely worth it, though a real return type is still welcome by hand (`ANN204` ignored).
+- No explicit `return None` at the end of a function that can fall off the end (`RET503` ignored).
+- **If something doesn't fit on one line, extract it to a variable — don't reach for a multi-line expression trick** (a parenthesized ternary, stacked `and`-chained conditions, a wrapped return value). If extracting doesn't help, mild nesting is fine — prefer it over collapsing nested `if`s into one stacked boolean condition (`SIM102` ignored). This isn't lint-enforceable in general; apply it by hand when writing or reviewing.
+- A fluent method chain that has to wrap (`client.get(...).raise_for_status().json()`, a Mongo `.find().sort().limit()`) gets extracted into an intermediate variable instead, e.g. `response = client.get(...)` then `data = response.raise_for_status().json()` on its own line — never a parenthesized multi-line chain. Ruff always splits a wrapping chain one `.method()` per line in parens with no setting to prevent it, so this has to be done by hand at the call site.
+- Backslash line continuations are a hard no (also enforced above, and moot with ruff, which never emits them).
+- A packed literal that must stay packed and would otherwise get exploded one-item-per-line by the formatter (e.g. `src/const.py`'s `ALLOWED_REACTIONS`) gets wrapped in `# fmt: off` / `# fmt: on` rather than reformatted — there's no "fill" wrap mode in ruff.
