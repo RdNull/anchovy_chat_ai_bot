@@ -53,6 +53,19 @@ promptfoo eval -c ./reply/characters --filter-first-n 3
 promptfoo eval -c ./reply/characters --filter-range 0:5
 ```
 
+`reply/characters` (and its `promptfooconfig.gestures.yaml` probe) grades one character per
+run, chosen by the `CHARACTER` env var (a code from `src/characters/repository/`, default
+`whyzzzy`; read by `reply/characters/character.js`). Never run every character on every
+iteration: give a new character a scoped smoke run, and the full suite once per character
+before calling it verified.
+
+```bash
+CHARACTER=chatzhpt promptfoo eval -c ./reply/characters --filter-pattern '^basic$'
+```
+
+The `web_search_*`, `gesture_*` and `sticker_*` cases assert tool choice tuned on whyzzzy's
+persona, so a red one on another character may be a persona difference, not a regression.
+
 Run the full, unscoped suite at least once before reporting a change verified — a
 scoped run only tells you the case you touched didn't break, not that nothing else did.
 
