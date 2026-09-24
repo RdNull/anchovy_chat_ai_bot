@@ -4,7 +4,7 @@ from datetime import datetime, UTC
 from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
-from src import ai, settings
+from src import ai
 from src.characters.character import Character
 from src.initiative.models import InitiativeDecision, InitiativeVerdict
 from src.logs import elapsed_ms, event, logger
@@ -19,9 +19,10 @@ async def evaluate_initiative(
     context: list[Message],
     candidates: list[Message],
 ) -> InitiativeVerdict:
-    rendered_context = '\n'.join(f'▸ {m.ai_format}' for m in context)
+    nickname = character.nickname
+    rendered_context = '\n'.join(f'▸ {m.ai_format_for(nickname)}' for m in context)
     rendered_candidates = '\n'.join(
-        f'#{i} ▸ {m.ai_format}' for i, m in enumerate(candidates, start=1)
+        f'#{i} ▸ {m.ai_format_for(nickname)}' for i, m in enumerate(candidates, start=1)
     )
 
     llm = ai.get_initiative_model(version='gemini-3.8-flash-low')
@@ -33,7 +34,7 @@ async def evaluate_initiative(
         current_time=format_ts(datetime.now(UTC)),
         context=rendered_context,
         messages=rendered_candidates,
-        bot_nickname=settings.BOT_NICKNAME,
+        bot_nickname=nickname,
         current_memory=character.memory.initiative_format() if character.memory else None,
         character_description=character.style_prompt,
     )

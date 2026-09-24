@@ -1,4 +1,5 @@
 import asyncio
+import random
 from functools import wraps
 
 from telegram import Message, Update
@@ -61,6 +62,40 @@ def restricted(func):
             return None
 
         return await func(update, context, *args, **kwargs)
+
+    return wrapped
+
+
+_OWNER_DENIED_REPLIES = (
+    '403 Forbidden: ты не мой хозяин',
+    'PermissionError: руки убрал',
+    'sudo: ты не в списке sudoers. Инцидент будет зарепорчен',
+    'AccessDenied: тут только для хозяина',
+)
+
+
+def owner_only(func):
+    """Restricts a handler to `settings.OWNER_USER_ID`.
+
+    Checked on the tapping user, not the chat: in a group anyone can press an inline
+    button, so for a callback handler this check is the one that matters. A denied
+    command gets a reply, a denied tap gets a query answer; neither changes any state.
+    """
+
+    @wraps(func)
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = update.effective_user.id
+        is_owner = settings.OWNER_USER_ID is not None and str(user_id) == settings.OWNER_USER_ID
+        if is_owner:
+            return await func(update, context, *args, **kwargs)
+
+        logger.warning('Owner-only access denied', extra=event('ACCESS_DENIED', scope='owner'))
+        notice = random.choice(_OWNER_DENIED_REPLIES)
+        if update.callback_query:
+            await update.callback_query.answer(text=notice, show_alert=False)
+        elif update.effective_message:
+            await update.effective_message.reply_text(notice)
+        return None
 
     return wrapped
 

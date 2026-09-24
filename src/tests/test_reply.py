@@ -15,6 +15,8 @@ def make_replier(make_bot, chat_id=222, text='hi', target=_NOT_SET):
     bot = make_bot()
     character = MagicMock()
     character.name = 'testbot'
+    character.code = 'testbot'
+    character.nickname = f'{settings.BOT_NICKNAME}[testbot]'
     if target is _NOT_SET:
         target = Message(chat_id=chat_id, role=UserRole.USER, text=text, nickname='questioner')
     return Replier(bot, character, chat_id, target)
@@ -64,6 +66,17 @@ async def test_reply_message_saves_to_db(make_bot):
     assert history[0].text == 'hello back'
 
 
+async def test_reply_message_saves_character_code_and_tagged_nickname(make_bot):
+    # AC8
+    replier = make_replier(make_bot)
+
+    await replier.reply_message('hello back')
+
+    history = await get_messages(222)
+    assert history[0].character_code == 'testbot'
+    assert history[0].nickname == f'{settings.BOT_NICKNAME}[testbot]'
+
+
 async def test_reply_message_attaches_user_message_as_reply(make_bot):
     replier = make_replier(make_bot, text='original question')
     # save_message (repository) resolves reply_id via a DB lookup on telegram_id,
@@ -77,6 +90,17 @@ async def test_reply_message_attaches_user_message_as_reply(make_bot):
     assert ai_msg.reply is not None
     assert ai_msg.reply.text == 'original question'
     assert ai_msg.reply.nickname == 'questioner'
+
+
+async def test_reply_sticker_saves_character_code_and_tagged_nickname(make_bot):
+    # AC8
+    replier = make_replier(make_bot)
+
+    await replier.reply_sticker('SENDABLE_FILE_ID', 'sticker_uid')
+
+    history = await get_messages(222)
+    assert history[0].character_code == 'testbot'
+    assert history[0].nickname == f'{settings.BOT_NICKNAME}[testbot]'
 
 
 async def test_reply_sticker_calls_telegram_api(make_bot):
@@ -196,7 +220,7 @@ async def test_reply_reaction_writes_bot_reaction_to_message(make_bot):
     updated = await get_message_by_tg_id(222, 1)
     assert updated is not None
     assert '🤡' in updated.reactions
-    assert settings.BOT_NICKNAME in updated.reactions['🤡']
+    assert updated.reactions['🤡'] == [f'{settings.BOT_NICKNAME}[testbot]']
 
     history = await get_messages(222)
     assert all(m.role == UserRole.USER for m in history)

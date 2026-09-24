@@ -320,3 +320,29 @@ async def test_evaluate_initiative_zero_target_index_does_not_log_a_warning(mock
         await evaluate_initiative(make_character(), [], [make_message()])
 
     assert not any('out of range' in record.message for record in caplog.records)
+
+
+async def test_evaluate_initiative_prompt_names_the_characters_tagged_nickname(mocker):
+    # AC10 (initiative half)
+    from src import settings
+
+    llm = mock_initiative_llm(mocker, InitiativeDecision(score=0.1, target_index=None, reason='r'))
+
+    await evaluate_initiative(make_character(), [], [make_message()])
+
+    assert f'Никнейм персонажа: {settings.BOT_NICKNAME}[test]' in rendered_system_prompt(llm)
+
+
+async def test_evaluate_initiative_renders_own_reactions_by_tagged_nickname(mocker):
+    from src import settings
+
+    llm = mock_initiative_llm(mocker, InitiativeDecision(score=0.1, target_index=None, reason='r'))
+    message = make_message(text='спорный тезис')
+    message.reactions = {
+        '🤡': [f'{settings.BOT_NICKNAME}[test]', f'{settings.BOT_NICKNAME}[other]']
+    }
+
+    await evaluate_initiative(make_character(), [], [message])
+
+    prompt = rendered_system_prompt(llm)
+    assert f'⤷ 🤡 {settings.BOT_NICKNAME}[test], {settings.BOT_NICKNAME}[other]' in prompt

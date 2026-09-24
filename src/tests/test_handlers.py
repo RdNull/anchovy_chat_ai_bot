@@ -37,7 +37,7 @@ async def test_start_replies(make_update, make_context):
 
 
 async def test_info_replies_with_character_name(make_update, make_context):
-    code = next(iter(CHARACTERS))
+    code = settings.DEFAULT_CHARACTER
     update = make_update()
     await chat_settings_repository.set_character_code(update.effective_chat.id, code)
 
@@ -79,7 +79,7 @@ async def test_random_character_sets_valid_code(make_update, make_context):
 
 
 async def test_select_character_updates_context(make_update, make_context):
-    code = next(iter(CHARACTERS))
+    code = settings.DEFAULT_CHARACTER
     update = make_update()
     update.callback_query.data = f'select_char:{code}'
     update.callback_query.answer = AsyncMock()

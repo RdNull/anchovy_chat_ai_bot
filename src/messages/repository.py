@@ -26,6 +26,8 @@ async def save_message(message: Message):
         'media_unique_id': message.media.unique_id if message.media else None,
         'created_at': datetime.now(UTC).timestamp(),
     }
+    if message.character_code:
+        data['character_code'] = message.character_code
     if message.reply:
         reply_doc = await mongo.messages.find_one({
             'chat_id': chat_id,
@@ -301,4 +303,5 @@ async def _parse_message_record(data: dict) -> Message:
         media=media,
         created_at=datetime.fromtimestamp(data['created_at'], tz=UTC),
         reactions=data.get('reactions', {}),
+        character_code=data.get('character_code'),
     )

@@ -5,12 +5,13 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 from bson import Decimal128, ObjectId
 
-from src import mongo
+from src import mongo, settings
 from src.embeddings.facts import FactsSearchResult
 from src.facts.handlers import decay_all_facts, update_user_facts, upsert_fact
 from src.facts.models import ExtractedFact, ExtractedFacts, UserFact
 from src.facts.processors import extract_facts
 from src.facts.repository import create_fact, get_fact_by_id, get_facts, update_fact
+from src.messages.models import UserRole
 from src.tests.test_utils import make_message
 
 
@@ -324,6 +325,19 @@ async def test_extract_facts_returns_parsed_facts(mocker):
     result = await extract_facts([make_message()])
 
     assert result == facts.facts
+
+
+async def test_extract_facts_input_shows_bot_lines_by_tagged_nickname(mocker):
+    # AC11
+    mock_facts_llm(mocker)
+    get_prompt = mocker.patch('src.facts.processors.prompt_manager.get_prompt', return_value='p')
+    bot_line = make_message(
+        role=UserRole.AI, text='реплика', nickname=f'{settings.BOT_NICKNAME}[whyzzzy]'
+    )
+
+    await extract_facts([bot_line])
+
+    assert get_prompt.call_args.kwargs['messages'] == f'{settings.BOT_NICKNAME}[whyzzzy]: реплика'
 
 
 async def test_extract_facts_empty_result_returns_empty_list(mocker):

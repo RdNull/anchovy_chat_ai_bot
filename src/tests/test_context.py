@@ -10,6 +10,7 @@ from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInf
 from src.memory.processors import StructuredMemory, extract_memory
 from src.memory.repository import get_last_memory
 from src.messages.followups import run_followups
+from src.messages.models import UserRole
 from src.messages.repository import get_messages, save_message
 from src.tests.test_utils import make_message
 
@@ -499,6 +500,21 @@ async def test_update_chat_memory_db_error(mocker):
 
 
 # --- extract_memory ---
+
+
+async def test_extract_memory_input_shows_bot_lines_by_tagged_nickname(mocker):
+    # AC11
+    mock_memory_llm(mocker)
+    get_prompt = mocker.patch('src.memory.processors.prompt_manager.get_prompt', return_value='p')
+    bot_line = make_message(
+        role=UserRole.AI, text='реплика', nickname=f'{settings.BOT_NICKNAME}[whyzzzy]'
+    )
+
+    await extract_memory(chat_id=1, current_memory=None, new_messages=[bot_line])
+
+    assert (
+        get_prompt.call_args.kwargs['new_messages'] == f'{settings.BOT_NICKNAME}[whyzzzy]: реплика'
+    )
 
 
 async def test_extract_memory_caps_oversized_lists(mocker):

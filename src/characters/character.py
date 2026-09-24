@@ -53,18 +53,34 @@ class _LoopStats:
         self.tokens_out += usage.get('output_tokens') or 0
 
 
+def bot_nickname_for(character_code: str) -> str:
+    """The one place the tagged bot nickname (`AnchovyAiBot[whyzzzy]`) is built."""
+    return f'{settings.BOT_NICKNAME}[{character_code}]'
+
+
+def _is_own_turn(message: Message, character_code: str) -> bool:
+    if message.role != UserRole.AI:
+        return False
+
+    # No code: a legacy message (older than the migration window, or unmatched) — treated as
+    # the answering character's own, which is what every bot message used to be.
+    return message.character_code is None or message.character_code == character_code
+
+
 def _format_previous_messages(
     replier: Replier, last_messages: list[Message]
 ) -> Generator[HumanMessage | AIMessage]:
     # A `Message` built in memory rather than read from Mongo has `id=None`, and
     # comparing those as strings made every such message the target.
     target_id = replier.target_message.id if replier.target_message else None
+    character = replier.character
     for message in last_messages:
         prefix = '[TARGET] ' if target_id and message.id == target_id else ''
-        if message.role == UserRole.USER:
-            yield HumanMessage(f'{prefix}{message.ai_format}')
+        if _is_own_turn(message, character.code):
+            yield AIMessage(f'{prefix}{message.response_format_for(character.nickname)}')
         else:
-            yield AIMessage(f'{prefix}{message.response_format}')
+            # A user, or another character: rendered as someone else's line, nickname included.
+            yield HumanMessage(f'{prefix}{message.ai_format_for(character.nickname)}')
 
 
 def _get_tools_registry(replier: Replier) -> ToolRegistry:
@@ -98,13 +114,19 @@ class Character:
         name: str,
         description: str,
         style_prompt: str,
+        public: bool = True,
     ):
         self.code = code
         self.name = name
         self.display_name = display_name
         self.description = description
         self.style_prompt = style_prompt
+        self.public = public
         self.rate_limiter = SlidingWindowRateLimiter(CHAT_RATE_LIMIT)
+
+    @property
+    def nickname(self) -> str:
+        return bot_nickname_for(self.code)
 
     @property
     def system_message(self):
@@ -113,7 +135,7 @@ class Character:
             version='v10',
             character_description=self.style_prompt,
             memory=self.memory.prompt_format() if self.memory else None,
-            bot_nickname=settings.BOT_NICKNAME,
+            bot_nickname=self.nickname,
         )
         return SystemMessage(setup_prompt)
 

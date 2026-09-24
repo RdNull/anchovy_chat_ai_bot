@@ -5,7 +5,6 @@ from enum import Enum
 
 from pydantic import Field
 
-from src import settings
 from src.models import BaseModel, MongoId
 from src.utils import format_ts
 
@@ -83,6 +82,8 @@ class Message(BaseModel):
     media: MessageMedia | None = None
     created_at: datetime | None = None
     reactions: dict[str, list[str]] = Field(default_factory=dict)
+    # Set on bot messages only. The source of truth for who wrote it; `nickname` is presentation.
+    character_code: str | None = None
 
     def __str__(self) -> str:
         return self.embedding_text
@@ -104,33 +105,43 @@ class Message(BaseModel):
 
     @property
     def ai_format(self) -> str:
-        base = self.embedding_text
-        if reactions_line := self._render_reactions():
-            return f'{base}\n{reactions_line}'
-        return base
+        return self.ai_format_for(None)
 
     @property
     def response_format(self) -> str:
+        return self.response_format_for(None)
+
+    def ai_format_for(self, own_nickname: str | None) -> str:
+        """`embedding_text` + reactions, with `own_nickname` as the reader's own reactions.
+
+        The bare properties pass None: memory, facts and blackbox read the window with no
+        answering character, so every nickname renders like anyone else's.
+        """
+        base = self.embedding_text
+        if reactions_line := self._render_reactions(own_nickname):
+            return f'{base}\n{reactions_line}'
+        return base
+
+    def response_format_for(self, own_nickname: str | None) -> str:
         text = self.text or ''
         if self.media:
             text = f'{text} [{self.media.ai_format}]'
-        if reactions_line := self._render_reactions():
+        if reactions_line := self._render_reactions(own_nickname):
             return f'{text}\n{reactions_line}'
         return text
 
-    def _render_reactions(self) -> str | None:
+    def _render_reactions(self, own_nickname: str | None = None) -> str | None:
         if not self.reactions:
             return None
 
-        bot_nickname = settings.BOT_NICKNAME
         parts = []
         for emoji, nicknames in self.reactions.items():
             if not nicknames:
                 continue
 
-            bot_reacted = bot_nickname in nicknames
-            others = [n for n in nicknames if n != bot_nickname]
-            named = [bot_nickname] if bot_reacted else []
+            own_reacted = own_nickname is not None and own_nickname in nicknames
+            others = [n for n in nicknames if n != own_nickname]
+            named = [own_nickname] if own_reacted else []
             if len(others) <= 3:
                 named.extend(others)
             unnamed_count = len(nicknames) - len(named)

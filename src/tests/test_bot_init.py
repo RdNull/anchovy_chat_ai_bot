@@ -3,6 +3,8 @@ import contextlib
 import logging
 from unittest.mock import MagicMock
 
+import pytest
+
 from src import settings
 from src.bot import ContextBindingApplication, log_sticker_corpus, main, setup_scheduler
 from src.log_context import LogContextFilter
@@ -27,6 +29,17 @@ async def test_main_initialization(mocker):
     assert mock_app.run_polling.call_count == 1
     # the sticker-corpus boot log and the scheduler
     assert mock_loop.return_value.create_task.call_count == 2
+
+
+async def test_main_refuses_to_start_on_an_unusable_default_character(mocker):
+    # AC3: checked at startup, before anything is built
+    mocker.patch.object(settings, 'DEFAULT_CHARACTER', 'no-such-character')
+    mock_builder = mocker.patch('src.bot.ApplicationBuilder')
+
+    with pytest.raises(RuntimeError, match='not a loaded character'):
+        main()
+
+    assert mock_builder.return_value.token.call_count == 0
 
 
 async def test_setup_scheduler(mocker):

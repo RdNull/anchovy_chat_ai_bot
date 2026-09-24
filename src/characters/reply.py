@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING
 
 from telegram import Bot, ReplyParameters
 
-from src import settings
 from src.logs import event, logger
 from src.messages.repository import add_bot_reaction, save_message
 from src.messages.models import Message, MessageMedia, MessageMediaTypes, MessageReply, UserRole
@@ -71,7 +70,7 @@ class Replier:
         logger.info(
             'Setting reaction', extra=event('REPLY_SENT', kind='reaction', emoji=str(emoji))
         )
-        await add_bot_reaction(self.target_message, settings.BOT_NICKNAME, str(emoji))
+        await add_bot_reaction(self.target_message, self.character.nickname, str(emoji))
         return True
 
     def _get_reply_params(self) -> ReplyParameters | None:
@@ -100,7 +99,8 @@ class Replier:
         message = Message(
             telegram_id=message_id,
             chat_id=self.chat_id,
-            nickname=f'{settings.BOT_NICKNAME}({self.character.name})',
+            nickname=self.character.nickname,
+            character_code=self.character.code,
             role=UserRole.AI,
             text=text,
             media=media,

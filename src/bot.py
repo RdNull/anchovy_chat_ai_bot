@@ -15,6 +15,7 @@ from telegram.ext import (
 )
 
 from src import const, settings, tasks
+from src.characters.registry import CHARACTERS, check_default_character
 from src.log_context import log_context, push_log_context
 from src.logs import event, logger
 from src.messages import handlers
@@ -79,6 +80,11 @@ async def post_init(application: Application) -> None:
 
 def main() -> None:
     logger.info('Bot starting', extra=event('APP_START'))
+    check_default_character(CHARACTERS, settings.DEFAULT_CHARACTER)
+    logger.info(
+        'Characters loaded',
+        extra=event('CHARACTERS_LOADED', characters={c: v.public for c, v in CHARACTERS.items()}),
+    )
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)  # so that both tg app and scheduler run on a single loop
 
@@ -116,8 +122,12 @@ def main() -> None:
     info_handler = CommandHandler('info', handlers.info)
     list_handler = CommandHandler('list', handlers.list_characters)
     random_handler = CommandHandler('random', handlers.random_character)
+    characters_handler = CommandHandler('characters', handlers.manage_character_access)
     select_callback_handler = CallbackQueryHandler(
         handlers.select_character, pattern='^select_char:'
+    )
+    access_callback_handler = CallbackQueryHandler(
+        handlers.character_access, pattern='^char_access'
     )
 
     # commands
@@ -125,7 +135,9 @@ def main() -> None:
     app.add_handler(info_handler)
     app.add_handler(list_handler)
     app.add_handler(random_handler)
+    app.add_handler(characters_handler)
     app.add_handler(select_callback_handler)
+    app.add_handler(access_callback_handler)
 
     # chat meta handlers
     app.add_handler(edits_handler)
