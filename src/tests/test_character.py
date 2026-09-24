@@ -33,6 +33,7 @@ def make_replier(chat_id=1, target=_NOT_SET):
     """
     replier = MagicMock()
     replier.chat_id = chat_id
+    replier.character = make_character()
     replier.target_message = make_user_message(chat_id=chat_id) if target is _NOT_SET else target
     if replier.target_message is not None:
         # Production targets are read back from Mongo, so they always carry an `_id`.
@@ -331,6 +332,62 @@ def test_format_previous_messages_handles_missing_target():
     assert '[TARGET]' not in msgs[0].content
 
 
+def _bot_message(code, text='я тут'):
+    return Message(
+        chat_id=1,
+        role=UserRole.AI,
+        text=text,
+        nickname=f'{settings.BOT_NICKNAME}[{code}]',
+        character_code=code,
+    )
+
+
+def test_format_previous_messages_own_bot_turn_is_an_ai_message():
+    # AC9
+    replier = make_replier()
+
+    msgs = list(_format_previous_messages(replier, [_bot_message('test', 'моя реплика')]))
+
+    assert isinstance(msgs[0], AIMessage)
+    assert msgs[0].content == 'моя реплика'
+
+
+def test_format_previous_messages_other_characters_turn_is_a_human_message():
+    # AC9
+    replier = make_replier()
+
+    msgs = list(_format_previous_messages(replier, [_bot_message('other', 'чужая реплика')]))
+
+    assert isinstance(msgs[0], HumanMessage)
+    assert msgs[0].content == f'{settings.BOT_NICKNAME}[other]: чужая реплика'
+
+
+def test_format_previous_messages_legacy_bot_turn_without_code_is_own():
+    replier = make_replier()
+    legacy = Message(
+        chat_id=1, role=UserRole.AI, text='старое', nickname=f'{settings.BOT_NICKNAME}(test)'
+    )
+
+    msgs = list(_format_previous_messages(replier, [legacy]))
+
+    assert isinstance(msgs[0], AIMessage)
+
+
+def test_format_previous_messages_reactions_use_the_answering_characters_nickname():
+    replier = make_replier()
+    message = make_user_message()
+    message.reactions = {
+        '👍': [f'{settings.BOT_NICKNAME}[test]', f'{settings.BOT_NICKNAME}[other]', 'x']
+    }
+
+    msgs = list(_format_previous_messages(replier, [message]))
+
+    reactions_line = msgs[0].content.splitlines()[-1]
+    assert reactions_line == (
+        f'⤷ 👍 {settings.BOT_NICKNAME}[test], {settings.BOT_NICKNAME}[other], x'
+    )
+
+
 # --- sticker tool binding ---
 # No corpus-size gate: an empty result is a permanent condition rather than a startup
 # one, so the empty case is handled on every call regardless.
@@ -538,10 +595,11 @@ def test_system_message_carries_the_sticker_mechanics():
 
 def test_system_message_names_the_bot_nickname():
     # Without its own nickname in the prompt the model can't recognise its own
-    # past reactions in rendered history.
-    content = make_character().system_message.content
+    # past reactions in rendered history. It is the *tagged* one (AC10).
+    character = make_character()
 
-    assert settings.BOT_NICKNAME in content
+    assert character.nickname == f'{settings.BOT_NICKNAME}[test]'
+    assert character.nickname in character.system_message.content
 
 
 def test_system_message_without_memory_has_no_memory_section():

@@ -18,6 +18,12 @@ class _Settings(BaseSettings):
 
     ALLOWED_CHAT_IDS: list[str] = []
     ALLOWED_USER_IDS: list[str] = []
+    # The only user who may manage which private characters a chat can use (`/characters`).
+    # Deliberately separate from ALLOWED_USER_IDS: the Bot API does not expose a bot's creator.
+    OWNER_USER_ID: str | None = None
+    # What a chat with no (or no longer available) stored character gets. Must be a public
+    # character; `characters/registry.py` refuses to load otherwise.
+    DEFAULT_CHARACTER: str = 'anchovy'
 
     AI_TIMEOUT: int = 90
     CHAT_RATE_LIMIT: int = 5
@@ -171,6 +177,8 @@ DATABASE_URL = _s.DATABASE_URL
 DATABASE_NAME = _s.DATABASE_NAME
 ALLOWED_CHAT_IDS = _s.ALLOWED_CHAT_IDS
 ALLOWED_USER_IDS = _s.ALLOWED_USER_IDS
+OWNER_USER_ID = _s.OWNER_USER_ID
+DEFAULT_CHARACTER = _s.DEFAULT_CHARACTER
 AI_TIMEOUT = _s.AI_TIMEOUT
 CHAT_RATE_LIMIT = _s.CHAT_RATE_LIMIT
 WEB_SEARCH_RATE_LIMIT = _s.WEB_SEARCH_RATE_LIMIT

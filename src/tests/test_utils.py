@@ -5,7 +5,9 @@ import pytest
 from telegram.constants import ChatAction
 
 from src import settings
+from src.characters.character import Character
 from src.characters.registry import CHARACTERS, get_chat_character, set_chat_character
+from src.chat_settings import repository as chat_settings_repository
 from src.messages.models import (
     Message,
     MessageMedia,
@@ -15,6 +17,17 @@ from src.messages.models import (
     UserRole,
 )
 from src.messages.utils import ReplyToBotFilter, escape_markdown_v2, send_chat_action
+
+
+def make_private_character(code='secret'):
+    return Character(
+        code=code,
+        display_name='Secret',
+        name='Secret',
+        description='private one',
+        style_prompt='...',
+        public=False,
+    )
 
 
 def make_message(
@@ -80,16 +93,58 @@ def test_reply_to_bot_filter_wrong_username():
 
 
 async def test_set_get_chat_character():
-    code = next(iter(CHARACTERS))
+    code = settings.DEFAULT_CHARACTER
     chat_id = 12345
     await set_chat_character(chat_id, code)
     character = await get_chat_character(chat_id)
     assert character.code == code
 
 
-async def test_get_chat_character_no_code_returns_valid():
+async def test_get_chat_character_no_code_returns_the_default_and_saves_it():
+    # AC1
     character = await get_chat_character(54321)
-    assert character.code in CHARACTERS
+
+    assert character.code == settings.DEFAULT_CHARACTER
+    assert await chat_settings_repository.get_character_code(54321) == settings.DEFAULT_CHARACTER
+
+
+async def test_get_chat_character_never_picks_at_random():
+    codes = {(await get_chat_character(chat_id)).code for chat_id in range(60000, 60020)}
+
+    assert codes == {settings.DEFAULT_CHARACTER}
+
+
+async def test_get_chat_character_unknown_code_falls_back_and_overwrites():
+    # AC2
+    await chat_settings_repository.set_character_code(54322, 'no-such-character')
+
+    character = await get_chat_character(54322)
+
+    assert character.code == settings.DEFAULT_CHARACTER
+    assert await chat_settings_repository.get_character_code(54322) == settings.DEFAULT_CHARACTER
+
+
+async def test_get_chat_character_unavailable_private_code_falls_back_and_overwrites(mocker):
+    # AC2: a private character the chat is not (or no longer) allowed to use
+    private = make_private_character()
+    mocker.patch.dict(CHARACTERS, {private.code: private})
+    await chat_settings_repository.set_character_code(54323, private.code)
+
+    character = await get_chat_character(54323)
+
+    assert character.code == settings.DEFAULT_CHARACTER
+    assert await chat_settings_repository.get_character_code(54323) == settings.DEFAULT_CHARACTER
+
+
+async def test_get_chat_character_keeps_an_allowed_private_character(mocker):
+    private = make_private_character()
+    mocker.patch.dict(CHARACTERS, {private.code: private})
+    await chat_settings_repository.set_character_code(54324, private.code)
+    await chat_settings_repository.toggle_allowed_character(54324, private.code)
+
+    character = await get_chat_character(54324)
+
+    assert character.code == private.code
 
 
 # --- send_chat_action ---
@@ -296,7 +351,24 @@ def _msg(reactions):
     ],
 )
 def test_render_reactions(reactions: dict, expected: str | None):
-    assert _msg(reactions)._render_reactions() == expected
+    assert _msg(reactions)._render_reactions(own_nickname=BOT) == expected
+
+
+def test_render_reactions_names_only_the_answering_characters_own_reaction():
+    # AC10: another character's tagged nickname is just a user, so it counts toward the
+    # named-reactor threshold instead of jumping the queue.
+    own = f'{BOT}[a]'
+    other = f'{BOT}[b]'
+    reactions = {'👍': ['x', other, own]}
+
+    assert _msg(reactions)._render_reactions(own_nickname=own) == f'⤷ 👍 {own}, x, {other}'
+    assert _msg(reactions)._render_reactions(own_nickname=other) == f'⤷ 👍 {other}, x, {own}'
+
+
+def test_render_reactions_without_own_nickname_treats_everyone_alike():
+    reactions = {'👍': ['a', 'b', 'c', 'd']}
+
+    assert _msg(reactions)._render_reactions() == '⤷ 👍 ×4'
 
 
 def test_render_reactions_appears_in_ai_format():
