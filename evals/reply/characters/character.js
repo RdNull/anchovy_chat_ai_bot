@@ -7,11 +7,16 @@ const yaml = require('js-yaml');
 
 const DEFAULT_CHARACTER = 'whyzzzy';
 
-module.exports = () => {
+const characterCode = () => {
     const code = process.env.CHARACTER || DEFAULT_CHARACTER;
     if (!/^[a-z0-9_]+$/.test(code)) {
         throw new Error(`CHARACTER must match [a-z0-9_]+, got: ${code}`);
     }
+    return code;
+};
+
+module.exports = () => {
+    const code = characterCode();
     const file = path.resolve(__dirname, `../../../src/characters/repository/${code}.yaml`);
     if (!fs.existsSync(file)) {
         throw new Error(`CHARACTER=${code}: no such character at ${file}`);
@@ -19,3 +24,5 @@ module.exports = () => {
     const character = yaml.load(fs.readFileSync(file, 'utf8'));
     return { output: character.prompt };
 };
+
+module.exports.characterCode = characterCode;
