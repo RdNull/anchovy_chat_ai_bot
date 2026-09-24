@@ -17,7 +17,7 @@ import asyncio
 from collections import Counter
 
 from src import mongo, settings
-from src.characters.registry import load_characters
+from src.characters.loader import load_characters
 
 parser = argparse.ArgumentParser(description='Allow each chat its current private character.')
 parser.add_argument('--dry-run', action='store_true', help='print counts, write nothing')

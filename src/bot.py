@@ -15,7 +15,7 @@ from telegram.ext import (
 )
 
 from src import const, settings, tasks
-from src.characters.registry import CHARACTERS
+from src.characters.registry import CHARACTERS, check_default_character
 from src.log_context import log_context, push_log_context
 from src.logs import event, logger
 from src.messages import handlers
@@ -80,6 +80,7 @@ async def post_init(application: Application) -> None:
 
 def main() -> None:
     logger.info('Bot starting', extra=event('APP_START'))
+    check_default_character(CHARACTERS, settings.DEFAULT_CHARACTER)
     logger.info(
         'Characters loaded',
         extra=event('CHARACTERS_LOADED', characters={c: v.public for c, v in CHARACTERS.items()}),

@@ -1,45 +1,14 @@
-from pathlib import Path
-
-import yaml
-
 from src import settings
 from src.characters.character import Character
+from src.characters.loader import load_characters
 from src.chat_settings import repository as chat_settings_repository
 from src.memory.models import MemoryData
-
-
-def load_characters(
-    directory: str | Path, include_debug: bool | None = None
-) -> dict[str, Character]:
-    """Loads every yaml under `directory`; `include_debug=None` follows the settings flag."""
-    if include_debug is None:
-        include_debug = settings.ENABLE_DEBUG_CHARACTER
-
-    characters = {}
-    for path in Path(directory).rglob('*.yaml'):
-        with open(str(path)) as f:
-            character_data = yaml.safe_load(f)
-
-        character_code = path.stem
-        if character_code == 'debug' and not include_debug:
-            continue
-
-        characters[character_code] = Character(
-            code=character_code,
-            name=character_data['name'],
-            display_name=character_data['display_name'],
-            description=character_data['description'],
-            style_prompt=character_data['prompt'],
-            public=character_data.get('public', True),
-        )
-
-    return characters
-
 
 CHARACTERS = load_characters(settings.CHARACTERS_DIRECTORY)
 
 
 def check_default_character(characters: dict[str, Character], default_code: str) -> None:
+    """Raises if the default is not a loaded, public character. Called at startup (`bot.main`)."""
     default = characters.get(default_code)
     if default is None:
         raise RuntimeError(
@@ -48,9 +17,6 @@ def check_default_character(characters: dict[str, Character], default_code: str)
         )
     if not default.public:
         raise RuntimeError(f'DEFAULT_CHARACTER {default_code!r} is private; it must be public')
-
-
-check_default_character(CHARACTERS, settings.DEFAULT_CHARACTER)
 
 
 def available_characters(allowed_codes: list[str]) -> dict[str, Character]:

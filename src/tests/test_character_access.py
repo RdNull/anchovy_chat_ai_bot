@@ -10,8 +10,8 @@ from src.characters.registry import (
     available_characters,
     check_default_character,
     get_available_characters,
-    load_characters,
 )
+from src.characters.loader import load_characters
 from src.chat_settings import repository as chat_settings_repository
 from src.messages import handlers
 
