@@ -4,7 +4,7 @@ from datetime import datetime
 
 from src.const import TIMEZONE_ALMATY
 
-TIMESTAMP_FORMAT = '%y-%m-%d %H:%M'
+TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M'
 
 
 def format_ts(value: datetime) -> str:
