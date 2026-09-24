@@ -43,7 +43,7 @@ def load_name_to_code() -> dict[str, str]:
     return name_to_code
 
 
-async def _chat_character_code(chat_id: int, known_codes: set[str]) -> str:
+async def chat_character_code(chat_id: int, known_codes: set[str]) -> str:
     doc = await mongo.chat_settings.find_one({'chat_id': chat_id})
     code = doc.get('character_code') if doc else None
     return code if code in known_codes else settings.DEFAULT_CHARACTER
@@ -106,7 +106,7 @@ async def migrate_reactions(cutoff: float, dry_run: bool) -> Counter:
                 continue
 
             if chat_id not in chat_nicknames:
-                code = await _chat_character_code(chat_id, known_codes)
+                code = await chat_character_code(chat_id, known_codes)
                 chat_nicknames[chat_id] = bot_nickname_for(code)
 
             tagged = chat_nicknames[chat_id]
