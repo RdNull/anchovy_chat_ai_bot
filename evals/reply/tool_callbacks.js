@@ -110,7 +110,7 @@ module.exports = {
 
     search_messages: (argsJson) => {
         const { search_query } = JSON.parse(argsJson);
-        return `[25-04-29] @whyzzzy упоминал "${search_query}" — сказал что всё понятно и без этого`;
+        return `[2025-04-29] @whyzzzy упоминал "${search_query}" — сказал что всё понятно и без этого`;
     },
 
     // Branches on the query the model writes, so one callback serves every

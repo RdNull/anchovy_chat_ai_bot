@@ -54,26 +54,26 @@ CONFIDENCE:
 ПРИМЕРЫ:
 
 1) Перепалка → пусто:
-[25-05-04 22:40] @sasha: @misha ты конченный
-[25-05-04 22:40] @misha: ema, ty sam konchenniy
+[2025-05-04 22:40] @sasha: @misha ты конченный
+[2025-05-04 22:40] @misha: ema, ty sam konchenniy
 → {"facts": []}
 
 2) Reply-атрибуция:
-[25-05-01 18:01] @kolya: как настроить nginx reverse proxy
-[25-05-01 18:02] @dima (reply to @kolya): я с nginx лет пять, кидай конфиг
+[2025-05-01 18:01] @kolya: как настроить nginx reverse proxy
+[2025-05-01 18:02] @dima (reply to @kolya): я с nginx лет пять, кидай конфиг
 → {"facts": [{"nickname": "@dima", "text": "опытный администратор nginx", "confidence": 0.75}]}
 
 3) Статус-меняющее событие → soft emit:
-[25-05-03 11:00] @misha: завтра выхожу на новую работу в Acme
+[2025-05-03 11:00] @misha: завтра выхожу на новую работу в Acme
 → {"facts": [{"nickname": "@misha", "text": "работает в Acme", "confidence": 0.7}]}
 
 4) Самозаявление + atomic split:
-[25-05-09 13:01] @kolya: я из Алматы, ща в Берлине, в Acme работаю
+[2025-05-09 13:01] @kolya: я из Алматы, ща в Берлине, в Acme работаю
 → {"facts": [{"nickname": "@kolya", "text": "из Алматы", "confidence": 0.9}, {"nickname": "@kolya", "text": "живёт в Берлине", "confidence": 0.9}, {"nickname": "@kolya", "text": "работает в Acme", "confidence": 0.9}]}
 
 5) Паттерн из двух сообщений в окне:
-[25-05-05 09:00] @sasha: блин опять зарядку дома оставил
-[25-05-05 14:00] @sasha: я походу ключи в офисе забыл
+[2025-05-05 09:00] @sasha: блин опять зарядку дома оставил
+[2025-05-05 14:00] @sasha: я походу ключи в офисе забыл
 → {"facts": [{"nickname": "@sasha", "text": "часто забывает вещи", "confidence": 0.65}]}
 
 ---

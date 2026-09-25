@@ -8,7 +8,7 @@ from src.memory.repository import get_last_memory
 from src.scripts.rekey_bot_memory import LEGACY_KEY, rekey, run
 
 BOT_TRAITS = ['ник Элжан', 'цель — подъебать собеседника']
-RECORD = {'born': '26-08-24 13:06', 'cycles': 222, 'field': 'traits'}
+RECORD = {'born': '2026-08-24 13:06', 'cycles': 222, 'field': 'traits'}
 
 
 def make_snapshot(participants, decay=None, chat_id=1, age_days=0):

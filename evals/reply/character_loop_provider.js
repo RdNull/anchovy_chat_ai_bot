@@ -65,7 +65,7 @@ function extractAnswer(toolCalls) {
         const args = parseArgs(fn.arguments);
         if (fn.name === 'answer_text' && args.text) return args.text;
         // Bracket-free on purpose: the `not-regex` defaultTest assert exists to catch the
-        // model leaking the *input* message format ([26-09-15 17:36] nick: …, [sticker: …])
+        // model leaking the *input* message format ([2026-09-15 17:36] nick: …, [sticker: …])
         // into its reply, so that guard stays global rather than scoped per-case. That means
         // our own gesture answers can't use brackets either, or they fail the same assert a
         // real leak would — a `REACTION:`/`STICKER:` sentinel says the same thing without
