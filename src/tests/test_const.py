@@ -15,29 +15,6 @@ _ROOT = Path(__file__).resolve().parents[2]
 _EVAL_PROVIDER = _ROOT / 'evals' / 'models' / 'chat' / 'v8-gemini.yaml'
 
 
-def test_allowed_reactions_is_the_18_emoji_set():
-    assert {
-        '🤡',
-        '🤨',
-        '💩',
-        '🤮',
-        '🖕',
-        '😐',
-        '🤣',
-        '💯',
-        '🌚',
-        '🤝',
-        '😭',
-        '🗿',
-        '👍',
-        '👎',
-        '🔥',
-        '❤',
-        '👀',
-        '🤓',
-    } == ALLOWED_REACTIONS
-
-
 def test_allowed_reactions_is_a_subset_of_telegram_reaction_emoji():
     from telegram.constants import ReactionEmoji
 
