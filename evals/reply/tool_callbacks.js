@@ -16,6 +16,7 @@ const STICKERS = [
     {sticker_id:'AgADu1AAAr7WyUh', emoji:'🤔', description:'Зеленые шлепанцы на фоне здания Белого дома в Москве. Надпись «думайте».', text:'думайте'},
     {sticker_id:'AgADv1AAAs3XyEg', emoji:'🤝', description:'Кадр из аниме, где персонаж кладет руку на плечо другому, мем «Дружеское похлопывание».', text:''},
     {sticker_id:'AgADw1AAAt7YyUh', emoji:'🤣', description:'Мем с Томом из «Тома и Джерри» с безумным взглядом.', text:''},
+    {sticker_id:'AgADT50AAoshGEs', emoji:'🐱', description:'Крупный план морды кота с широко открытыми глазами и высунутым языком, наложен эмодзи «шака».', text:''},
     // literal / flat descriptions (production: textless stickers, emotion stripped by the
     // vision prompt). Present on purpose - a suite where every candidate is perfect
     // overstates how good the real corpus is.
@@ -40,7 +41,9 @@ const MATCHERS = [
     // отказ - поднятая ладонь
     {re: /отказ|^нет\b|нет,|ненад/i, ids: ['AgADt1AAAv3VyEg']},
     // домашние животные
-    {re: /кот\b|котик|собак|пёс|пес\b|лабрадор/i, ids: ['AgADx1AAAu9ZyEg', 'AgADy1AAAvAayUh']},
+    {re: /кот\b|котик|собак|пёс|пес\b|лабрадор/i, ids: ['AgADx1AAAu9ZyEg', 'AgADy1AAAvAayUh', 'AgADT50AAoshGEs']},
+    // шака / язык / дразнилка - кот с высунутым языком
+    {re: /шак|язык|дразн|кошк|кот[а-я]*/i, ids: ['AgADT50AAoshGEs']},
     // усталость / недовольство - жаба + Том
     {re: /устал|недовольн/i, ids: ['AgADwU8AAupbyEg', 'AgADw1AAAt7YyUh']},
     // "думай" - шлепанцы с надписью «думайте»
