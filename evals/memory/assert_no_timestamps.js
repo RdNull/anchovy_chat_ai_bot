@@ -3,12 +3,12 @@
 // Code owns the clock now: `src/memory/decay.py` stamps an entry's age in a sidecar the
 // model never sees, and `v4.j2` no longer documents a timestamp field at all. A stamped
 // entry means the prompt still leaks the old contract — production's structured output
-// would coerce it to a string like "26-08-18 09:16: ездил в Лондон", quietly poisoning
+// would coerce it to a string like "2026-08-18 09:16: ездил в Лондон", quietly poisoning
 // the normalized key the attribution guard and the sidecar both index on.
 
 const {entries, asArray, parse} = require('./memory_lib.js');
 
-const TIMESTAMP = /\d{2}-\d{2}-\d{2}[ T]\d{2}:\d{2}/;
+const TIMESTAMP = /\d{2,4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/;
 
 module.exports = function (output) {
     const {memory, error} = parse(output);

@@ -103,7 +103,7 @@ remapped, so they can override.
 ## Don't
 
 - Don't run promptfoo (`promptfoo eval`) — the user runs evals themselves.
-- Don't modify `whyzzzy.js`, the model YAMLs, the prompt template, or the
+- Don't modify `character.js`, the model YAMLs, the prompt template, or the
   custom provider — those are out of scope for adding a test case.
 - Don't rename existing test directories.
 - Don't invent per-test `assert:` entries for an ordinary text case — assertions

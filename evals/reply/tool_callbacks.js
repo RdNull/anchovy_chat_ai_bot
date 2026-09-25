@@ -110,12 +110,12 @@ module.exports = {
 
     search_messages: (argsJson) => {
         const { search_query } = JSON.parse(argsJson);
-        return `[25-04-29] @whyzzzy упоминал "${search_query}" — сказал что всё понятно и без этого`;
+        return `[2025-04-29] @whyzzzy упоминал "${search_query}" — сказал что всё понятно и без этого`;
     },
 
     // Branches on the query the model writes, so one callback serves every
     // web_search_* case. The prose branch is deliberately shaped like something
-    // worth reciting — `word-count max: 20` is what catches a paste.
+    // worth reciting — `word-count` cap (max_words.js) is what catches a paste.
     search_web: (argsJson) => {
         const { query = '', limit = 2 } = JSON.parse(argsJson);
 

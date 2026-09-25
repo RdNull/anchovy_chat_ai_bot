@@ -18,7 +18,7 @@ providers:
 
 defaultTest:
   vars:
-    character_description: file://whyzzzy.js
+    character_description: file://character.js
     bot_nickname: AnchovyAiBot
 
 tests:

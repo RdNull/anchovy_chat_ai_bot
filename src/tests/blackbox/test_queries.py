@@ -41,7 +41,7 @@ def _points(*hits):
 
 
 def _bodies(rendered: str) -> list[str]:
-    """Strips the `[ГГ-ММ-ДД ЧЧ:ММ] ` prefix, which is wall clock at save time."""
+    """Strips the `[ГГГГ-ММ-ДД ЧЧ:ММ] ` prefix, which is wall clock at save time."""
     return [line.split('] ', 1)[1] for line in rendered.split('\n')]
 
 
@@ -325,7 +325,7 @@ async def test_get_memory_defaults_to_the_newest():
 
 
 async def test_get_memory_for_one_nick_accepts_either_form():
-    record = {'born': '26-09-01 12:00', 'cycles': 2, 'field': 'traits'}
+    record = {'born': '2026-09-01 12:00', 'cycles': 2, 'field': 'traits'}
     await _save_snapshot(
         T0,
         {'participants': {'@alice': {'traits': ['a'], 'recent': ['r']}, '@bob': {'traits': ['b']}}},
@@ -387,7 +387,7 @@ NEWER = {
     },
     'decay': {
         'alice': {
-            'катается на велосипеде': {'born': '26-09-02 12:00', 'cycles': 0, 'field': 'traits'},
+            'катается на велосипеде': {'born': '2026-09-02 12:00', 'cycles': 0, 'field': 'traits'},
         },
     },
 }
@@ -401,7 +401,7 @@ def test_diff_snapshots_classifies_every_entry():
             'nick': 'alice',
             'field': 'traits',
             'text': 'катается на велосипеде',
-            'born': '26-09-02 12:00',
+            'born': '2026-09-02 12:00',
             'cycles': 0,
         }
     ]

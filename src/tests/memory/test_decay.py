@@ -16,9 +16,9 @@ from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInf
 from src.memory.processors import _prompt_memory
 from src.utils import format_ts
 
-NOW = '26-05-01 18:00'
-YESTERDAY = '26-04-30 18:00'
-LAST_WEEK = '26-04-24 18:00'
+NOW = '2026-05-01 18:00'
+YESTERDAY = '2026-04-30 18:00'
+LAST_WEEK = '2026-04-24 18:00'
 
 
 def caps(**overrides) -> DecayCaps:

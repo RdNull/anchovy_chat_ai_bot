@@ -272,7 +272,7 @@ def test_message_embedding_text_with_timestamp():
     msg = Message(
         chat_id=1, nickname='nick', role=UserRole.USER, text='hello', created_at=created_at
     )
-    assert msg.embedding_text == '[26-04-19 15:00] nick: hello'
+    assert msg.embedding_text == '[2026-04-19 15:00] nick: hello'
 
 
 def test_message_embedding_text_reply_with_timestamp():
@@ -286,7 +286,7 @@ def test_message_embedding_text_reply_with_timestamp():
         reply=reply,
         created_at=created_at,
     )
-    assert msg.embedding_text == '[26-04-19 15:00] nick (reply: "other| quoted"): hello'
+    assert msg.embedding_text == '[2026-04-19 15:00] nick (reply: "other| quoted"): hello'
 
 
 # --- Message.response_format ---

@@ -161,7 +161,7 @@ async def list_messages(
     about when rather than about what.
 
     Rows are chronological whichever end `from_end` keeps. `line` is the message as memory
-    extraction renders it; its `[ГГ-ММ-ДД ЧЧ:ММ]` stamp is the chat's local time (Asia/Almaty),
+    extraction renders it; its `[ГГГГ-ММ-ДД ЧЧ:ММ]` stamp is the chat's local time (Asia/Almaty),
     while `ts`, `since` and `until` are UTC. Pass a row's `message_id` to `get_window` with
     `format='answer'` to see exactly what the bot saw around it.
     """

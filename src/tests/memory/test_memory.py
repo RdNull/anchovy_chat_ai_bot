@@ -11,7 +11,7 @@ from src.memory.repository import get_last_memory, save_memory
 from src.messages.repository import get_messages, save_message
 from src.messages.models import Message, UserRole
 
-TS = '26-05-01 10:00'
+TS = '2026-05-01 10:00'
 NOW = datetime(2026, 5, 1, 18, 0, tzinfo=TIMEZONE_ALMATY)
 
 
@@ -140,12 +140,12 @@ def test_prompt_format_recent_without_decay_record_renders_bare():
 def test_prompt_format_relative_age_buckets():
     entries = ['сегодня', 'вчера', 'позавчера', 'пять дней', 'неделя', 'давно']
     born = [
-        '26-05-01 10:00',
-        '26-04-30 10:00',
-        '26-04-29 10:00',
-        '26-04-26 10:00',
-        '26-04-24 10:00',
-        '26-04-23 10:00',
+        '2026-05-01 10:00',
+        '2026-04-30 10:00',
+        '2026-04-29 10:00',
+        '2026-04-26 10:00',
+        '2026-04-24 10:00',
+        '2026-04-23 10:00',
     ]
     memory = make_memory_data(
         StructuredMemory(participants={'@alice': ParticipantInfo(recent=entries)}),
@@ -173,7 +173,7 @@ def test_prompt_format_age_is_calendar_days_not_elapsed_hours():
         StructuredMemory(participants={'@alice': ParticipantInfo(recent=['поздний созвон'])}),
         decay={
             '@alice': {
-                'поздний созвон': DecayRecord(born='26-04-30 23:59', cycles=0, field='recent')
+                'поздний созвон': DecayRecord(born='2026-04-30 23:59', cycles=0, field='recent')
             }
         },
     )

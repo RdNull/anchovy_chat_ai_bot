@@ -670,8 +670,8 @@ async def test_extract_memory_logs_churn_and_would_evict(mocker):
         ),
         decay={
             '@alice': {
-                'ездил в лондон': DecayRecord(born='26-04-24 18:00', cycles=3, field='recent'),
-                'опоздал': DecayRecord(born='26-04-30 18:00', cycles=1, field='recent'),
+                'ездил в лондон': DecayRecord(born='2026-04-24 18:00', cycles=3, field='recent'),
+                'опоздал': DecayRecord(born='2026-04-30 18:00', cycles=1, field='recent'),
             }
         },
     )

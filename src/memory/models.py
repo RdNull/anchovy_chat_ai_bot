@@ -23,7 +23,7 @@ class DecayRecord(BaseModel):
     record says so.
     """
 
-    born: str  # "ГГ-ММ-ДД ЧЧ:ММ" — the cycle in which this key first appeared
+    born: str  # "ГГГГ-ММ-ДД ЧЧ:ММ" — the cycle in which this key first appeared
     cycles: int  # cycles survived since birth
     field: str  # 'traits' | 'recent' — the list it lived in last cycle
 
