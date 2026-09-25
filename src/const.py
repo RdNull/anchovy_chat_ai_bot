@@ -7,7 +7,7 @@ TIMEZONE_ALMATY = dt.timezone(offset=dt.timedelta(hours=5))
 # fmt: off
 ALLOWED_REACTIONS = {
     '🤡', '🤨', '💩', '🤮', '🖕', '😐', '🤣', '💯', '🌚', '🤝', '😭', '🗿', '👍', '👎',
-    '🔥', '❤', '👀', '🤓', '👾',
+    '🔥', '❤', '👀', '🤓', '👾', '🙈', '🥱',
 }
 # fmt: on
 
