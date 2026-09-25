@@ -107,7 +107,7 @@ config:
             # Mirrors production's `ReactionEmoji = Literal[tuple(sorted(ALLOWED_REACTIONS))]`
             # (src/types.py, src/const.py) - without the enum the model is told to pick from
             # "the allowed list" while holding a plain string schema that names no such list.
-            emoji: { type: string, enum: ['❤', '🌚', '👀', '👍', '👎', '👾', '💩', '💯', '🔥', '🖕', '🗿', '😐', '😭', '🤓', '🤝', '🤡', '🤣', '🤨', '🤮'] }
+            emoji: { type: string, enum: ['❤', '🌚', '👀', '👍', '👎', '👾', '💩', '💯', '🔥', '🖕', '🗿', '😐', '😭', '🙈', '🤓', '🤝', '🤡', '🤣', '🤨', '🤮', '🥱'] }
           required: [ emoji ]
     - type: function
       function:
