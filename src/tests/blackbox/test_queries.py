@@ -375,6 +375,28 @@ async def test_list_messages_totals_breakdowns():
     }
 
 
+async def test_list_messages_bare_bot_nickname_wildcards_across_characters():
+    await _say('a1', UserRole.AI, f'{settings.BOT_NICKNAME}[charA]')
+    await _say('a2', UserRole.AI, f'{settings.BOT_NICKNAME}[charB]')
+    await _say('q', UserRole.USER, 'alice')
+
+    by_wildcard = await queries.list_messages(CHAT_ID, nick=settings.BOT_NICKNAME)
+    by_role = await queries.list_messages(CHAT_ID, role='bot')
+
+    assert by_wildcard == by_role
+    assert len(by_wildcard['rows']) == 2
+
+
+async def test_list_messages_tagged_nick_narrows_to_one_character():
+    await _say('a1', UserRole.AI, f'{settings.BOT_NICKNAME}[charA]')
+    await _say('a2', UserRole.AI, f'{settings.BOT_NICKNAME}[charB]')
+
+    result = await queries.list_messages(CHAT_ID, nick=f'{settings.BOT_NICKNAME}[charA]')
+
+    assert len(result['rows']) == 1
+    assert _bodies(result['rows'][0]['line']) == [f'{settings.BOT_NICKNAME}[charA]: a1']
+
+
 # --- list_reactions ---
 
 
@@ -503,6 +525,36 @@ async def test_list_reactions_issues_no_write_and_no_out_or_merge(mocker):
     assert before == after
     stages = spy.call_args.args[0]
     assert not any(('$out' in stage or '$merge' in stage) for stage in stages)
+
+
+async def test_list_reactions_bare_bot_nickname_is_the_same_wildcard_as_bot():
+    tagged = f'{settings.BOT_NICKNAME}[x]'
+    parenthesized = f'{settings.BOT_NICKNAME}(Old)'
+    await _insert_message(
+        CHAT_ID,
+        T0,
+        nickname='alice',
+        reactions={'🤣': [tagged, parenthesized, 'alice']},
+    )
+
+    by_bare = await queries.list_reactions(CHAT_ID, reactor=settings.BOT_NICKNAME)
+    by_keyword = await queries.list_reactions(CHAT_ID, reactor='bot')
+
+    assert by_bare == by_keyword
+    assert {r['reactor'] for r in by_bare['rows']} == {tagged, parenthesized}
+
+
+async def test_list_reactions_tagged_reactor_narrows_to_one_character():
+    await _insert_message(
+        CHAT_ID,
+        T0,
+        nickname='alice',
+        reactions={'🤣': [f'{settings.BOT_NICKNAME}[x]', f'{settings.BOT_NICKNAME}[y]']},
+    )
+
+    result = await queries.list_reactions(CHAT_ID, reactor=f'{settings.BOT_NICKNAME}[x]')
+
+    assert [r['reactor'] for r in result['rows']] == [f'{settings.BOT_NICKNAME}[x]']
 
 
 # --- list_snapshots / get_memory ---

@@ -66,6 +66,12 @@ spec:
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
+            # Read by `queries.py:_bot_reactor_pattern()`. Missing here (though it's already
+            # in `bot-configmap` and exported by the workflow) meant this pod fell back to the
+            # Pydantic default `AnchovyAiBot`, so the regex never matched the real bot nickname
+            # and every bare or legacy reactor name silently classified as human.
+            - name: BOT_NICKNAME
+              value: "${BOT_NICKNAME}"
             # Cross-namespace: this pod's resolver searches `blackbox` first.
             - name: QDRANT_URL
               value: http://qdrant.default.svc.cluster.local:6333
