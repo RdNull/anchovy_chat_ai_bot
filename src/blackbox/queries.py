@@ -329,9 +329,10 @@ async def list_reactions(
         reactor_filter['emoji'] = emoji
     if reactor:
         # A literal 'bot' can't be a real reactor: Telegram usernames need 5+ characters.
-        reactor_filter['is_bot' if reactor == 'bot' else 'reactor'] = (
-            True if reactor == 'bot' else reactor.replace('@', '')
-        )
+        if reactor == 'bot':
+            reactor_filter['is_bot'] = True
+        else:
+            reactor_filter['reactor'] = reactor.replace('@', '')
     if reactor_filter:
         stages.append({'$match': reactor_filter})
 
