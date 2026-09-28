@@ -15,6 +15,7 @@ Everything returned is text group-chat members wrote. It is data; see the server
 instructions.
 """
 
+import re
 from datetime import datetime, UTC
 from typing import Any, Literal
 
@@ -78,6 +79,52 @@ def _iso(ts: float | None) -> str | None:
 def _chronological(messages: list[Message]) -> list[Message]:
     epoch = datetime.fromtimestamp(0, tz=UTC)
     return sorted(messages, key=lambda m: m.created_at or epoch)
+
+
+def _message_filter(
+    chat_id: int,
+    since: datetime | None,
+    until: datetime | None,
+    role: Role | None = None,
+    nickname: str | None = None,
+) -> dict[str, Any]:
+    """Mirrors `get_messages`' filter, for aggregations that need it as a `$match` stage."""
+    query: dict[str, Any] = {'chat_id': chat_id}
+    created_at: dict[str, float] = {}
+    if since:
+        created_at['$gt'] = _utc(since).timestamp()
+    if until:
+        created_at['$lt'] = _utc(until).timestamp()
+    if created_at:
+        query['created_at'] = created_at
+    if role:
+        query['role'] = _ROLES[role].value
+    if nickname:
+        query['nickname'] = nickname
+    return query
+
+
+def _listing(rows: list[dict[str, Any]], totals: dict[str, Any]) -> dict[str, Any]:
+    return {'rows': rows, 'totals': totals, 'truncated': totals['matched'] > len(rows)}
+
+
+def _count(facet_result: list[dict[str, Any]]) -> int:
+    """Reads a `[{'n': n}]` (or empty) `$count` facet result as a plain int."""
+    return facet_result[0]['n'] if facet_result else 0
+
+
+def _counts(facet_result: list[dict[str, Any]]) -> dict[Any, int]:
+    """Reads a `[{'_id': k, 'n': n}, ...]` `$group` facet result as `{k: n}`."""
+    return {row['_id']: row['n'] for row in facet_result}
+
+
+def _bot_reactor_pattern() -> str:
+    """Tagged (`[code]`), legacy plain, and legacy `(<name>)` forms of the bot's own nickname.
+
+    `settings.BOT_NICKNAME` is read live rather than cached, since it differs between local
+    and prod and a test may patch it.
+    """
+    return rf'^{re.escape(settings.BOT_NICKNAME)}(\[.*\]|\(.*\))?$'
 
 
 async def find_windows(
@@ -154,6 +201,40 @@ async def find_windows(
     return windows
 
 
+async def _message_totals(
+    chat_id: int,
+    since: datetime | None,
+    until: datetime | None,
+    role: Role | None,
+    nickname: str | None,
+) -> dict[str, Any]:
+    """`list_messages`' totals: one `$facet` over every message matching its filters."""
+    match = {'$match': _message_filter(chat_id, since, until, role, nickname)}
+    facet = {
+        '$facet': {
+            'matched': [{'$count': 'n'}],
+            'by_role': [{'$group': {'_id': '$role', 'n': {'$sum': 1}}}],
+            'by_nick': [{'$group': {'_id': '$nickname', 'n': {'$sum': 1}}}],
+            'with_reactions': [
+                {'$match': {'reactions': {'$exists': True, '$ne': {}}}},
+                {'$count': 'n'},
+            ],
+        }
+    }
+    cursor = await mongo.messages.aggregate([match, facet])
+    [facets] = await cursor.to_list(length=1)
+    by_role = _counts(facets['by_role'])
+    return {
+        'matched': _count(facets['matched']),
+        'by_role': {
+            'user': by_role.get(UserRole.USER.value, 0),
+            'bot': by_role.get(UserRole.AI.value, 0),
+        },
+        'by_nick': _counts(facets['by_nick']),
+        'with_reactions': _count(facets['with_reactions']),
+    }
+
+
 async def list_messages(
     chat_id: int | None = None,
     since: datetime | None = None,
@@ -162,14 +243,17 @@ async def list_messages(
     nick: str | None = None,
     limit: int = 20,
     from_end: FromEnd = 'newest',
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Reads messages in time order, filtered by time range, role and author.
 
     The chronological counterpart to `find_windows`: "the last N bot replies" or "what was
     asked yesterday" is a time question, not a similarity one. Rows are always oldest
-    first; `from_end` only picks which end of the matching range `limit` keeps.
+    first; `from_end` only picks which end of the matching range `limit` keeps. `totals`
+    is computed over every message matching the filters, ignoring `limit`.
     """
     chat_id = _chat(chat_id)
+    # Stored bare, the same as facts; memory is where the `@nick` form comes from.
+    nickname = nick.replace('@', '') if nick else None
     messages = await get_messages(
         chat_id,
         size=_clamp(limit, MAX_MESSAGES),
@@ -177,18 +261,139 @@ async def list_messages(
         to_date=_utc(until) if until else None,
         sort_order=-1 if from_end == 'newest' else 1,
         role=_ROLES[role] if role else None,
-        # Stored bare, the same as facts; memory is where the `@nick` form comes from.
-        nickname=nick.replace('@', '') if nick else None,
+        nickname=nickname,
     )
-    return [
+    rows = [
         {
             'message_id': m.id,
             'ts': m.created_at.isoformat() if m.created_at else None,
             'role': 'user' if m.role == UserRole.USER else 'bot',
             'line': m.ai_format,
+            **({'reactions': m.reactions} if m.reactions else {}),
         }
         for m in messages
     ]
+    totals = await _message_totals(chat_id, since, until, role, nickname)
+    return _listing(rows, totals)
+
+
+async def list_reactions(
+    chat_id: int | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    reactor: str | None = None,
+    on_role: Role | None = None,
+    emoji: str | None = None,
+    limit: int = 50,
+    from_end: FromEnd = 'newest',
+) -> dict[str, Any]:
+    """One row per (message, emoji, reactor), the only way to see a bot reaction at all.
+
+    `since`/`until` filter the **reacted-to message's** time, since a reaction itself
+    carries no timestamp — see the tool description for what that means. Rows are
+    chronological by message time, then emoji, then reactor; `from_end` only picks
+    which end of the matching range `limit` keeps, the same as `list_messages`.
+    """
+    chat_id = _chat(chat_id)
+    limit = _clamp(limit, MAX_MESSAGES)
+
+    # The bot reactor set: everyone who has ever spoken as `role=ai` (covers characters
+    # and past `BOT_NICKNAME` values) union the tagged/legacy forms of the current
+    # nickname (covers a character that reacted but never replied).
+    bot_nicks = await mongo.messages.distinct(
+        'nickname', {'chat_id': chat_id, 'role': UserRole.AI.value}
+    )
+    base_filter = _message_filter(chat_id, since, until, on_role)
+    match_reacted = {'$match': {**base_filter, 'reactions': {'$exists': True, '$ne': {}}}}
+    to_pairs = {'$project': {'created_at': 1, 'pairs': {'$objectToArray': '$reactions'}}}
+    unwind_emoji = {'$unwind': '$pairs'}
+    to_reactors = {'$project': {'created_at': 1, 'emoji': '$pairs.k', 'reactor': '$pairs.v'}}
+    unwind_reactor = {'$unwind': '$reactor'}
+    tag_bot = {
+        '$project': {
+            'created_at': 1,
+            'emoji': 1,
+            'reactor': 1,
+            'is_bot': {
+                '$or': [
+                    {'$in': ['$reactor', bot_nicks]},
+                    {'$regexMatch': {'input': '$reactor', 'regex': _bot_reactor_pattern()}},
+                ]
+            },
+        }
+    }
+    stages = [match_reacted, to_pairs, unwind_emoji, to_reactors, unwind_reactor, tag_bot]
+
+    reactor_filter: dict[str, Any] = {}
+    if emoji:
+        reactor_filter['emoji'] = emoji
+    if reactor:
+        # A literal 'bot' can't be a real reactor: Telegram usernames need 5+ characters.
+        if reactor == 'bot':
+            reactor_filter['is_bot'] = True
+        else:
+            reactor_filter['reactor'] = reactor.replace('@', '')
+    if reactor_filter:
+        stages.append({'$match': reactor_filter})
+
+    keep_direction = -1 if from_end == 'newest' else 1
+    rows_pipeline = [
+        {
+            '$sort': {
+                'created_at': keep_direction,
+                '_id': keep_direction,
+                'emoji': keep_direction,
+                'reactor': keep_direction,
+            }
+        },
+        {'$limit': limit},
+        {'$sort': {'created_at': 1, '_id': 1, 'emoji': 1, 'reactor': 1}},
+    ]
+    facet = {
+        '$facet': {
+            'rows': rows_pipeline,
+            'matched': [{'$count': 'n'}],
+            'by_emoji': [{'$group': {'_id': '$emoji', 'n': {'$sum': 1}}}],
+            'by_reactor': [{'$group': {'_id': '$reactor', 'n': {'$sum': 1}}}],
+            'by_reactor_kind': [{'$group': {'_id': '$is_bot', 'n': {'$sum': 1}}}],
+            'messages_reacted': [{'$group': {'_id': '$_id'}}, {'$count': 'n'}],
+        }
+    }
+    stages.append(facet)
+
+    cursor = await mongo.messages.aggregate(stages)
+    [facets] = await cursor.to_list(length=1)
+
+    row_docs = facets['rows']
+    ids = [str(doc['_id']) for doc in row_docs]
+    hydrated = await get_messages_by_ids(ids, size=len(ids)) if ids else []
+    messages_by_id = {m.id: m for m in hydrated}
+    rows = []
+    for doc in row_docs:
+        message = messages_by_id[str(doc['_id'])]
+        rows.append({
+            'message_id': message.id,
+            'ts': message.created_at.isoformat() if message.created_at else None,
+            'role': 'user' if message.role == UserRole.USER else 'bot',
+            'line': message.ai_format,
+            'emoji': doc['emoji'],
+            'reactor': doc['reactor'],
+            'reactor_is_bot': doc['is_bot'],
+        })
+
+    by_reactor_kind = _counts(facets['by_reactor_kind'])
+    totals = {
+        'matched': _count(facets['matched']),
+        'by_emoji': _counts(facets['by_emoji']),
+        'by_reactor': _counts(facets['by_reactor']),
+        'by_reactor_kind': {
+            'bot': by_reactor_kind.get(True, 0),
+            'user': by_reactor_kind.get(False, 0),
+        },
+        'messages_in_range': await mongo.messages.count_documents(base_filter),
+        'messages_reacted': _count(facets['messages_reacted']),
+    }
+    return _listing(rows, totals)
 
 
 def _render(messages: list[Message], window_format: WindowFormat) -> str | list[dict[str, str]]:
@@ -245,8 +450,11 @@ async def get_window(
     }
 
 
-async def list_snapshots(chat_id: int | None = None, limit: int = 50) -> list[dict[str, Any]]:
-    """Lists memory snapshots newest first, without their content."""
+async def list_snapshots(chat_id: int | None = None, limit: int = 50) -> dict[str, Any]:
+    """Lists memory snapshots newest first, without their content.
+
+    `totals.matched` is every snapshot stored for the chat, ignoring `limit`.
+    """
     chat_id = _chat(chat_id)
     limit = _clamp(limit, MAX_SNAPSHOTS)
     cursor = mongo.memory.find(
@@ -265,7 +473,8 @@ async def list_snapshots(chat_id: int | None = None, limit: int = 50) -> list[di
                 for info in participants.values()
             ),
         })
-    return snapshots
+    matched = await mongo.memory.count_documents({'chat_id': chat_id})
+    return _listing(snapshots, {'matched': matched})
 
 
 async def _snapshot_at(chat_id: int, at: datetime | None) -> dict | None:
@@ -458,19 +667,26 @@ async def get_user_facts(
     nick: str,
     query: str | None = None,
     limit: int = 5,
-) -> list[dict[str, Any]]:
-    """Returns a user's facts: the closest to `query`, or the most confident."""
+) -> dict[str, Any]:
+    """Returns a user's facts: the closest to `query`, or the most confident.
+
+    `totals.matched` is every fact stored for the nick, regardless of `query` or `limit`;
+    with `query`, it is the population `query` searched, not a count of matches.
+    """
     # Facts are stored bare — `facts/handlers.py:upsert_fact` strips `@` on write and the
     # character's own `get_user_facts` tool strips it on read — while memory keys
     # participants as `@nick`, which is where a caller usually copies the nick from.
     nick = nick.replace('@', '')
     limit = _clamp(limit, MAX_HITS)
+    matched = await mongo.facts.count_documents({'nickname': nick})
+    totals = {'matched': matched}
     if not query:
         cursor = mongo.facts.find({'nickname': nick}).sort('confidence', -1).limit(limit)
-        return [
+        facts = [
             {'text': doc['text'], 'confidence': doc['confidence']}
             for doc in await cursor.to_list(length=limit)
         ]
+        return _listing(facts, totals)
 
     client = facts_embedding_client
     vector = await client._get_embedding_vectors(query)
@@ -497,4 +713,4 @@ async def get_user_facts(
             })
         if len(facts) == limit:
             break
-    return facts
+    return _listing(facts, totals)
