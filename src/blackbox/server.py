@@ -143,8 +143,9 @@ async def list_messages(
         str | None,
         Field(
             description=(
-                "Only this author, with or without the leading @. The bot's nickname carries its "
-                'current character, so select the bot with `role` instead.'
+                'Only this author, with or without the leading @. The bare bot nickname is a '
+                "wildcard across every character (same as role='bot'); a tagged form like "
+                '`<nick>[code]` narrows to just that character.'
             )
         ),
     ] = None,
@@ -184,8 +185,9 @@ async def list_reactions(
         str | None,
         Field(
             description=(
-                'Only this reactor. The literal `bot` selects every bot reactor (see below); '
-                'any other value, with or without the leading @, is matched exactly.'
+                "Only this reactor. The literal 'bot', or the bare bot nickname itself, selects "
+                'every bot reactor (see below); a tagged form like `<nick>[code]`, or any other '
+                'value, with or without the leading @, is matched exactly.'
             )
         ),
     ] = None,

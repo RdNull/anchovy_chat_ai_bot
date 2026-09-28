@@ -222,3 +222,17 @@ def test_no_injected_service_variable_shadows_a_setting():
     assert not collisions, (
         f'injected Service env shadows settings — set enableServiceLinks: false: {collisions}'
     )
+
+
+def test_blackbox_deployment_gets_bot_nickname():
+    """`queries.py:_bot_reactor_pattern()` reads `settings.BOT_NICKNAME`. The blackbox
+    Deployment lists its env explicitly rather than pulling `bot-configmap` in wholesale, so
+    adding the key there does nothing on its own — it was once missing here entirely, and the
+    pod silently ran on the Pydantic default `AnchovyAiBot` instead of the real bot nickname,
+    which made every bare or legacy reactor name misclassify as human.
+    """
+    document = yaml.safe_load((_MANIFESTS / 'blackbox' / 'deployment.yaml').read_text())
+    container = document['spec']['template']['spec']['containers'][0]
+    env_names = {e['name'] for e in container['env']}
+
+    assert 'BOT_NICKNAME' in env_names

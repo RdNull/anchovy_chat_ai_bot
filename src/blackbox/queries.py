@@ -250,10 +250,18 @@ async def list_messages(
     asked yesterday" is a time question, not a similarity one. Rows are always oldest
     first; `from_end` only picks which end of the matching range `limit` keeps. `totals`
     is computed over every message matching the filters, ignoring `limit`.
+
+    `nick` as the bare bot nickname is a wildcard across every character (the same as
+    `role='bot'`); a tagged form (`<nick>[code]`) narrows to that one character.
     """
     chat_id = _chat(chat_id)
     # Stored bare, the same as facts; memory is where the `@nick` form comes from.
     nickname = nick.replace('@', '') if nick else None
+    if nickname == settings.BOT_NICKNAME:
+        # The bare nickname is a wildcard across every character, the same as `role='bot'` —
+        # a tagged form (`<nick>[code]`) is left to match exactly below, unchanged.
+        role = 'bot'
+        nickname = None
     messages = await get_messages(
         chat_id,
         size=_clamp(limit, MAX_MESSAGES),
@@ -293,6 +301,9 @@ async def list_reactions(
     carries no timestamp — see the tool description for what that means. Rows are
     chronological by message time, then emoji, then reactor; `from_end` only picks
     which end of the matching range `limit` keeps, the same as `list_messages`.
+
+    `reactor` as the literal `'bot'` or the bare bot nickname is a wildcard across every
+    bot reactor; a tagged form (`<nick>[code]`) narrows to that one character.
     """
     chat_id = _chat(chat_id)
     limit = _clamp(limit, MAX_MESSAGES)
@@ -328,11 +339,14 @@ async def list_reactions(
     if emoji:
         reactor_filter['emoji'] = emoji
     if reactor:
+        stripped = reactor.replace('@', '')
         # A literal 'bot' can't be a real reactor: Telegram usernames need 5+ characters.
-        if reactor == 'bot':
+        # The bare bot nickname itself is the same wildcard, spelled the way it actually
+        # appears in a row, rather than a tagged form naming one specific character.
+        if reactor == 'bot' or stripped == settings.BOT_NICKNAME:
             reactor_filter['is_bot'] = True
         else:
-            reactor_filter['reactor'] = reactor.replace('@', '')
+            reactor_filter['reactor'] = stripped
     if reactor_filter:
         stages.append({'$match': reactor_filter})
 
