@@ -27,6 +27,31 @@ async def _seed_chat(count: int) -> list:
     return messages
 
 
+async def _insert_message(
+    chat_id: int,
+    created_at: datetime,
+    role: UserRole = UserRole.USER,
+    nickname: str = 'alice',
+    text: str = 'hi',
+    reactions: dict | None = None,
+) -> str:
+    """Inserts a message with an exact `created_at` and, optionally, reactions.
+
+    `save_message` always stamps `created_at` as wall clock and never writes reactions, so
+    boundary-time and reaction fixtures go straight to Mongo, the same way `_save_snapshot`
+    does for memory.
+    """
+    result = await mongo.messages.insert_one({
+        'chat_id': chat_id,
+        'role': role.value,
+        'text': text,
+        'nickname': nickname,
+        'created_at': created_at.timestamp(),
+        'reactions': reactions or {},
+    })
+    return str(result.inserted_id)
+
+
 async def _save_snapshot(created_at: datetime, content: dict, decay: dict | None = None):
     await mongo.memory.insert_one({
         'chat_id': CHAT_ID,
@@ -74,9 +99,9 @@ async def test_chat_id_falls_back_to_the_configured_chat(mocker):
     mocker.patch.object(settings, 'BLACKBOX_CHAT_ID', CHAT_ID)
     await _save_snapshot(T0, {'participants': {}})
 
-    snapshots = await queries.list_snapshots()
+    result = await queries.list_snapshots()
 
-    assert len(snapshots) == 1
+    assert len(result['rows']) == 1
 
 
 async def test_missing_chat_id_without_a_default_raises(mocker):
@@ -237,7 +262,7 @@ async def test_list_messages_keeps_the_newest_bot_replies_in_time_order():
     await _say('a2', UserRole.AI, 'bot')
     await _say('a3', UserRole.AI, 'bot')
 
-    rows = await queries.list_messages(CHAT_ID, role='bot', limit=2)
+    rows = (await queries.list_messages(CHAT_ID, role='bot', limit=2))['rows']
 
     assert [r['role'] for r in rows] == ['bot', 'bot']
     assert _bodies('\n'.join(r['line'] for r in rows)) == ['bot: a2', 'bot: a3']
@@ -248,7 +273,7 @@ async def test_list_messages_oldest_end_by_nick_in_memory_form():
     await _say('other', nickname='bob')
     await _say('second', nickname='alice')
 
-    rows = await queries.list_messages(CHAT_ID, nick='@alice', limit=1, from_end='oldest')
+    rows = (await queries.list_messages(CHAT_ID, nick='@alice', limit=1, from_end='oldest'))['rows']
 
     assert _bodies(rows[0]['line']) == ['alice: first']
     assert rows[0]['role'] == 'user'
@@ -261,7 +286,7 @@ async def test_list_messages_time_range():
     end = datetime.now(UTC)
     await _say('after')
 
-    rows = await queries.list_messages(CHAT_ID, since=start, until=end)
+    rows = (await queries.list_messages(CHAT_ID, since=start, until=end))['rows']
 
     assert _bodies(rows[0]['line']) == ['alice: inside']
     assert len(rows) == 1
@@ -272,9 +297,212 @@ async def test_list_messages_clamps_the_limit(mocker):
     for i in range(4):
         await _say(f'm{i}')
 
-    rows = await queries.list_messages(CHAT_ID, limit=50)
+    rows = (await queries.list_messages(CHAT_ID, limit=50))['rows']
 
     assert _bodies('\n'.join(r['line'] for r in rows)) == ['alice: m2', 'alice: m3']
+
+
+async def test_list_messages_rows_include_reactions_only_when_present():
+    with_reaction = await _insert_message(
+        CHAT_ID, T0, nickname='alice', text='has reaction', reactions={'🔥': ['bob']}
+    )
+    without_reaction = await _insert_message(
+        CHAT_ID, T0 + timedelta(minutes=1), nickname='alice', text='no reaction'
+    )
+
+    rows = (await queries.list_messages(CHAT_ID))['rows']
+
+    by_id = {r['message_id']: r for r in rows}
+    assert by_id[with_reaction]['reactions'] == {'🔥': ['bob']}
+    assert 'reactions' not in by_id[without_reaction]
+
+
+async def test_list_messages_totals_ignore_limit_and_rows_stay_chronological():
+    for i in range(3):
+        await _say(f'm{i}')
+
+    small = await queries.list_messages(CHAT_ID, limit=1)
+    full = await queries.list_messages(CHAT_ID, limit=queries.MAX_MESSAGES)
+
+    assert small['totals'] == full['totals']
+    assert (small['truncated'], full['truncated']) == (True, False)
+    assert _bodies('\n'.join(r['line'] for r in full['rows'])) == [
+        'alice: m0',
+        'alice: m1',
+        'alice: m2',
+    ]
+
+    newest = (await queries.list_messages(CHAT_ID, limit=2, from_end='newest'))['rows']
+    oldest = (await queries.list_messages(CHAT_ID, limit=2, from_end='oldest'))['rows']
+    assert _bodies('\n'.join(r['line'] for r in newest)) == ['alice: m1', 'alice: m2']
+    assert _bodies('\n'.join(r['line'] for r in oldest)) == ['alice: m0', 'alice: m1']
+
+
+async def test_list_messages_totals_matched_equals_rows_at_every_filter_boundary():
+    """`since`/`until` are exclusive, so a message exactly at either bound is excluded."""
+    since = T0 + timedelta(minutes=5)
+    until = T0 + timedelta(minutes=10)
+    await _insert_message(CHAT_ID, since, nickname='alice', text='at since')
+    await _insert_message(CHAT_ID, since + timedelta(minutes=1), nickname='alice', text='inside')
+    await _insert_message(CHAT_ID, until, nickname='alice', text='at until')
+    await _insert_message(
+        CHAT_ID, since + timedelta(minutes=2), role=UserRole.AI, nickname='test_bot[x]', text='bot'
+    )
+    await _insert_message(CHAT_ID, since + timedelta(minutes=3), nickname='bob', text='other nick')
+
+    result = await queries.list_messages(
+        CHAT_ID, since=since, until=until, role='user', nick='alice', limit=queries.MAX_MESSAGES
+    )
+
+    assert result['totals']['matched'] == len(result['rows']) == 1
+    assert _bodies(result['rows'][0]['line']) == ['alice: inside']
+
+
+async def test_list_messages_totals_breakdowns():
+    await _insert_message(CHAT_ID, T0, nickname='alice')
+    await _insert_message(
+        CHAT_ID, T0 + timedelta(minutes=1), nickname='alice', reactions={'🔥': ['bob']}
+    )
+    await _insert_message(CHAT_ID, T0 + timedelta(minutes=2), role=UserRole.AI, nickname='bot')
+
+    result = await queries.list_messages(CHAT_ID)
+
+    assert result['totals'] == {
+        'matched': 3,
+        'by_role': {'user': 2, 'bot': 1},
+        'by_nick': {'alice': 2, 'bot': 1},
+        'with_reactions': 1,
+    }
+
+
+# --- list_reactions ---
+
+
+async def test_list_reactions_recognizes_every_bot_reactor_form():
+    tagged = 'test_bot[whyzzzy]'
+    parenthesized = 'test_bot(Dedka)'
+    plain = 'test_bot'
+    old_prefix = 'ShizoDedBot'  # a past BOT_NICKNAME value, never matching the current regex
+
+    # `old_prefix` is recognized only because it has spoken as `role=ai`, not by the regex.
+    await _insert_message(CHAT_ID, T0, role=UserRole.AI, nickname=old_prefix, text='old reply')
+    target = await _insert_message(
+        CHAT_ID,
+        T0 + timedelta(minutes=1),
+        nickname='alice',
+        text='hi',
+        reactions={'🤣': [tagged, parenthesized, plain, old_prefix], '👍': ['alice']},
+    )
+
+    result = await queries.list_reactions(CHAT_ID, reactor='bot')
+
+    assert {r['reactor'] for r in result['rows']} == {tagged, parenthesized, plain, old_prefix}
+    assert all(r['reactor_is_bot'] for r in result['rows'])
+    assert all(r['message_id'] == target for r in result['rows'])
+
+
+async def test_list_reactions_on_role_filters_to_bot_messages_with_mixed_reactors():
+    await _insert_message(CHAT_ID, T0, nickname='alice', text='q', reactions={'👍': ['bob']})
+    bot_message = await _insert_message(
+        CHAT_ID,
+        T0 + timedelta(minutes=1),
+        role=UserRole.AI,
+        nickname='test_bot[x]',
+        text='a',
+        reactions={'🤝': ['alice', 'bob'], '🤣': ['test_bot[x]']},
+    )
+
+    result = await queries.list_reactions(CHAT_ID, on_role='bot')
+
+    assert {(r['message_id'], r['emoji'], r['reactor']) for r in result['rows']} == {
+        (bot_message, '🤝', 'alice'),
+        (bot_message, '🤝', 'bob'),
+        (bot_message, '🤣', 'test_bot[x]'),
+    }
+    reactor_is_bot = {r['reactor']: r['reactor_is_bot'] for r in result['rows']}
+    assert reactor_is_bot == {'alice': False, 'bob': False, 'test_bot[x]': True}
+
+
+async def test_list_reactions_totals_ignore_limit_and_rows_stay_chronological():
+    ids = [
+        await _insert_message(
+            CHAT_ID, T0 + timedelta(minutes=i), text=f'm{i}', reactions={'🔥': ['alice']}
+        )
+        for i in range(3)
+    ]
+
+    small = await queries.list_reactions(CHAT_ID, limit=1)
+    full = await queries.list_reactions(CHAT_ID, limit=queries.MAX_MESSAGES)
+
+    assert small['totals'] == full['totals']
+    assert (small['truncated'], full['truncated']) == (True, False)
+    assert [r['message_id'] for r in full['rows']] == ids
+
+    newest = await queries.list_reactions(CHAT_ID, limit=2, from_end='newest')
+    oldest = await queries.list_reactions(CHAT_ID, limit=2, from_end='oldest')
+    assert [r['message_id'] for r in newest['rows']] == ids[1:]
+    assert [r['message_id'] for r in oldest['rows']] == ids[:2]
+
+
+async def test_list_reactions_excludes_a_message_just_outside_the_range():
+    since = T0
+    until = T0 + timedelta(minutes=10)
+    await _insert_message(CHAT_ID, since, text='at since', reactions={'🔥': ['alice']})
+    inside = await _insert_message(
+        CHAT_ID, since + timedelta(minutes=1), text='inside', reactions={'🔥': ['alice']}
+    )
+    await _insert_message(CHAT_ID, until, text='at until', reactions={'🔥': ['alice']})
+
+    result = await queries.list_reactions(CHAT_ID, since=since, until=until)
+
+    assert [r['message_id'] for r in result['rows']] == [inside]
+
+
+async def test_list_reactions_totals_match_hand_computed_values():
+    await _insert_message(
+        CHAT_ID,
+        T0,
+        nickname='alice',
+        reactions={'🔥': ['alice', 'bob'], '🤣': ['test_bot[x]']},
+    )
+    await _insert_message(
+        CHAT_ID, T0 + timedelta(minutes=1), nickname='bob', reactions={'🔥': ['alice']}
+    )
+    await _insert_message(CHAT_ID, T0 + timedelta(minutes=2), nickname='carol')  # unreacted
+
+    result = await queries.list_reactions(CHAT_ID)
+
+    assert result['totals'] == {
+        'matched': 4,
+        'by_emoji': {'🔥': 3, '🤣': 1},
+        'by_reactor': {'alice': 2, 'bob': 1, 'test_bot[x]': 1},
+        'by_reactor_kind': {'bot': 1, 'user': 3},
+        'messages_in_range': 3,
+        'messages_reacted': 2,
+    }
+
+
+async def test_list_reactions_filters_by_emoji_and_exact_reactor():
+    await _insert_message(CHAT_ID, T0, nickname='alice', reactions={'🔥': ['alice'], '🤣': ['bob']})
+
+    by_emoji = await queries.list_reactions(CHAT_ID, emoji='🤣')
+    by_reactor = await queries.list_reactions(CHAT_ID, reactor='@alice')
+
+    assert [(r['emoji'], r['reactor']) for r in by_emoji['rows']] == [('🤣', 'bob')]
+    assert [(r['emoji'], r['reactor']) for r in by_reactor['rows']] == [('🔥', 'alice')]
+
+
+async def test_list_reactions_issues_no_write_and_no_out_or_merge(mocker):
+    await _insert_message(CHAT_ID, T0, reactions={'🔥': ['alice']})
+    spy = mocker.spy(mongo.messages, 'aggregate')
+    before = await mongo.messages.find({}).to_list(length=None)
+
+    await queries.list_reactions(CHAT_ID)
+
+    after = await mongo.messages.find({}).to_list(length=None)
+    assert before == after
+    stages = spy.call_args.args[0]
+    assert not any(('$out' in stage or '$merge' in stage) for stage in stages)
 
 
 # --- list_snapshots / get_memory ---
@@ -292,9 +520,9 @@ async def test_list_snapshots_newest_first_with_counts():
         },
     )
 
-    snapshots = await queries.list_snapshots(CHAT_ID)
+    result = await queries.list_snapshots(CHAT_ID)
 
-    assert snapshots == [
+    assert result['rows'] == [
         {
             'created_at': (T0 + timedelta(days=1)).isoformat(),
             'nicks': ['alice', 'bob'],
@@ -302,6 +530,19 @@ async def test_list_snapshots_newest_first_with_counts():
         },
         {'created_at': T0.isoformat(), 'nicks': ['alice'], 'entry_count': 1},
     ]
+    assert result['totals'] == {'matched': 2}
+    assert result['truncated'] is False
+
+
+async def test_list_snapshots_totals_matched_ignores_limit():
+    await _save_snapshot(T0, {'participants': {}})
+    await _save_snapshot(T0 + timedelta(days=1), {'participants': {}})
+
+    result = await queries.list_snapshots(CHAT_ID, limit=1)
+
+    assert result['totals'] == {'matched': 2}
+    assert result['truncated'] is True
+    assert len(result['rows']) == 1
 
 
 async def test_get_memory_picks_the_snapshot_in_force_and_passes_it_through():
@@ -500,12 +741,13 @@ async def test_get_user_facts_without_query_orders_by_confidence(facts_qdrant):
         {'nickname': 'bob', 'text': 'other', 'confidence': 1.0},
     ])
 
-    facts = await queries.get_user_facts('alice')
+    result = await queries.get_user_facts('alice')
 
-    assert facts == [
+    assert result['rows'] == [
         {'text': 'high', 'confidence': 0.9},
         {'text': 'low', 'confidence': 0.5},
     ]
+    assert result['totals'] == {'matched': 2}
     assert facts_qdrant.query_points.call_count == 0
 
 
@@ -521,9 +763,24 @@ async def test_get_user_facts_accepts_the_memory_form_of_a_nick(facts_qdrant):
     by_confidence = await queries.get_user_facts('@alice')
     by_query = await queries.get_user_facts('@alice', query='coffee')
 
-    assert by_confidence == [{'text': 'likes coffee', 'confidence': 0.8}]
-    assert by_query == [{'text': 'likes coffee', 'confidence': 0.8, 'score': 0.9}]
+    assert by_confidence['rows'] == [{'text': 'likes coffee', 'confidence': 0.8}]
+    assert by_query['rows'] == [{'text': 'likes coffee', 'confidence': 0.8, 'score': 0.9}]
     assert facts_qdrant.query_points.call_args.kwargs['query_filter'].must[0].match.value == 'alice'
+
+
+async def test_get_user_facts_totals_matched_is_population_size_in_both_branches(facts_qdrant):
+    """With `query`, `matched` is the population searched, not the number of hits returned."""
+    await mongo.facts.insert_many([
+        {'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8},
+        {'nickname': 'alice', 'text': 'owns a bike', 'confidence': 0.6},
+    ])
+    facts_qdrant.query_points.return_value = _points()
+
+    by_confidence = await queries.get_user_facts('alice', limit=1)
+    by_query = await queries.get_user_facts('alice', query='coffee', limit=1)
+
+    assert by_confidence['totals'] == {'matched': 2}
+    assert by_query['totals'] == {'matched': 2}
 
 
 async def test_get_user_facts_with_query_dedupes_duplicated_points(facts_qdrant):
@@ -541,7 +798,7 @@ async def test_get_user_facts_with_query_dedupes_duplicated_points(facts_qdrant)
 
     facts = await queries.get_user_facts('alice', query='coffee')
 
-    assert facts == [
+    assert facts['rows'] == [
         {'text': 'likes coffee', 'confidence': 0.8, 'score': 0.9},
         {'text': 'owns a bike', 'confidence': 0.6, 'score': 0.7},
     ]

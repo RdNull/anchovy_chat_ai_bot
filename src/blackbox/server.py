@@ -1,4 +1,4 @@
-"""The blackbox MCP server: seven read-only tools over the bot's own data.
+"""The blackbox MCP server: eight read-only tools over the bot's own data.
 
 Tool registration only. The logic lives in `queries.py`, auth and the HTTP transport in
 `app.py`, and serving in `__main__.py`, so each concern has one place to change.
@@ -155,15 +155,19 @@ async def list_messages(
             description='Which end of the matching range `limit` keeps: the newest or the oldest.',
         ),
     ] = 'newest',
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Messages in time order, filtered by time range, role and author — the plain "what was
     said recently / yesterday / around then" read. Use this, not `find_windows`, for any question
     about when rather than about what.
 
-    Rows are chronological whichever end `from_end` keeps. `line` is the message as memory
-    extraction renders it; its `[ГГГГ-ММ-ДД ЧЧ:ММ]` stamp is the chat's local time (Asia/Almaty),
-    while `ts`, `since` and `until` are UTC. Pass a row's `message_id` to `get_window` with
-    `format='answer'` to see exactly what the bot saw around it.
+    Returns `{rows, totals, truncated}`. `totals` (`matched`, `by_role`, `by_nick`,
+    `with_reactions`) is computed over every message matching the filters, ignoring `limit`;
+    `truncated` is true when `limit` cut off some of them. Rows are chronological whichever end
+    `from_end` keeps. A row's `reactions` key is present, holding the raw stored dict, only when
+    that message has any — use `list_reactions` to filter or count by reaction instead. `line` is
+    the message as memory extraction renders it; its `[ГГГГ-ММ-ДД ЧЧ:ММ]` stamp is the chat's local
+    time (Asia/Almaty), while `ts`, `since` and `until` are UTC. Pass a row's `message_id` to
+    `get_window` with `format='answer'` to see exactly what the bot saw around it.
     """
     return await _run(
         'list_messages',
@@ -172,12 +176,67 @@ async def list_messages(
 
 
 @mcp.tool(annotations=_READ_ONLY)
+async def list_reactions(
+    chat_id: ChatId = None,
+    since: Moment = None,
+    until: Moment = None,
+    reactor: Annotated[
+        str | None,
+        Field(
+            description=(
+                'Only this reactor. The literal `bot` selects every bot reactor (see below); '
+                'any other value, with or without the leading @, is matched exactly.'
+            )
+        ),
+    ] = None,
+    on_role: Annotated[
+        queries.Role | None,
+        Field(description='Only reactions on messages of this role: `user` or `bot`.'),
+    ] = None,
+    emoji: Annotated[str | None, Field(description='Only this emoji.')] = None,
+    limit: Annotated[int, Field(ge=1, le=queries.MAX_MESSAGES)] = 50,
+    from_end: Annotated[
+        queries.FromEnd,
+        Field(
+            description='Which end of the matching range `limit` keeps: the newest or the oldest.',
+        ),
+    ] = 'newest',
+) -> dict[str, Any]:
+    """Reactions, one row per (message, emoji, reactor) — the only way to see a bot reaction at
+    all, since a reaction isn't a message and `list_messages` never shows one.
+
+    `since`/`until` filter the **reacted-to message's** time, not when the reaction was made:
+    reaction time isn't stored, so a reaction made in range on a message outside it is not
+    returned. Exact reaction times are in Axiom (`REACTION_RECEIVED`, `REPLY_SENT kind=reaction`).
+
+    A bot reactor is: any nickname that has ever spoken as `role=bot` in this chat (covers past
+    characters and past `BOT_NICKNAME` values), plus any nickname matching the tagged
+    (`<BOT_NICKNAME>[code]`) or legacy (`<BOT_NICKNAME>` / `<BOT_NICKNAME>(name)`) forms of the
+    *current* `BOT_NICKNAME` — so a character that only ever reacted is still caught.
+    `reactor_is_bot` reports this per row; `reactor='bot'` filters to it.
+
+    Returns `{rows, totals, truncated}`. `totals` — `matched`, `by_emoji`, `by_reactor`,
+    `by_reactor_kind` (`bot`/`user`), `messages_in_range` (messages matching the time/role
+    filters, reacted or not), `messages_reacted` — is computed over every matching reaction,
+    ignoring `limit`. Rows are chronological by message time, then emoji, then reactor;
+    `from_end` only picks which end of the matching range `limit` keeps.
+    """
+    return await _run(
+        'list_reactions',
+        queries.list_reactions(chat_id, since, until, reactor, on_role, emoji, limit, from_end),
+    )
+
+
+@mcp.tool(annotations=_READ_ONLY)
 async def list_snapshots(
     chat_id: ChatId = None,
     limit: Annotated[int, Field(ge=1, le=queries.MAX_SNAPSHOTS)] = 50,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Memory snapshots, newest first: when each was taken, whose memory it held, and how many
     entries. `created_at` is the newest message the snapshot processed, not when it was saved.
+
+    Returns `{rows, totals, truncated}`; `totals.matched` is every snapshot stored for the chat,
+    ignoring `limit`.
     """
     return await _run('list_snapshots', queries.list_snapshots(chat_id, limit))
 
@@ -228,6 +287,10 @@ async def get_user_facts(
     nick: Annotated[str, Field(description='Telegram nick, with or without the leading @.')],
     query: Annotated[str | None, Field(description='Omit for the most confident facts.')] = None,
     limit: Annotated[int, Field(ge=1, le=queries.MAX_HITS)] = 5,
-) -> list[dict[str, Any]]:
-    """Facts extracted about one user: those closest to `query`, or the most confident."""
+) -> dict[str, Any]:
+    """Facts extracted about one user: those closest to `query`, or the most confident.
+
+    Returns `{rows, totals, truncated}`. `totals.matched` is every fact stored for the nick,
+    ignoring `query` and `limit` — with `query`, it's the population searched, not a match count.
+    """
     return await _run('get_user_facts', queries.get_user_facts(nick, query, limit))

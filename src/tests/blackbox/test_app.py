@@ -10,7 +10,7 @@ import logging
 import pytest
 from starlette.testclient import TestClient
 
-from src import mongo
+from src import mongo, settings
 from src.blackbox import app as blackbox_app
 from src.blackbox.app import BearerAuth, build_app
 from src.embeddings.messages import messages_embeddings_client
@@ -21,6 +21,7 @@ TOOLS = {
     'find_windows',
     'get_window',
     'list_messages',
+    'list_reactions',
     'list_snapshots',
     'get_memory',
     'diff_memory',
@@ -104,6 +105,42 @@ def test_a_correct_token_initializes_and_lists_every_tool(client):
     assert initialized.json()['result']['serverInfo']['name'] == 'blackbox'
     assert listed.status_code == 200
     assert {tool['name'] for tool in listed.json()['result']['tools']} == TOOLS
+
+
+def test_list_reactions_is_read_only_and_documents_message_time_semantics(client):
+    client.post('/', json=_INITIALIZE, headers=_authorized())
+    listed = client.post(
+        '/',
+        json={'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list', 'params': {}},
+        headers=_authorized(),
+    )
+
+    tools = {tool['name']: tool for tool in listed.json()['result']['tools']}
+    reactions_tool = tools['list_reactions']
+
+    assert reactions_tool['annotations']['readOnlyHint'] is True
+    assert 'REACTION_RECEIVED' in reactions_tool['description']
+    assert 'REPLY_SENT kind=reaction' in reactions_tool['description']
+
+
+def test_list_reactions_error_goes_through_run_with_its_message(client, mocker):
+    mocker.patch.object(settings, 'BLACKBOX_CHAT_ID', None)
+    client.post('/', json=_INITIALIZE, headers=_authorized())
+
+    called = client.post(
+        '/',
+        json={
+            'jsonrpc': '2.0',
+            'id': 2,
+            'method': 'tools/call',
+            'params': {'name': 'list_reactions', 'arguments': {}},
+        },
+        headers=_authorized(),
+    )
+
+    result = called.json()['result']
+    assert result['isError'] is True
+    assert 'chat_id was not given and BLACKBOX_CHAT_ID is not set' in result['content'][0]['text']
 
 
 def test_healthz_needs_no_token_and_returns_no_data(client):
