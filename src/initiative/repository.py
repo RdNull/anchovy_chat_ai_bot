@@ -29,12 +29,12 @@ async def save_initiative_run(chat_id: int, last_message_time: datetime) -> str:
 
 
 async def mark_initiative_replied(run_id: str) -> None:
-    """Stamps the claimed run as sent — the record `count_replied_since` counts.
+    """Stamps the claimed run as delivered — the record `count_replied_since` counts.
 
-    Called from the send path only, before the reply is actually dispatched: it
-    reserves the day's slot rather than confirming delivery, which is what keeps the
-    daily-cap gate simple. `ObjectId` is mandatory here — a bare string id makes this
-    an update against a document that never matches, the same silent-no-op failure
+    Called by the reply task only after `respond` actually posted text or a sticker, so
+    a run that sent nothing (tool ignored, rate limit, Telegram error) spends no slot.
+    `ObjectId` is mandatory here — a bare string id makes this an update against a
+    document that never matches, the same silent-no-op failure
     `update_media_description_status` had (root CLAUDE.md, Media pipeline section).
     """
     await db.initiative_runs.update_one(

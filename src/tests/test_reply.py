@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from src import settings
-from src.characters.reply import Replier
+from src.characters.reply import Replier, ReplyKind
 from src.messages.repository import get_message_by_tg_id, get_messages, save_message
 from src.messages.models import Message, UserRole
 
@@ -224,3 +224,24 @@ async def test_reply_reaction_writes_bot_reaction_to_message(make_bot):
 
     history = await get_messages(222)
     assert all(m.role == UserRole.USER for m in history)
+
+
+async def test_delivered_records_each_kind_after_telegram_accepts(make_bot):
+    replier = make_replier(make_bot)
+    replier.target_message.telegram_id = 42
+
+    await replier.reply_message('hi')
+    await replier.reply_sticker('file', 'uniq')
+    await replier.reply_reaction('👍')
+
+    assert replier.delivered == [ReplyKind.TEXT, ReplyKind.STICKER, ReplyKind.REACTION]
+
+
+async def test_delivered_skips_a_reaction_telegram_refused(make_bot):
+    replier = make_replier(make_bot)
+    replier.target_message.telegram_id = 42
+    replier.bot.set_message_reaction = AsyncMock(return_value=False)
+
+    await replier.reply_reaction('👍')
+
+    assert replier.delivered == []
