@@ -1,15 +1,28 @@
 import asyncio
+import logging
+import time
 from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock, MagicMock, call
 
+import pytest
 from telegram.constants import ChatAction
 
 from src import settings
 from src.initiative import handlers
 from src.initiative.models import InitiativeVerdict
-from src.initiative.repository import get_last_initiative_run
+from src.initiative.repository import count_replied_since, get_last_initiative_run
 from src.messages.repository import save_message
 from src.messages.models import Message, UserRole
+
+
+@pytest.fixture(autouse=True)
+def clean_in_flight():
+    # Module-level state: a test that mocks the reply task leaves its marker behind.
+    handlers._IN_FLIGHT.clear()
+    handlers._REPLY_TASKS.clear()
+    yield
+    handlers._IN_FLIGHT.clear()
+    handlers._REPLY_TASKS.clear()
 
 
 def make_message(chat_id=222, role=UserRole.USER, text='hi', nickname='user1', created_at=None):
@@ -144,17 +157,18 @@ async def test_run_initiative_checks_schedules_reply_on_full_pass(mocker):
     mock_run_reply = mocker.patch(
         'src.initiative.handlers._run_initiative_reply', new_callable=AsyncMock
     )
-    mock_mark_replied = handlers.mark_initiative_replied
 
     await handlers.run_initiative_checks(222)
     await asyncio.sleep(0)  # let the created task actually run
 
     assert mock_run_reply.call_count == 1
-    assert mock_run_reply.call_args == call(chat_id=222, character=character, evaluation=evaluation)
-    # Stamped before the task is spawned — the send path reserves the day's slot at
-    # decision time, using the run id the claim returned.
-    assert mock_mark_replied.call_count == 1
-    assert mock_mark_replied.call_args == call('run-id')
+    assert mock_run_reply.call_args == call(
+        chat_id=222, character=character, evaluation=evaluation, run_id='run-id'
+    )
+    # The slot is stamped by the reply task once something was delivered, not here.
+    assert handlers.mark_initiative_replied.call_count == 0
+    # Ownership of the marker passed to the (mocked) reply task.
+    assert 222 in handlers._IN_FLIGHT
 
 
 async def test_run_initiative_checks_dry_run_when_initiative_disabled(mocker):
@@ -359,7 +373,9 @@ async def test_run_initiative_reply_builds_replier_targeting_the_evaluated_messa
     target = make_message(text='target')
     evaluation = InitiativeVerdict(target_message=target, score=0.9, reason='r')
 
-    await handlers._run_initiative_reply(chat_id=222, character=character, evaluation=evaluation)
+    await handlers._run_initiative_reply(
+        chat_id=222, character=character, evaluation=evaluation, run_id='run-id'
+    )
 
     # `get_character` hands out a shared singleton, so a detached task re-stamping
     # `.memory` could land this chat's snapshot in another chat's in-flight reply.
@@ -382,7 +398,9 @@ async def test_run_initiative_reply_targets_the_chat_when_no_target_message(mock
     character.respond = AsyncMock()
     evaluation = InitiativeVerdict(target_message=None, score=0.9, reason='r')
 
-    await handlers._run_initiative_reply(chat_id=222, character=character, evaluation=evaluation)
+    await handlers._run_initiative_reply(
+        chat_id=222, character=character, evaluation=evaluation, run_id='run-id'
+    )
 
     replier = character.respond.call_args[0][0]
     assert replier.target_message is None
@@ -396,7 +414,9 @@ async def test_run_initiative_reply_sends_typing_action(mocker, make_bot):
     character.respond = AsyncMock()
     evaluation = InitiativeVerdict(target_message=None, score=0.9, reason='r')
 
-    await handlers._run_initiative_reply(chat_id=222, character=character, evaluation=evaluation)
+    await handlers._run_initiative_reply(
+        chat_id=222, character=character, evaluation=evaluation, run_id='run-id'
+    )
 
     assert mock_typing.call_args == call(222, ChatAction.TYPING)
 
@@ -431,3 +451,217 @@ def test_with_target_leaves_the_window_alone_without_a_target():
     window = [make_message()]
 
     assert handlers._with_target(window, None) is window
+
+
+# --- in-flight guard, delivery-time slot, events ---
+
+
+def _reply_done_records(caplog):
+    return [r for r in caplog.records if getattr(r, 'event', None) == 'INITIATIVE_REPLY_DONE']
+
+
+def _skip_reasons(caplog):
+    return [
+        getattr(r, 'reason', None)
+        for r in caplog.records
+        if getattr(r, 'event', None) == 'INITIATIVE_SKIPPED'
+    ]
+
+
+async def _replied_run_count(chat_id=222):
+    return await count_replied_since(chat_id, timedelta(hours=1))
+
+
+def _burst_settings(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
+    mocker.patch.object(settings, 'INITIATIVE_ENABLED', True)
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 5)
+    mocker.patch.object(settings, 'INITIATIVE_COOLDOWN_MINUTES', 0)
+    mocker.patch.object(settings, 'INITIATIVE_MIN_GAP_MESSAGES', 0)
+    mocker.patch.object(settings, 'INITIATIVE_DAILY_LIMIT', 3)
+    mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
+
+
+def _mock_slow_judge_and_respond(mocker, make_bot, send_kind, run_seconds=0.4):
+    mocker.patch('src.initiative.handlers.get_bot', return_value=make_bot())
+    mocker.patch('src.initiative.handlers.get_chat_character', AsyncMock(return_value=MagicMock()))
+
+    async def slow_judge(*_args, **_kwargs):
+        await asyncio.sleep(run_seconds)
+        return InitiativeVerdict(target_message=None, score=0.7, reason='r')
+
+    mocker.patch('src.initiative.handlers.evaluate_initiative', slow_judge)
+
+    async def slow_respond(replier, _messages):
+        await asyncio.sleep(run_seconds)
+        if send_kind:
+            replier.delivered.append(send_kind)
+
+    character = MagicMock()
+    character.respond = slow_respond
+    mocker.patch('src.initiative.handlers.get_chat_character', AsyncMock(return_value=character))
+
+
+async def _replay_burst(count=16, interval=0.02):
+    checks = []
+    for i in range(count):
+        await save_message(make_message(text=f'burst {i}'))
+        checks.append(asyncio.create_task(handlers.run_initiative_checks(222)))
+        await asyncio.sleep(interval)
+
+    await asyncio.gather(*checks)
+    await asyncio.gather(*list(handlers._REPLY_TASKS))
+
+
+async def test_burst_dispatches_once_and_stamps_one_slot(mocker, make_bot, caplog):
+    _burst_settings(mocker)
+    _mock_slow_judge_and_respond(mocker, make_bot, send_kind='text')
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await _replay_burst()
+
+    dispatched = [r for r in caplog.records if getattr(r, 'event', None) == 'INITIATIVE_DISPATCHED']
+    assert len(dispatched) == 1
+    assert await _replied_run_count() == 1
+    assert _skip_reasons(caplog).count('in_flight') > 0
+    done = _reply_done_records(caplog)
+    assert len(done) == 1
+    assert done[0].outcome == 'delivered'
+    assert done[0].slot_spent is True
+    assert 222 not in handlers._IN_FLIGHT
+
+
+async def test_reply_that_sends_nothing_spends_no_slot_and_frees_the_chat(mocker, make_bot, caplog):
+    _burst_settings(mocker)
+    _mock_slow_judge_and_respond(mocker, make_bot, send_kind=None)
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await _replay_burst()
+
+    assert await _replied_run_count() == 0
+    done = _reply_done_records(caplog)
+    assert len(done) == 1
+    assert done[0].outcome == 'empty'
+    assert done[0].slot_spent is False
+    assert 222 not in handlers._IN_FLIGHT
+
+
+async def test_reaction_only_reply_spends_no_slot(mocker, make_bot, caplog):
+    _burst_settings(mocker)
+    _mock_slow_judge_and_respond(mocker, make_bot, send_kind='reaction')
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await _replay_burst()
+
+    assert await _replied_run_count() == 0
+    done = _reply_done_records(caplog)
+    assert done[0].delivered_kinds == ['reaction']
+    assert done[0].slot_spent is False
+
+
+async def test_marker_is_cleared_when_below_threshold(mocker):
+    _mock_full_pass(mocker)
+    mocker.patch('src.initiative.handlers.decide', AsyncMock(return_value=False))
+
+    await handlers.run_initiative_checks(222)
+
+    assert 222 not in handlers._IN_FLIGHT
+
+
+async def test_marker_is_cleared_on_dry_run(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_ENABLED', False)
+    _mock_full_pass(mocker)
+
+    await handlers.run_initiative_checks(222)
+
+    assert 222 not in handlers._IN_FLIGHT
+
+
+async def test_marker_is_cleared_when_evaluation_raises(mocker):
+    _mock_full_pass(mocker)
+    mocker.patch(
+        'src.initiative.handlers.evaluate_initiative', AsyncMock(side_effect=RuntimeError('boom'))
+    )
+
+    await handlers.run_initiative_checks(222)
+
+    assert 222 not in handlers._IN_FLIGHT
+
+
+async def test_marker_is_cleared_when_get_chat_character_raises(mocker):
+    _mock_full_pass(mocker)
+    mocker.patch(
+        'src.initiative.handlers.get_chat_character', AsyncMock(side_effect=RuntimeError('boom'))
+    )
+
+    await handlers.run_initiative_checks(222)
+
+    assert 222 not in handlers._IN_FLIGHT
+
+
+async def test_marker_is_cleared_and_outcome_is_error_when_respond_raises(mocker, make_bot, caplog):
+    mocker.patch('src.initiative.handlers.get_bot', return_value=make_bot())
+    mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
+    mocker.patch('src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[]))
+    mock_mark = mocker.patch('src.initiative.handlers.mark_initiative_replied', AsyncMock())
+    character = MagicMock()
+    character.respond = AsyncMock(side_effect=RuntimeError('boom'))
+    evaluation = InitiativeVerdict(target_message=None, score=0.9, reason='r')
+    handlers._IN_FLIGHT[222] = time.monotonic()
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await handlers._run_initiative_reply(
+            chat_id=222, character=character, evaluation=evaluation, run_id='run-id'
+        )
+
+    assert 222 not in handlers._IN_FLIGHT
+    assert mock_mark.call_count == 0
+    assert _reply_done_records(caplog)[0].outcome == 'error'
+
+
+async def test_in_flight_skip_inserts_no_run(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_CHECKS_ENABLED', True)
+    handlers._IN_FLIGHT[222] = time.monotonic()
+    mock_save_run = mocker.patch(
+        'src.initiative.handlers.save_initiative_run', new_callable=AsyncMock
+    )
+    mock_get_run = mocker.patch(
+        'src.initiative.handlers.get_last_initiative_run', new_callable=AsyncMock
+    )
+
+    claim = await handlers._claim_window(222)
+
+    assert claim.candidates == []
+    assert mock_save_run.call_count == 0
+    assert mock_get_run.call_count == 0
+
+
+async def test_stale_marker_does_not_block_and_is_warned_about(mocker, caplog):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch('src.initiative.handlers.get_last_initiative_run', AsyncMock(return_value=None))
+    mocker.patch(
+        'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=[make_message()])
+    )
+    handlers._IN_FLIGHT[222] = time.monotonic() - handlers._IN_FLIGHT_STALE_S - 1
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        claim = await handlers._claim_window(222)
+
+    assert claim.candidates != []
+    stale = [r for r in caplog.records if getattr(r, 'event', None) == 'INITIATIVE_IN_FLIGHT_STALE']
+    assert len(stale) == 1
+
+
+async def test_marker_of_one_chat_does_not_block_another(mocker):
+    mocker.patch.object(settings, 'INITIATIVE_TRIGGER_SIZE', 1)
+    mocker.patch('src.initiative.handlers.get_last_initiative_run', AsyncMock(return_value=None))
+    mocker.patch(
+        'src.initiative.handlers.fetch_last_messages',
+        AsyncMock(return_value=[make_message(chat_id=333)]),
+    )
+    handlers._IN_FLIGHT[222] = time.monotonic()
+
+    claim = await handlers._claim_window(333)
+
+    assert claim.candidates != []
+    assert 333 in handlers._IN_FLIGHT

@@ -43,7 +43,7 @@ bucket is `(count of MESSAGE_ANSWER_DONE) - (sum of buckets above)`:
 
 Note: `MESSAGE_ANSWER_DONE` is only emitted by the mention/reply path
 (`src/messages/response.py`). Initiative-driven replies emit
-`INITIATIVE_REPLY_SENT` instead and never `MESSAGE_ANSWER_DONE`, so an
+`INITIATIVE_DISPATCHED` / `INITIATIVE_REPLY_DONE` instead and never `MESSAGE_ANSWER_DONE`, so an
 unfiltered window mixes the two paths into this arithmetic.
 
 Bad number: `context_calls=0` dominating the distribution — the model is

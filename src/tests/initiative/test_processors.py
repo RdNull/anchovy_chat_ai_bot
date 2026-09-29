@@ -7,7 +7,7 @@ from src.characters.character import Character
 from src.initiative.models import InitiativeDecision
 from src.initiative.processors import evaluate_initiative
 from src.memory.models import ChatState, MemoryData, StructuredMemory
-from src.messages.models import Message, UserRole
+from src.messages.models import Message, MessageMedia, MessageMediaTypes, UserRole
 
 _TIMESTAMP_PATTERN = re.compile(r'\[Текущее время: \d{4}-\d{2}-\d{2} \d{2}:\d{2}]')
 
@@ -346,3 +346,36 @@ async def test_evaluate_initiative_renders_own_reactions_by_tagged_nickname(mock
 
     prompt = rendered_system_prompt(llm)
     assert f'⤷ 🤡 {settings.BOT_NICKNAME}[test], {settings.BOT_NICKNAME}[other]' in prompt
+
+
+# --- repeat collapsing in the rendered window ---
+
+
+def _sticker(nickname='b'):
+    media = MessageMedia(media_id='f', unique_id='s1', type=MessageMediaTypes.STICKER)
+    return Message(chat_id=1, role=UserRole.USER, nickname=nickname, media=media)
+
+
+async def test_evaluate_initiative_renders_one_line_per_repeat_group_with_a_count(mocker):
+    first = make_message(text='first', nickname='a')
+    stickers = [_sticker() for _ in range(3)]
+    last = make_message(text='last', nickname='a')
+    llm = mock_initiative_llm(mocker, InitiativeDecision(score=0.6, target_index=2, reason='r'))
+
+    result = await evaluate_initiative(make_character(), [], [first, *stickers, last])
+
+    prompt = rendered_system_prompt(llm)
+    candidate_lines = [line for line in prompt.splitlines() if re.match(r'#\d+ ▸', line)]
+    assert len(candidate_lines) == 3
+    assert candidate_lines[1].endswith(' ×3')
+    assert not candidate_lines[0].endswith('×1')
+    assert result.target_message is stickers[-1]
+
+
+async def test_evaluate_initiative_target_index_counts_groups_not_messages(mocker):
+    candidates = [make_message(text='a'), _sticker(), _sticker(), make_message(text='c')]
+    mock_initiative_llm(mocker, InitiativeDecision(score=0.6, target_index=4, reason='r'))
+
+    result = await evaluate_initiative(make_character(), [], candidates)
+
+    assert result.target_message is None

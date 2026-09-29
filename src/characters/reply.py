@@ -17,6 +17,9 @@ class Replier:
         self.character = character
         self.chat_id = chat_id
         self.target_message = target
+        # Kinds actually delivered to Telegram, appended after each call succeeds. The
+        # initiative path reads it to decide whether a daily slot was really spent.
+        self.delivered: list[str] = []
 
     async def reply_message(self, text: str) -> Message:
         # The full text is chat content, not diagnostic metadata -- it moves to its own
@@ -31,6 +34,7 @@ class Replier:
             reply_parameters=self._get_reply_params(),
             text=text,
         )
+        self.delivered.append('text')
         return await self._save_message(reply.message_id, text)
 
     async def reply_sticker(self, file_id: str, unique_id: str) -> Message:
@@ -43,6 +47,7 @@ class Replier:
             reply_parameters=self._get_reply_params(),
             sticker=file_id,
         )
+        self.delivered.append('sticker')
         return await self._save_message(
             reply.message_id,
             media=MessageMedia(
@@ -65,6 +70,7 @@ class Replier:
         if not result:
             return False
 
+        self.delivered.append('reaction')
         # Logged only on confirmed delivery -- otherwise a rejected reaction would
         # still count as sent in the REPLY_SENT Axiom metric.
         logger.info(

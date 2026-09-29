@@ -7,6 +7,7 @@ from langsmith import traceable
 from src import ai
 from src.characters.character import Character
 from src.initiative.models import InitiativeDecision, InitiativeVerdict
+from src.initiative.policies import RepeatGroup, collapse_repeats
 from src.logs import elapsed_ms, event, logger
 from src.messages.models import Message
 from src.prompt_manager import prompt_manager
@@ -21,8 +22,9 @@ async def evaluate_initiative(
 ) -> InitiativeVerdict:
     nickname = character.nickname
     rendered_context = '\n'.join(f'▸ {m.ai_format_for(nickname)}' for m in context)
+    groups = collapse_repeats(candidates)
     rendered_candidates = '\n'.join(
-        f'#{i} ▸ {m.ai_format_for(nickname)}' for i, m in enumerate(candidates, start=1)
+        _render_group(i, group, nickname) for i, group in enumerate(groups, start=1)
     )
 
     llm = ai.get_initiative_model(version='gemini-3.8-flash-low')
@@ -62,14 +64,16 @@ async def evaluate_initiative(
     # `0` included — means 'no target', not a failed run: a stray index must not
     # throw away an otherwise good score.
     target_index = evaluation_result.target_index or 0
-    target_message = candidates[target_index - 1] if 0 < target_index <= len(candidates) else None
+    target_message = None
+    if 0 < target_index <= len(groups):
+        target_message = groups[target_index - 1].representative
     if evaluation_result.target_index and target_message is None:
         logger.warning(
             'Initiative evaluation target_index out of range',
             extra=event(
                 'INITIATIVE_TARGET_OUT_OF_RANGE',
                 target_index=evaluation_result.target_index,
-                candidates=len(candidates),
+                candidates=len(groups),
             ),
         )
 
@@ -91,7 +95,7 @@ async def evaluate_initiative(
     target_fields = {}
     if target_message and target_message.created_at and candidates[-1].created_at:
         target_fields = {
-            'target_distance': len(candidates) - target_index,
+            'target_distance': len(groups) - target_index,
             'target_age_s': int(
                 (candidates[-1].created_at - target_message.created_at).total_seconds()
             ),
@@ -113,3 +117,11 @@ async def evaluate_initiative(
         score=evaluation_result.score,
         reason=evaluation_result.reason,
     )
+
+
+def _render_group(index: int, group: RepeatGroup, nickname: str) -> str:
+    line = f'#{index} ▸ {group.representative.ai_format_for(nickname)}'
+    if group.count > 1:
+        line += f' ×{group.count}'
+
+    return line

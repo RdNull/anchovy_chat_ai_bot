@@ -1,4 +1,5 @@
 import asyncio
+import time
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -9,14 +10,14 @@ from src.characters.character import Character
 from src.characters.registry import get_chat_character
 from src.characters.reply import Replier
 from src.initiative.models import InitiativeVerdict
-from src.initiative.policies import decide, pre_check, split_at_gap
+from src.initiative.policies import collapse_repeats, decide, pre_check, split_at_gap
 from src.initiative.processors import evaluate_initiative
 from src.initiative.repository import (
     get_last_initiative_run,
     mark_initiative_replied,
     save_initiative_run,
 )
-from src.logs import event, logger
+from src.logs import elapsed_ms, event, logger
 from src.memory.repository import get_last_memory
 from src.messages.models import Message
 from src.messages.repository import fetch_last_messages
@@ -30,6 +31,19 @@ from src.running_app import get_bot
 # short and ends before the LLM call.
 INITIATIVE_RUN_LOCK = asyncio.Lock()
 
+# chat_id -> `time.monotonic()` at claim. One initiative run per chat may be in flight
+# (claim -> judge -> reply): the gates read *saved* bot messages, and the reply is saved
+# seconds after the claim, so nothing else covers that period. In-process on purpose —
+# one replica, and a restart kills the in-flight task anyway. Set in `_claim_window`,
+# cleared by `run_initiative_checks` on every non-dispatch exit and by
+# `_run_initiative_reply` after a dispatch.
+_IN_FLIGHT: dict[int, float] = {}
+# Backstop only: a marker older than this is overwritten rather than trusted.
+_IN_FLIGHT_STALE_S = settings.AI_TIMEOUT + 60
+# Strong references: a bare `create_task` can be garbage-collected mid-run, which is the
+# one way its `finally` (and so the marker clear) would not run.
+_REPLY_TASKS: set[asyncio.Task] = set()
+
 
 async def run_initiative_checks(chat_id: int):
     if not settings.INITIATIVE_CHECKS_ENABLED:
@@ -40,6 +54,23 @@ async def run_initiative_checks(chat_id: int):
     if not claim.candidates:
         return
 
+    # The marker is ours from the claim until dispatch; a dispatch hands it to the reply task.
+    dispatched = False
+    try:
+        dispatched = await _evaluate_and_dispatch(chat_id, claim)
+    except Exception:
+        logger.error(
+            'Initiative run failed before dispatch',
+            exc_info=True,
+            extra=event('INITIATIVE_RUN_ERROR'),
+        )
+    finally:
+        if not dispatched:
+            _IN_FLIGHT.pop(chat_id, None)
+
+
+async def _evaluate_and_dispatch(chat_id: int, claim: ClaimedWindow) -> bool:
+    """Returns True when a reply task was spawned (and now owns the in-flight marker)."""
     last_memory = await get_last_memory(chat_id)
     character: Character = await get_chat_character(chat_id=chat_id, memory=last_memory)
     evaluation = await evaluate_initiative(character, claim.context, claim.candidates)
@@ -53,31 +84,38 @@ async def run_initiative_checks(chat_id: int):
                 threshold=settings.INITIATIVE_SCORE_THRESHOLD,
             ),
         )
-        return
+        return False
 
     if not settings.INITIATIVE_ENABLED:
         logger.info(
             'Initiative run would reply (dry run)',
             extra=event('INITIATIVE_DRY_RUN', score=evaluation.score, reason=evaluation.reason),
         )
-        return
+        return False
 
-    # Stamped before the task is spawned, not inside it: this reserves the day's slot
-    # at decision time and keeps the daily-cap gate simple, and it avoids threading a
-    # run id into a detached task for a write that has nothing to do with the reply.
-    await mark_initiative_replied(claim.run_id)
-
-    asyncio.create_task(
-        _run_initiative_reply(chat_id=chat_id, character=character, evaluation=evaluation)
+    logger.info(
+        'Initiative run dispatched',
+        extra=event('INITIATIVE_DISPATCHED', score=evaluation.score, run_id=claim.run_id),
     )
+    task = asyncio.create_task(
+        _run_initiative_reply(
+            chat_id=chat_id,
+            character=character,
+            evaluation=evaluation,
+            run_id=claim.run_id,
+        )
+    )
+    _REPLY_TASKS.add(task)
+    task.add_done_callback(_REPLY_TASKS.discard)
+    return True
 
 
 @dataclass
 class ClaimedWindow:
     """What one `_claim_window` call hands back to its caller.
 
-    `run_id` is the claimed run document's id, used by the send path to stamp
-    `replied_at`; it is `None` exactly when `candidates` is empty (pre-checks said no).
+    `run_id` is the claimed run document's id, used by the reply task to stamp
+    `replied_at` once something was delivered; it is `None` exactly when `candidates` is empty (pre-checks said no).
     """
 
     context: list[Message]
@@ -93,6 +131,20 @@ async def _claim_window(chat_id: int) -> ClaimedWindow:
     rather than messages since the last judgment.
     """
     async with INITIATIVE_RUN_LOCK:
+        if _is_in_flight(chat_id):
+            logger.info(
+                'Skipping initiative reply',
+                extra=event(
+                    'INITIATIVE_SKIPPED',
+                    reason='in_flight',
+                    age_s=int(time.monotonic() - _IN_FLIGHT[chat_id]),
+                ),
+            )
+            logger.info(
+                'Initiative run pre-checks failed', extra=event('INITIATIVE_PRECHECK_FAILED')
+            )
+            return ClaimedWindow(context=[], candidates=[], run_id=None)
+
         last_initiative_run = await get_last_initiative_run(chat_id)
         watermark = last_initiative_run.last_message_time if last_initiative_run else None
         sequence = await _get_messages(chat_id, watermark)
@@ -104,13 +156,39 @@ async def _claim_window(chat_id: int) -> ClaimedWindow:
             )
             return ClaimedWindow(context=[], candidates=[], run_id=None)
 
-        logger.info(
-            'Triggering initiative run',
-            extra=event('INITIATIVE_CLAIMED', candidates=len(candidates)),
-        )
-        run_id = await save_initiative_run(chat_id, last_message_time=candidates[-1].created_at)
+        _IN_FLIGHT[chat_id] = time.monotonic()
+        try:
+            logger.info(
+                'Triggering initiative run',
+                extra=event(
+                    'INITIATIVE_CLAIMED',
+                    candidates=len(candidates),
+                    candidate_groups=len(collapse_repeats(candidates)),
+                ),
+            )
+            run_id = await save_initiative_run(chat_id, last_message_time=candidates[-1].created_at)
+        except Exception:
+            _IN_FLIGHT.pop(chat_id, None)
+            raise
 
     return ClaimedWindow(context=context, candidates=candidates, run_id=run_id)
+
+
+def _is_in_flight(chat_id: int) -> bool:
+    """True when the chat has a live marker. A stale one is warned about and treated as free."""
+    started = _IN_FLIGHT.get(chat_id)
+    if started is None:
+        return False
+
+    age_s = time.monotonic() - started
+    if age_s < _IN_FLIGHT_STALE_S:
+        return True
+
+    logger.warning(
+        'Initiative in-flight marker is stale, overwriting',
+        extra=event('INITIATIVE_IN_FLIGHT_STALE', age_s=int(age_s)),
+    )
+    return False
 
 
 async def _get_messages(chat_id: int, watermark: datetime | None) -> list[Message]:
@@ -187,24 +265,66 @@ async def _run_initiative_reply(
     chat_id: int,
     character: Character,
     evaluation: InitiativeVerdict,
+    run_id: str,
 ):
-    logger.info('Initiative run triggered', extra=event('INITIATIVE_REPLY_SENT'))
-    await send_chat_action(chat_id, ChatAction.TYPING)
-    # No `character.memory = ...` here: `get_character` hands out a shared singleton,
-    # and this runs as a detached task, so re-stamping it from a background task can
-    # land another chat's memory in a reply already being built. `run_initiative_checks`
-    # has already passed this chat's snapshot into `get_chat_character`.
-    bot = get_bot()
-    replier = Replier(
-        bot=bot,
-        character=character,
-        chat_id=chat_id,
-        target=evaluation.target_message,
-    )
+    """Owns the in-flight marker from dispatch: stamps the slot, then clears it."""
+    started = time.monotonic()
+    outcome = 'empty'
+    delivered: list[str] = []
+    slot_spent = False
+    try:
+        await send_chat_action(chat_id, ChatAction.TYPING)
+        # No `character.memory = ...` here: `get_character` hands out a shared singleton,
+        # and this runs as a detached task, so re-stamping it from a background task can
+        # land another chat's memory in a reply already being built. `run_initiative_checks`
+        # has already passed this chat's snapshot into `get_chat_character`.
+        bot = get_bot()
+        replier = Replier(
+            bot=bot,
+            character=character,
+            chat_id=chat_id,
+            target=evaluation.target_message,
+        )
+        try:
+            # reload messages to fetch messages that might be sent in-between evaluation
+            last_messages = await fetch_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
+            await character.respond(replier, _with_target(last_messages, evaluation.target_message))
+        except Exception:
+            outcome = 'error'
+            logger.error(
+                'Initiative reply failed',
+                exc_info=True,
+                extra=event('INITIATIVE_REPLY_ERROR'),
+            )
 
-    # reload messages to fetch messages that might be sent in-between initiative evaluation
-    last_messages = await fetch_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
-    await character.respond(replier, _with_target(last_messages, evaluation.target_message))
+        delivered = list(replier.delivered)
+        # A reaction alone spends no slot, same as the cooldown, which ignores reactions.
+        # Stamped before the marker is cleared, so the next claim can never see "not in
+        # flight" and "slot free" at once.
+        if 'text' in delivered or 'sticker' in delivered:
+            await mark_initiative_replied(run_id)
+            slot_spent = True
+            if outcome != 'error':
+                outcome = 'delivered'
+    except Exception:
+        outcome = 'error'
+        logger.error(
+            'Initiative reply failed',
+            exc_info=True,
+            extra=event('INITIATIVE_REPLY_ERROR'),
+        )
+    finally:
+        _IN_FLIGHT.pop(chat_id, None)
+        logger.info(
+            'Initiative reply done',
+            extra=event(
+                'INITIATIVE_REPLY_DONE',
+                outcome=outcome,
+                delivered_kinds=delivered,
+                slot_spent=slot_spent,
+                elapsed_ms=elapsed_ms(started),
+            ),
+        )
 
 
 def _with_target(messages: list[Message], target: Message | None) -> list[Message]:

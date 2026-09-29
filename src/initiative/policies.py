@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, UTC
 
 from src import settings
@@ -30,11 +31,52 @@ def split_at_gap(messages: list[Message], gap_minutes: float) -> list[Message]:
     return messages
 
 
+@dataclass
+class RepeatGroup:
+    """A run of identical consecutive messages from one author, shown as one line."""
+
+    representative: Message
+    count: int
+
+
+def _content_key(message: Message) -> tuple[str | None, str | None]:
+    text = (message.text or '').strip() or None
+    unique_id = message.media.unique_id if message.media else None
+    return text, unique_id or None
+
+
+def collapse_repeats(messages: list[Message]) -> list[RepeatGroup]:
+    """Merges consecutive identical messages from the same author into groups.
+
+    The representative is the run's last (newest) message, so its `created_at` and
+    `telegram_id` are real. A message with neither text nor media id never merges.
+    """
+    groups: list[RepeatGroup] = []
+    previous_key = None
+    for message in messages:
+        key = _content_key(message)
+        author = (message.nickname, message.role)
+        mergeable = key != (None, None)
+        if groups and mergeable and previous_key == (author, key):
+            groups[-1] = RepeatGroup(representative=message, count=groups[-1].count + 1)
+        else:
+            groups.append(RepeatGroup(representative=message, count=1))
+        previous_key = (author, key)
+
+    return groups
+
+
 async def pre_check(chat_id: int, messages: list[Message]) -> bool:
-    if len(messages) < settings.INITIATIVE_TRIGGER_SIZE:
+    groups_count = len(collapse_repeats(messages))
+    if groups_count < settings.INITIATIVE_TRIGGER_SIZE:
         logger.info(
             'Skipping initiative reply',
-            extra=event('INITIATIVE_SKIPPED', reason='messages_too_few', count=len(messages)),
+            extra=event(
+                'INITIATIVE_SKIPPED',
+                reason='messages_too_few',
+                count=groups_count,
+                raw_count=len(messages),
+            ),
         )
         return False
 
@@ -76,8 +118,7 @@ async def pre_check(chat_id: int, messages: list[Message]) -> bool:
 
     # Last gate, after the other four, so their skip-reason counts stay comparable.
     # Runs before the claim: a capped chat costs no LLM call and does not advance
-    # the watermark, like the gates above it. The two-claims-in-flight race exists
-    # for the cooldown too and is ignored here.
+    # the watermark, like the gates above it.
     replied_count = await count_replied_since(chat_id, _DAILY_LIMIT_WINDOW)
     if replied_count >= settings.INITIATIVE_DAILY_LIMIT:
         logger.info(
