@@ -49,6 +49,9 @@ class MediaDescription(BaseModel):
     # treated as stale rather than raising, so a legacy PROCESSING row is retried
     # instead of polled forever.
     updated_at: datetime | None = None
+    # `<task>/<prompt>@<model>` of whoever wrote `description`. None on a row written
+    # before the stamp existed — and None counts as stale.
+    describer: str | None = None
 
 
 class MediaDescriptionData(BaseModel):

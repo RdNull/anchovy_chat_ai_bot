@@ -91,6 +91,10 @@ class _Settings(BaseSettings):
     # PROCESSING row (the description started, the process died before it finished) is
     # treated as abandoned and retried rather than polled forever.
     MEDIA_PROCESSING_STALE_MINUTES: int = 5
+    # Re-describe a READY row on sighting when its `describer` is not current. Off by
+    # default: turned on before the describer is bumped it would re-describe every
+    # legacy row with today's prompt and then again with the next one.
+    MEDIA_REDESCRIBE_ON_SIGHTING: bool = False
 
     OPENROUTER_API_URL: str = 'https://openrouter.ai/api/v1'
     OPENROUTER_API_KEY: str | None = None
@@ -203,6 +207,7 @@ LAST_MESSAGES_MIN_SIZE = _s.LAST_MESSAGES_MIN_SIZE
 EMBEDDINGS_MIN_SIZE = _s.EMBEDDINGS_MIN_SIZE
 RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT = _s.RESPOND_MEDIA_PROCESSING_POLLING_TIMEOUT
 MEDIA_PROCESSING_STALE_MINUTES = _s.MEDIA_PROCESSING_STALE_MINUTES
+MEDIA_REDESCRIBE_ON_SIGHTING = _s.MEDIA_REDESCRIBE_ON_SIGHTING
 OPENROUTER_API_URL = _s.OPENROUTER_API_URL
 OPENROUTER_API_KEY = _s.OPENROUTER_API_KEY
 QDRANT_URL = _s.QDRANT_URL
