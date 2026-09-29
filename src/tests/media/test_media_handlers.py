@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from bson import ObjectId
 
 from src import settings
 from src.media import (
@@ -17,7 +18,14 @@ from src.media import (
     wait_for_media_ready,
 )
 from src.media.download import _parse_animation_file, _parse_image_file, get_message_media
-from src.media.handlers import _generate_media_description, handle_media_message
+from src.media.handlers import (
+    _current_describers,
+    _generate_media_description,
+    handle_media_message,
+)
+from src.media.repository import parse_media_description
+from src.media.processors import animation as animation_processor
+from src.media.processors import image as image_processor
 from src.media.models import (
     AnimationDetectionData,
     ImageDetectionData,
@@ -821,3 +829,357 @@ async def test_wait_for_media_ready_multiple_ids_waits_for_all(mocker):
     await wait_for_media_ready(['uid1', 'uid2'], timeout=5.0)
 
     assert mock_sleep.call_count == 1
+
+
+# --- describer stamp and re-describe on sighting ---
+
+OLD_DESCRIBER = 'image_describe/v1@google/gemini-2.5-flash-lite'
+
+
+def redescribe_events(caplog):
+    return [r for r in caplog.records if getattr(r, 'event', None) == 'MEDIA_REDESCRIBE']
+
+
+@pytest.fixture
+def redescribe_on(mocker):
+    mocker.patch.object(settings, 'MEDIA_REDESCRIBE_ON_SIGHTING', True)
+
+
+@pytest.fixture
+def mock_download(mocker):
+    return mocker.patch(
+        'src.media.handlers.get_message_media',
+        return_value=ImageDetectionData(content='base64content', format='webp'),
+    )
+
+
+@pytest.fixture
+def mock_describe(mocker):
+    return mocker.patch(
+        'src.media.handlers._generate_media_description',
+        return_value=MediaDescriptionData(description='новое описание', ocr_text=None),
+    )
+
+
+@pytest.fixture
+def mock_save_sticker(mocker):
+    return mocker.patch('src.media.handlers.stickers_embedding_client.save_sticker')
+
+
+async def stale_sticker_row(describer=None, **kwargs):
+    row = await create_media_description(
+        media_id='sticker_uid',
+        content_hash='old_hash',
+        type=MessageMediaTypes.STICKER,
+        status=MessageMediaStatus.READY,
+        description='пиксельные смайлики',
+        ocr_text='ЛОЛ',
+        sticker_emoji='💃',
+    )
+    fields = {'describer': describer, **kwargs}
+    await media_descriptions.update_one({'_id': ObjectId(row.id)}, {'$set': fields})
+    return row
+
+
+async def raw_row(unique_id='sticker_uid'):
+    return await media_descriptions.find_one({'media_id': unique_id})
+
+
+async def test_new_image_is_stamped_with_the_image_describer(
+    mocker, sample_message, mock_context, mock_download, mock_describe
+):
+    await handle_media_message(sample_message, mock_context)
+
+    stored = await get_media_description_by_media_id('unique_id_123')
+    assert stored.describer == image_processor.current_describer()
+
+
+async def test_new_animation_is_stamped_with_the_animation_describer(
+    mocker, sample_message, mock_context, mock_describe
+):
+    mocker.patch(
+        'src.media.handlers.get_message_media',
+        return_value=AnimationDetectionData(content=b'gif', format='gif'),
+    )
+
+    await handle_media_message(sample_message, mock_context)
+
+    stored = await get_media_description_by_media_id('unique_id_123')
+    assert stored.describer == animation_processor.current_describer()
+
+
+async def test_new_sticker_is_stamped(
+    mock_context, mock_download, mock_describe, mock_save_sticker
+):
+    await handle_media_message(sticker_message(), mock_context)
+
+    stored = await get_media_description_by_media_id('sticker_uid')
+    assert stored.describer == image_processor.current_describer()
+
+
+def test_current_describers_are_task_prompt_at_model():
+    assert image_processor.current_describer().startswith('image_describe/v1@')
+    assert animation_processor.current_describer().startswith('animation_describe/v1@')
+    assert _current_describers() == {
+        image_processor.current_describer(),
+        animation_processor.current_describer(),
+    }
+
+
+def test_parse_media_description_without_a_describer_key():
+    row = {
+        '_id': ObjectId(),
+        'description': 'x',
+        'ocr_text': None,
+        'type': 'image',
+        'status': 'ready',
+        'media_id': 'uid',
+    }
+
+    assert parse_media_description(row).describer is None
+
+
+async def test_flag_off_a_stale_ready_row_stays_cached(
+    mocker, mock_context, mock_download, mock_describe
+):
+    mocker.patch.object(settings, 'MEDIA_REDESCRIBE_ON_SIGHTING', False)
+    await stale_sticker_row(describer=None)
+
+    await handle_media_message(sticker_message(), mock_context)
+
+    assert mock_download.call_count == 0
+    assert mock_describe.call_count == 0
+
+
+async def test_flag_on_a_current_row_stays_cached(
+    redescribe_on, mock_context, mock_download, mock_describe
+):
+    await stale_sticker_row(describer=image_processor.current_describer())
+
+    await handle_media_message(sticker_message(), mock_context)
+
+    assert mock_download.call_count == 0
+    assert mock_describe.call_count == 0
+
+
+@pytest.mark.parametrize('old', [None, OLD_DESCRIBER])
+async def test_flag_on_a_stale_row_is_replaced_whole(
+    old, redescribe_on, mock_context, mock_download, mock_describe, mock_save_sticker
+):
+    await stale_sticker_row(describer=old)
+
+    await handle_media_message(sticker_message(), mock_context)
+
+    stored = await get_media_description_by_media_id('sticker_uid')
+    assert stored.description == 'новое описание'
+    assert stored.ocr_text is None  # the old OCR must not survive next to a new description
+    assert stored.describer == image_processor.current_describer()
+    assert stored.status == MessageMediaStatus.READY
+    assert 'redescribe_started_at' not in await raw_row()
+
+
+async def test_flag_on_status_is_ready_throughout_a_redescribe(
+    mocker, redescribe_on, mock_context, mock_download, mock_save_sticker
+):
+    await stale_sticker_row()
+    seen = []
+
+    async def describe(message, data):
+        seen.append((await get_media_description_by_media_id('sticker_uid')).status)
+        return MediaDescriptionData(description='новое', ocr_text=None)
+
+    mocker.patch('src.media.handlers._generate_media_description', side_effect=describe)
+
+    await handle_media_message(sticker_message(), mock_context)
+    final = await get_media_description_by_media_id('sticker_uid')
+
+    assert seen == [MessageMediaStatus.READY]
+    assert final.status == MessageMediaStatus.READY
+    assert not final.status.is_pending
+
+
+async def test_flag_on_a_failed_describe_keeps_the_old_row_and_releases_the_claim(
+    redescribe_on, mock_context, mock_download, mock_describe, mock_save_sticker, caplog
+):
+    await stale_sticker_row(describer=OLD_DESCRIBER)
+    mock_describe.return_value = None
+
+    with caplog.at_level('INFO'):
+        await handle_media_message(sticker_message(), mock_context)
+
+    stored = await get_media_description_by_media_id('sticker_uid')
+    assert stored.description == 'пиксельные смайлики'
+    assert stored.ocr_text == 'ЛОЛ'
+    assert stored.describer == OLD_DESCRIBER
+    assert stored.status == MessageMediaStatus.READY
+    assert 'redescribe_started_at' not in await raw_row()
+    assert mock_save_sticker.call_count == 0
+    assert [r.outcome for r in redescribe_events(caplog)] == ['error']
+
+
+async def test_flag_on_a_failed_download_keeps_the_old_row_and_releases_the_claim(
+    redescribe_on, mock_context, mock_download, mock_describe, caplog
+):
+    await stale_sticker_row(describer=OLD_DESCRIBER)
+    mock_download.return_value = None
+
+    with caplog.at_level('INFO'):
+        await handle_media_message(sticker_message(), mock_context)
+
+    stored = await get_media_description_by_media_id('sticker_uid')
+    assert stored.description == 'пиксельные смайлики'
+    assert stored.describer == OLD_DESCRIBER
+    assert 'redescribe_started_at' not in await raw_row()
+    assert mock_describe.call_count == 0
+    assert [r.outcome for r in redescribe_events(caplog)] == ['error']
+
+
+async def test_flag_on_concurrent_sightings_describe_once(
+    mocker, redescribe_on, mock_context, mock_download, mock_save_sticker, caplog
+):
+    await stale_sticker_row()
+
+    async def slow_describe(message, data):
+        await asyncio.sleep(0.2)
+        return MediaDescriptionData(description='новое', ocr_text=None)
+
+    mock_describe = mocker.patch(
+        'src.media.handlers._generate_media_description', side_effect=slow_describe
+    )
+
+    with caplog.at_level('INFO'):
+        await asyncio.gather(*[
+            handle_media_message(sticker_message(), mock_context) for _ in range(5)
+        ])
+
+    assert mock_describe.call_count == 1
+    assert mock_download.call_count == 1
+    outcomes = sorted(r.outcome for r in redescribe_events(caplog))
+    assert outcomes == ['claimed_elsewhere'] * 4 + ['ok']
+
+
+async def test_flag_on_a_fresh_claim_blocks_an_attempt(
+    redescribe_on, mock_context, mock_download, mock_describe
+):
+    now = datetime.now(UTC).timestamp()
+    await stale_sticker_row(redescribe_started_at=now)
+
+    await handle_media_message(sticker_message(), mock_context)
+
+    assert mock_describe.call_count == 0
+
+
+async def test_flag_on_an_expired_claim_does_not_block_an_attempt(
+    redescribe_on, mock_context, mock_download, mock_describe, mock_save_sticker
+):
+    long_ago = (
+        datetime.now(UTC) - timedelta(minutes=settings.MEDIA_PROCESSING_STALE_MINUTES + 1)
+    ).timestamp()
+    await stale_sticker_row(redescribe_started_at=long_ago)
+
+    await handle_media_message(sticker_message(), mock_context)
+
+    assert mock_describe.call_count == 1
+
+
+async def test_flag_on_a_redescribed_sticker_is_saved_to_the_index_once(
+    redescribe_on, mock_context, mock_download, mock_describe, mock_save_sticker
+):
+    await stale_sticker_row()
+
+    await handle_media_message(sticker_message(), mock_context)
+    await handle_media_message(sticker_message(), mock_context)  # now current: cached
+
+    assert mock_save_sticker.call_count == 1
+    saved = mock_save_sticker.call_args[0][0]
+    assert saved.media_id == 'sticker_uid'
+    assert saved.description == 'новое описание'
+    assert await media_descriptions.count_documents({'media_id': 'sticker_uid'}) == 1
+
+
+async def test_flag_on_a_redescribed_photo_is_not_indexed(
+    redescribe_on, sample_message, mock_context, mock_download, mock_describe, mock_save_sticker
+):
+    row = await create_media_description(
+        media_id='unique_id_123', status=MessageMediaStatus.READY, description='old'
+    )
+
+    await handle_media_message(sample_message, mock_context)
+
+    stored = await get_media_description_by_media_id('unique_id_123')
+    assert stored.id == row.id
+    assert stored.description == 'новое описание'
+    assert mock_save_sticker.call_count == 0
+
+
+async def test_flag_on_hash_path_redescribes_a_stale_row(
+    redescribe_on, sample_message, mock_context, mock_download, mock_describe
+):
+    content_hash = mock_download.return_value.content_hash
+    await create_media_description(
+        media_id='other_uid',
+        content_hash=content_hash,
+        description='old',
+        status=MessageMediaStatus.READY,
+    )
+
+    await handle_media_message(sample_message, mock_context)
+
+    stored = await get_media_description_by_media_id('other_uid')
+    assert stored.description == 'новое описание'
+    assert stored.describer == image_processor.current_describer()
+    assert mock_describe.call_count == 1
+    assert await get_media_description_by_media_id('unique_id_123') is None
+
+
+async def test_flag_on_hash_path_keeps_a_current_row_cached(
+    redescribe_on, sample_message, mock_context, mock_download, mock_describe
+):
+    content_hash = mock_download.return_value.content_hash
+    row = await create_media_description(
+        media_id='other_uid',
+        content_hash=content_hash,
+        description='old',
+        status=MessageMediaStatus.READY,
+    )
+    await media_descriptions.update_one(
+        {'_id': ObjectId(row.id)}, {'$set': {'describer': image_processor.current_describer()}}
+    )
+
+    await handle_media_message(sample_message, mock_context)
+
+    assert mock_describe.call_count == 0
+    assert (await get_media_description_by_media_id('other_uid')).description == 'old'
+
+
+async def test_flag_off_hash_path_keeps_a_stale_row_cached(
+    mocker, sample_message, mock_context, mock_download, mock_describe
+):
+    mocker.patch.object(settings, 'MEDIA_REDESCRIBE_ON_SIGHTING', False)
+    await create_media_description(
+        media_id='other_uid',
+        content_hash=mock_download.return_value.content_hash,
+        description='old',
+        status=MessageMediaStatus.READY,
+    )
+
+    await handle_media_message(sample_message, mock_context)
+
+    assert mock_describe.call_count == 0
+
+
+async def test_redescribe_event_carries_the_documented_fields(
+    redescribe_on, mock_context, mock_download, mock_describe, mock_save_sticker, caplog
+):
+    await stale_sticker_row(describer=OLD_DESCRIBER)
+
+    with caplog.at_level('INFO'):
+        await handle_media_message(sticker_message(), mock_context)
+
+    [record] = redescribe_events(caplog)
+    assert record.unique_id == 'sticker_uid'
+    assert record.kind == 'sticker'
+    assert record.old_describer == OLD_DESCRIBER
+    assert record.new_describer == image_processor.current_describer()
+    assert record.outcome == 'ok'
+    assert record.elapsed_ms >= 0

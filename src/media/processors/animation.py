@@ -4,6 +4,7 @@ import math
 import os
 import tempfile
 import time
+from functools import cache
 
 import cv2
 from PIL import Image
@@ -13,9 +14,25 @@ from lottie.exporters.cairo import PngRenderer
 from lottie.importers.core import import_tgs
 
 from src import ai
+from src.model_manager import model_manager
 from src.logs import elapsed_ms, event, logger
 from src.media.models import AnimationDetectionData, MediaDescriptionData
 from src.prompt_manager import prompt_manager
+
+
+_TASK = 'animation_describe'
+_PROMPT_VERSION = 'v1'
+_MODEL_VERSION = 'v2'
+
+
+@cache
+def current_describer() -> str:
+    """The stamp for what `describe_animation` calls: `<task>/<prompt>@<model>`.
+
+    Built from the same constants the call reads, so the stamp cannot drift from it.
+    """
+    model = model_manager.get_model_settings(_TASK, _MODEL_VERSION)['model']
+    return f'{_TASK}/{_PROMPT_VERSION}@{model}'
 
 
 @traceable
@@ -37,11 +54,11 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
             content_hash=animation.content_hash,
         ),
     )
-    llm = ai.get_animation_descriptor_model(version='v2')
+    llm = ai.get_animation_descriptor_model(version=_MODEL_VERSION)
     model_with_structure = llm.with_structured_output(MediaDescriptionData)
 
     messages = [
-        SystemMessage(content=prompt_manager.get_prompt('animation_describe')),
+        SystemMessage(content=prompt_manager.get_prompt(_TASK, version=_PROMPT_VERSION)),
         HumanMessage(
             content_blocks=[
                 ImageContentBlock(type='image', mime_type='image/jpeg', base64=key_frame)
@@ -84,6 +101,7 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
                 outcome='ok',
                 kind='animation',
                 content_hash=animation.content_hash,
+                describer=current_describer(),
                 desc_len=len(response.description or ''),
                 ocr_len=len(response.ocr_text or ''),
                 elapsed_ms=elapsed_ms(started),

@@ -16,7 +16,10 @@ from src.media.processors.animation import (
     _resize_frame_if_needed,
     describe_animation,
 )
+from src.media.processors.image import current_describer as image_describer
+from src.media.processors.animation import current_describer as animation_describer
 from src.media.processors.image import describe_image
+from src.model_manager import model_manager
 
 MEDIA_DIR = 'src/tests/media/data'
 
@@ -278,3 +281,46 @@ def test_extract_tgs_frames_short(mocker):
 
     assert len(frames) == 1
     assert frames[0] == 'b64'
+
+
+async def test_describe_image_calls_exactly_what_the_stamp_names(mocker):
+    llm = MagicMock()
+    llm.with_structured_output.return_value.ainvoke = AsyncMock(
+        return_value=MediaDescriptionData(description='x', ocr_text=None)
+    )
+    get_model = mocker.patch(
+        'src.media.processors.image.ai.get_image_descriptor_model', return_value=llm
+    )
+    get_prompt = mocker.patch(
+        'src.media.processors.image.prompt_manager.get_prompt', return_value='p'
+    )
+
+    await describe_image(ImageDetectionData(content='abc', format='jpg'))
+
+    model_version = get_model.call_args.kwargs['version']
+    (prompt_task,) = get_prompt.call_args.args
+    prompt_version = get_prompt.call_args.kwargs['version']
+    model = model_manager.get_model_settings('image_describe', model_version)['model']
+    assert image_describer() == f'{prompt_task}/{prompt_version}@{model}'
+
+
+async def test_describe_animation_calls_exactly_what_the_stamp_names(mocker):
+    llm = MagicMock()
+    llm.with_structured_output.return_value.ainvoke = AsyncMock(
+        return_value=MediaDescriptionData(description='x', ocr_text=None)
+    )
+    get_model = mocker.patch(
+        'src.media.processors.animation.ai.get_animation_descriptor_model', return_value=llm
+    )
+    get_prompt = mocker.patch(
+        'src.media.processors.animation.prompt_manager.get_prompt', return_value='p'
+    )
+    mocker.patch('src.media.processors.animation._get_animation_key_frames', return_value=['f'])
+
+    await describe_animation(AnimationDetectionData(content=b'x', format='gif'))
+
+    model_version = get_model.call_args.kwargs['version']
+    (prompt_task,) = get_prompt.call_args.args
+    prompt_version = get_prompt.call_args.kwargs['version']
+    model = model_manager.get_model_settings('animation_describe', model_version)['model']
+    assert animation_describer() == f'{prompt_task}/{prompt_version}@{model}'

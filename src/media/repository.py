@@ -1,8 +1,9 @@
 import asyncio
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 
 from bson import ObjectId
 
+from src import settings
 from src.logs import event, logger
 from src.media.models import MediaDescription
 from src.messages.models import MessageMediaStatus, MessageMediaTypes, UserRole
@@ -37,6 +38,7 @@ async def update_media_description(
     description: str | None = None,
     ocr_text: str | None = None,
     status: MessageMediaStatus = MessageMediaStatus.PROCESSING,
+    describer: str | None = None,
 ):
     update = {}
     if content_hash:
@@ -45,6 +47,8 @@ async def update_media_description(
         update['description'] = description
     if ocr_text:
         update['ocr_text'] = ocr_text
+    if describer:
+        update['describer'] = describer
     if status:
         update['status'] = status.value
         update['updated_at'] = datetime.now(UTC).timestamp()
@@ -52,6 +56,66 @@ async def update_media_description(
     if update:
         await media_descriptions.update_one({'_id': ObjectId(description_id)}, {'$set': update})
 
+    return await get_media_description(description_id)
+
+
+async def claim_redescribe(description_id: str, current_describers: set[str]) -> bool:
+    """Takes the right to re-describe a READY row, atomically.
+
+    One conditional write: the row must still be READY and stale, and either unclaimed
+    or claimed longer ago than `MEDIA_PROCESSING_STALE_MINUTES` (a crashed attempt).
+    A spammed sticker sends many sightings at once; only the one that modifies the row
+    proceeds. `describer: {$nin: [...]}` also matches a row with no `describer` key.
+    """
+    now = datetime.now(UTC)
+    stale_before = (now - timedelta(minutes=settings.MEDIA_PROCESSING_STALE_MINUTES)).timestamp()
+    result = await media_descriptions.update_one(
+        {
+            '_id': ObjectId(description_id),
+            'status': MessageMediaStatus.READY.value,
+            'describer': {'$nin': list(current_describers)},
+            '$or': [
+                {'redescribe_started_at': None},
+                {'redescribe_started_at': {'$lt': stale_before}},
+            ],
+        },
+        {'$set': {'redescribe_started_at': now.timestamp()}},
+    )
+    return result.modified_count == 1
+
+
+async def release_redescribe_claim(description_id: str):
+    await media_descriptions.update_one(
+        {'_id': ObjectId(description_id)},
+        {'$unset': {'redescribe_started_at': ''}},
+    )
+
+
+async def replace_media_description(
+    description_id: str,
+    content_hash: str | None,
+    description: str,
+    ocr_text: str | None,
+    describer: str,
+) -> MediaDescription | None:
+    """Overwrites the description, OCR and stamp together and releases the claim.
+
+    Unlike `update_media_description` this does not skip falsy fields: a new result
+    with no OCR must clear the old OCR string, not leave it beside a new description.
+    Status stays READY throughout, so `updated_at` is deliberately not touched.
+    """
+    update = {
+        'description': description,
+        'ocr_text': ocr_text or None,
+        'describer': describer,
+    }
+    if content_hash:
+        update['hash'] = content_hash
+
+    await media_descriptions.update_one(
+        {'_id': ObjectId(description_id)},
+        {'$set': update, '$unset': {'redescribe_started_at': ''}},
+    )
     return await get_media_description(description_id)
 
 
@@ -165,7 +229,7 @@ async def sticker_corpus_size() -> int:
 
 
 def parse_media_description(data: dict) -> MediaDescription:
-    # `sticker_emoji` and `updated_at` use `.get`, unlike their siblings: every row
+    # `sticker_emoji`, `updated_at` and `describer` use `.get`, unlike their siblings: every row
     # written before the respective field existed lacks the key and must parse as
     # None rather than raise. A missing `updated_at` is treated as stale by the
     # staleness check in handlers.py, so a legacy row is retried rather than stuck.
@@ -179,6 +243,7 @@ def parse_media_description(data: dict) -> MediaDescription:
         status=data['status'],
         media_id=data['media_id'],
         sticker_emoji=data.get('sticker_emoji'),
+        describer=data.get('describer'),
         updated_at=(
             datetime.fromtimestamp(ts, tz=UTC)
             if (ts := data.get('updated_at')) is not None
