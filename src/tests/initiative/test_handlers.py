@@ -8,6 +8,7 @@ import pytest
 from telegram.constants import ChatAction
 
 from src import settings
+from src.characters.reply import ReplyKind
 from src.initiative import handlers
 from src.initiative.models import InitiativeVerdict
 from src.initiative.repository import count_replied_since, get_last_initiative_run
@@ -515,7 +516,7 @@ async def _replay_burst(count=16, interval=0.02):
 
 async def test_burst_dispatches_once_and_stamps_one_slot(mocker, make_bot, caplog):
     _burst_settings(mocker)
-    _mock_slow_judge_and_respond(mocker, make_bot, send_kind='text')
+    _mock_slow_judge_and_respond(mocker, make_bot, send_kind=ReplyKind.TEXT)
 
     with caplog.at_level(logging.INFO, logger='bot'):
         await _replay_burst()
@@ -548,14 +549,14 @@ async def test_reply_that_sends_nothing_spends_no_slot_and_frees_the_chat(mocker
 
 async def test_reaction_only_reply_spends_no_slot(mocker, make_bot, caplog):
     _burst_settings(mocker)
-    _mock_slow_judge_and_respond(mocker, make_bot, send_kind='reaction')
+    _mock_slow_judge_and_respond(mocker, make_bot, send_kind=ReplyKind.REACTION)
 
     with caplog.at_level(logging.INFO, logger='bot'):
         await _replay_burst()
 
     assert await _replied_run_count() == 0
     done = _reply_done_records(caplog)
-    assert done[0].delivered_kinds == ['reaction']
+    assert done[0].delivered_kinds == [ReplyKind.REACTION]
     assert done[0].slot_spent is False
 
 

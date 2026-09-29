@@ -1,3 +1,4 @@
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from telegram import Bot, ReplyParameters
@@ -11,6 +12,12 @@ if TYPE_CHECKING:
     from src.characters.character import Character
 
 
+class ReplyKind(StrEnum):
+    TEXT = 'text'
+    STICKER = 'sticker'
+    REACTION = 'reaction'
+
+
 class Replier:
     def __init__(self, bot: Bot, character: Character, chat_id: int, target: Message | None):
         self.bot = bot
@@ -19,13 +26,14 @@ class Replier:
         self.target_message = target
         # Kinds actually delivered to Telegram, appended after each call succeeds. The
         # initiative path reads it to decide whether a daily slot was really spent.
-        self.delivered: list[str] = []
+        self.delivered: list[ReplyKind] = []
 
     async def reply_message(self, text: str) -> Message:
         # The full text is chat content, not diagnostic metadata -- it moves to its own
         # DEBUG line so an INFO-level stream never carries a reply body.
         logger.info(
-            'Replying to user message', extra=event('REPLY_SENT', kind='text', text_len=len(text))
+            'Replying to user message',
+            extra=event('REPLY_SENT', kind=ReplyKind.TEXT, text_len=len(text)),
         )
         logger.debug('Reply text', extra=event('REPLY_TEXT', text=text))
 
@@ -34,20 +42,20 @@ class Replier:
             reply_parameters=self._get_reply_params(),
             text=text,
         )
-        self.delivered.append('text')
+        self.delivered.append(ReplyKind.TEXT)
         return await self._save_message(reply.message_id, text)
 
     async def reply_sticker(self, file_id: str, unique_id: str) -> Message:
         logger.info(
             'Replying to user message',
-            extra=event('REPLY_SENT', kind='sticker', sticker_id=unique_id),
+            extra=event('REPLY_SENT', kind=ReplyKind.STICKER, sticker_id=unique_id),
         )
         reply = await self.bot.send_sticker(
             chat_id=self.chat_id,
             reply_parameters=self._get_reply_params(),
             sticker=file_id,
         )
-        self.delivered.append('sticker')
+        self.delivered.append(ReplyKind.STICKER)
         return await self._save_message(
             reply.message_id,
             media=MessageMedia(
@@ -70,11 +78,11 @@ class Replier:
         if not result:
             return False
 
-        self.delivered.append('reaction')
+        self.delivered.append(ReplyKind.REACTION)
         # Logged only on confirmed delivery -- otherwise a rejected reaction would
         # still count as sent in the REPLY_SENT Axiom metric.
         logger.info(
-            'Setting reaction', extra=event('REPLY_SENT', kind='reaction', emoji=str(emoji))
+            'Setting reaction', extra=event('REPLY_SENT', kind=ReplyKind.REACTION, emoji=str(emoji))
         )
         await add_bot_reaction(self.target_message, self.character.nickname, str(emoji))
         return True

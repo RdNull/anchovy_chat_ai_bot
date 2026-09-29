@@ -8,7 +8,7 @@ from telegram.constants import ChatAction
 from src import settings
 from src.characters.character import Character
 from src.characters.registry import get_chat_character
-from src.characters.reply import Replier
+from src.characters.reply import Replier, ReplyKind
 from src.initiative.models import InitiativeVerdict
 from src.initiative.policies import collapse_repeats, decide, pre_check, split_at_gap
 from src.initiative.processors import evaluate_initiative
@@ -270,7 +270,7 @@ async def _run_initiative_reply(
     """Owns the in-flight marker from dispatch: stamps the slot, then clears it."""
     started = time.monotonic()
     outcome = 'empty'
-    delivered: list[str] = []
+    delivered: list[ReplyKind] = []
     slot_spent = False
     try:
         await send_chat_action(chat_id, ChatAction.TYPING)
@@ -301,7 +301,7 @@ async def _run_initiative_reply(
         # A reaction alone spends no slot, same as the cooldown, which ignores reactions.
         # Stamped before the marker is cleared, so the next claim can never see "not in
         # flight" and "slot free" at once.
-        if 'text' in delivered or 'sticker' in delivered:
+        if ReplyKind.TEXT in delivered or ReplyKind.STICKER in delivered:
             await mark_initiative_replied(run_id)
             slot_spent = True
             if outcome != 'error':
