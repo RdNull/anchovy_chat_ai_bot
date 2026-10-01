@@ -298,14 +298,16 @@ async def _run_initiative_reply(
             )
 
         delivered = list(replier.delivered)
+        # Anything delivered, a reaction included, is `delivered`; `empty` means nothing at all.
+        if delivered and outcome != 'error':
+            outcome = 'delivered'
+
         # A reaction alone spends no slot, same as the cooldown, which ignores reactions.
         # Stamped before the marker is cleared, so the next claim can never see "not in
         # flight" and "slot free" at once.
         if ReplyKind.TEXT in delivered or ReplyKind.STICKER in delivered:
             await mark_initiative_replied(run_id)
             slot_spent = True
-            if outcome != 'error':
-                outcome = 'delivered'
     except Exception:
         outcome = 'error'
         logger.error(

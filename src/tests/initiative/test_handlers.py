@@ -556,6 +556,7 @@ async def test_reaction_only_reply_spends_no_slot(mocker, make_bot, caplog):
 
     assert await _replied_run_count() == 0
     done = _reply_done_records(caplog)
+    assert done[0].outcome == 'delivered'
     assert done[0].delivered_kinds == [ReplyKind.REACTION]
     assert done[0].slot_spent is False
 

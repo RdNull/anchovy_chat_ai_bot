@@ -9,8 +9,10 @@ Replace consistently across all fixtures so cross-window references stay coheren
 |---|---|
 | participant handles | kostya, misha, den, artem, pasha, timur, gulnara, ruslan |
 | first names inside message text | any name not in the cast above |
-| the bot's nickname | `ChatBot(<character>)` |
+| the bot's nickname | `ChatBot[<code>]` |
 | URLs with coordinates, venue names, phone numbers | a neutral placeholder of the same shape |
 
 Keep everything else byte-identical to what `blackbox get_window` returns — timestamps,
 media descriptions, OCR text, reply quotes, reaction lines. Those are what the judge reads.
+
+If anonymising removes the hook itself (the joke is the replaced word), drop the window rather than relabel it.

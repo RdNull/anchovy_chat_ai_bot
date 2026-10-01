@@ -14,6 +14,8 @@ defaultTest:
   vars:
     character_description: file://_shared/character.js
     current_memory: file://_shared/memory.txt
+    # Anonymised tagged form, matching production's <BOT_NICKNAME>[<code>].
+    bot_nickname: ChatBot[whyzzzy]
 
   assert:
     # Production uses with_structured_output; this eval sends a plain call, so a
@@ -234,3 +236,149 @@ tests:
           if (!output) return false;
           const r = typeof output === 'string' ? JSON.parse(output) : output;
           return r.target_index === 9;
+
+  # ---------- real windows, target labels (spec 007) ----------
+  # Windows rebuilt from blackbox at claim time, collapsed and rendered as production does;
+  # bot reactions removed (they are the run's output). Baseline: docs/specs/007-*.report.md.
+
+  # hook is «Работаю в…» / «кем»; #5 is a sticker after it (the known mis-target)
+  - description: "real_mega_sticker_after_hook"
+    vars:
+      messages: file://real_mega_sticker_after_hook/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: "[3, 4].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)"
+
+  # eSIM screenshot or «Пиздец па?» to the chat
+  - description: "real_tele2_esim"
+    vars:
+      messages: file://real_tele2_esim/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: "[1, 5].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)"
+
+  # «Я не дежурю» (live reply drew an argument)
+  - description: "real_not_on_duty"
+    vars:
+      messages: file://real_not_on_duty/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: "[4, 5].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)"
+
+  # lost stylus / «вывалился» (live reply got 💯)
+  - description: "real_stylus_fell_out"
+    vars:
+      messages: file://real_stylus_fell_out/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: "[1, 5].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)"
+
+  # price claim (live reply 😭×5)
+  - description: "real_cheap_store"
+    vars:
+      messages: file://real_cheap_store/messages.txt
+      context: file://real_cheap_store/context.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: "[4, 5].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)"
+
+  # fresh burn, nobody has laughed yet (live: bot 🤣)
+  - description: "real_case_fan_burn"
+    vars:
+      messages: file://real_case_fan_burn/messages.txt
+      context: file://real_case_fan_burn/context.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          (typeof output === 'string' ? JSON.parse(output) : output).target_index === 5
+
+  # the pickup story, 3 messages back (live: bot 🤡)
+  - description: "real_pickup_story"
+    vars:
+      messages: file://real_pickup_story/messages.txt
+      context: file://real_pickup_story/context.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          (typeof output === 'string' ? JSON.parse(output) : output).target_index === 2
+
+  # route announcement, 4 back (live reply drew 2 roasts)
+  - description: "real_walk_route"
+    vars:
+      messages: file://real_walk_route/messages.txt
+      context: file://real_walk_route/context.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: |
+          (typeof output === 'string' ? JSON.parse(output) : output).target_index === 1
+
+  # rant at a member; any of its parts
+  - description: "real_ignored_rant"
+    vars:
+      messages: file://real_ignored_rant/messages.txt
+    assert:
+      - type: javascript
+        metric: score_good
+        value: |
+          if (!output) return { pass: false, score: 0, reason: 'no response' };
+          const s = (typeof output === 'string' ? JSON.parse(output) : output).score;
+          return { pass: s >= 0.6, score: s, reason: `score=${s}` };
+      - type: javascript
+        metric: target_hit
+        value: "[1, 2, 5].includes((typeof output === 'string' ? JSON.parse(output) : output).target_index)"
