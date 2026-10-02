@@ -1,0 +1,37 @@
+# Public sticker describer cases (spec 009). Committed — neutral/decent stickers only.
+# Common must_not lives in the rubric template, not here:
+#   placeholder instead of a description; refusal / moralising / softening sex or violence;
+#   clothing as the main content for photos of people; a confident but wrong meme name or meaning.
+# Grading: pass = every `must` point comes through and no must_not;
+#          score 1.0 = pass + bonus, 0.5 = pass without bonus, 0 = fail. `note` is never sent to the judge.
+
+- id: gru_control
+  file: AgADzwADTqDDMA.webp
+  must: Грю из «Гадкий я», подпись «Схуяли?»; выражает недоверие/агрессивное сомнение.
+  note: 'Контроль: текущее описание уже хорошее, не должно стать хуже.'
+- id: labrador_calm
+  file: AgADB50AApGnGEs.webp
+  must: 'Лабрадор с натянутым спокойствием: «я не злюсь, я спокоен».'
+  bonus: 'Когда шлют: после тупой шутки или непонимания.'
+- id: smiley_chair_over
+  file: AgAD9XoAAgjLoEo.webp
+  must: Настроение «всё кончено»/опустошение, а не просто «смайлик на стуле».
+  bonus: Узнана отсылка к Синдзи на стуле (Евангелион).
+  must_not: Уверенно названная неверная отсылка.
+- id: sunboy_unclear
+  file: AgADfgADNR33Kw.webp
+  must: Описывает лицо/выражение; смысл либо помечен как неясный, либо не выдуман.
+  bonus: Узнан мем Sunboy face.
+  must_not: Уверенно придуманный смысл.
+- id: rock_bliss
+  file: AgADEj8AAl7eMUk.webm
+  must: Скала (Дуэйн Джонсон) с наслаждением/блаженно вдыхает (нюхает).
+  must_not: Придуманный смысл сверх наслаждения/блаженства.
+- id: pepe_eyes
+  file: AgADkR8AAsYuEUo.webm
+  must: Глаза Пепе быстро/беспокойно двигаются (бегают, вращаются, трясутся).
+  bonus: 'Смысл: нервно/подозрительно озирается.'
+- id: duck_roadster
+  file: AgAD4BUAAhyiGEg.webm
+  must: Утка (утенок) за рулем розового кабриолета.
+  bonus: Показывает «козу» и/или смысл — кайфует, беззаботно.

@@ -1,0 +1,15 @@
+[
+    {
+        "role": "system",
+        "content": {{ prompt | dump | safe }}
+    },
+    {
+        "role": "user",
+        "content": [
+            {"type": "image_url", "image_url": {"url": "{{ frame_0 }}"}}
+            {% if frame_1 %}, {"type": "image_url", "image_url": {"url": "{{ frame_1 }}"}}{% endif %}
+            {% if frame_2 %}, {"type": "image_url", "image_url": {"url": "{{ frame_2 }}"}}{% endif %}
+            {% if frame_3 %}, {"type": "image_url", "image_url": {"url": "{{ frame_3 }}"}}{% endif %}
+        ]
+    }
+]

@@ -24,6 +24,9 @@ _TASK = 'animation_describe'
 _PROMPT_VERSION = 'v1'
 _MODEL_VERSION = 'v2'
 
+_MAX_FRAMES = 4
+MAX_COUNTED_FRAMES = 300
+
 
 @cache
 def current_describer() -> str:
@@ -126,6 +129,13 @@ def _get_animation_key_frames(animation: AnimationDetectionData) -> list[str]:
             return _extract_video_frames(animation.content)
 
 
+def _frame_indices(num_frames: int) -> list[int]:
+    """Which frames to send: all of a short animation, four spread over a long one."""
+    if num_frames <= _MAX_FRAMES:
+        return list(range(num_frames))
+    return [0, num_frames // 3, 2 * num_frames // 3, num_frames - 1]
+
+
 def _extract_tgs_frames(tgs_bytes: bytes) -> list[str]:
     frames = []
     try:
@@ -136,12 +146,7 @@ def _extract_tgs_frames(tgs_bytes: bytes) -> list[str]:
         end = int(animation.out_point)
         num_frames = end - start + 1
 
-        if num_frames <= 10:
-            indices = [start]
-        else:
-            indices = [start, start + num_frames // 3, start + 2 * num_frames // 3, end]
-
-        indices = sorted(set(indices))
+        indices = [start + i for i in _frame_indices(num_frames)]
 
         with PngRenderer(animation, 96) as renderer:
             for i in indices:
@@ -172,17 +177,7 @@ def _extract_gif_frames(gif_bytes: bytes) -> list[str]:
     try:
         with Image.open(io.BytesIO(gif_bytes)) as img:
             num_frames = getattr(img, 'n_frames', 1)
-            # Short animations (up to 5 frames) -> 1 key frame
-            # Long animations -> up to 4 key frames
-            if num_frames <= 10:
-                indices = [0]
-            else:
-                indices = [0, num_frames // 3, 2 * num_frames // 3, num_frames - 1]
-
-            # Remove duplicate indices for very short gifs that weren't caught by num_frames <= 5
-            indices = sorted(set(indices))
-
-            for i in indices:
+            for i in _frame_indices(num_frames):
                 img.seek(i)
                 frame = img.convert('RGB')
                 frame = _resize_frame_if_needed(frame)
@@ -196,6 +191,66 @@ def _extract_gif_frames(gif_bytes: bytes) -> list[str]:
     return frames
 
 
+def _count_decodable_frames(path: str) -> int:
+    """Real frame count by decoding, since `CAP_PROP_FRAME_COUNT` is 0 or wrong for some webm.
+
+    Stops one past `MAX_COUNTED_FRAMES`, so the result is only exact up to the cap.
+    """
+    cap = cv2.VideoCapture(path)
+    try:
+        count = 0
+        while count <= MAX_COUNTED_FRAMES and cap.grab():
+            count += 1
+        return count
+    finally:
+        cap.release()
+
+
+def _read_frames_sequentially(path: str, indices: list[int]) -> list[Image.Image]:
+    """Reads the chosen frames from one pass, no seeks (`CAP_PROP_POS_FRAMES` is unreliable here)."""
+    wanted = set(indices)
+    last = max(indices)
+    images = []
+    cap = cv2.VideoCapture(path)
+    try:
+        for i in range(last + 1):
+            if not cap.grab():
+                break
+            if i not in wanted:
+                continue
+            ok, frame = cap.retrieve()
+            if ok:
+                images.append(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+    finally:
+        cap.release()
+    return images
+
+
+def _read_frames_by_seeking(path: str, indices: list[int]) -> list[Image.Image]:
+    images = []
+    cap = cv2.VideoCapture(path)
+    try:
+        for i in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+            ret, frame = cap.read()
+            if ret:
+                images.append(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+    finally:
+        cap.release()
+    return images
+
+
+def _declared_frame_count(path: str) -> int | None:
+    """`None` when the file does not open."""
+    cap = cv2.VideoCapture(path)
+    try:
+        if not cap.isOpened():
+            return None
+        return int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    finally:
+        cap.release()
+
+
 def _extract_video_frames(video_bytes: bytes) -> list[str]:
     frames = []
     # OpenCV cannot read directly from BytesIO, need a temporary file
@@ -204,8 +259,8 @@ def _extract_video_frames(video_bytes: bytes) -> list[str]:
         temp_video_path = temp_video.name
 
     try:
-        cap = cv2.VideoCapture(temp_video_path)
-        if not cap.isOpened():
+        declared = _declared_frame_count(temp_video_path)
+        if declared is None:
             logger.error(
                 'Could not open video file with OpenCV',
                 extra=event(
@@ -217,27 +272,19 @@ def _extract_video_frames(video_bytes: bytes) -> list[str]:
             )
             return []
 
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if total_frames <= 0:
+        decoded = _count_decodable_frames(temp_video_path)
+        if decoded > MAX_COUNTED_FRAMES:
+            # Too long to count: keep the declared count and seek reads.
+            if declared <= 0:
+                return []
+            images = _read_frames_by_seeking(temp_video_path, _frame_indices(declared))
+        elif decoded == 0:
             return []
-
-        if total_frames <= 10:
-            indices = [0]
         else:
-            indices = [0, total_frames // 3, 2 * total_frames // 3, total_frames - 1]
+            images = _read_frames_sequentially(temp_video_path, _frame_indices(decoded))
 
-        indices = sorted(set(indices))
-
-        for i in indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
-            ret, frame = cap.read()
-            if ret:
-                # BGR to RGB
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                pil_img = Image.fromarray(frame_rgb)
-                pil_img = _resize_frame_if_needed(pil_img)
-                frames.append(_image_to_base64(pil_img))
-        cap.release()
+        for image in images:
+            frames.append(_image_to_base64(_resize_frame_if_needed(image)))
     except Exception:
         logger.error(
             'Error extracting frames from video',

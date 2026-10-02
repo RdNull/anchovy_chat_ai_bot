@@ -120,3 +120,4 @@ node_modules
 
 # Sticker eval fixtures: chat members' photos + hand labels. Private, never commit.
 evals/stickers/fixtures/
+evals/stickers/frames/
