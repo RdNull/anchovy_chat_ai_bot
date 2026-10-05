@@ -24,7 +24,7 @@ _TASK = 'animation_describe'
 _PROMPT_VERSION = 'v1'
 _MODEL_VERSION = 'v2'
 
-_MAX_FRAMES = 4
+_MAX_FRAMES = 8
 MAX_COUNTED_FRAMES = 300
 
 
@@ -116,7 +116,7 @@ async def describe_animation(animation: AnimationDetectionData) -> MediaDescript
 def _get_animation_key_frames(animation: AnimationDetectionData) -> list[str]:
     """
     Extracts key frames from GIF or video (without sound).
-    The number of frames depends on the animation length: 1 to 4.
+    The number of frames depends on the animation length: 1 to 8.
     Each frame is resized to max 300,000 pixels and returned as base64-encoded JPEG.
     """
     file_format = animation.format.lower()
@@ -130,10 +130,10 @@ def _get_animation_key_frames(animation: AnimationDetectionData) -> list[str]:
 
 
 def _frame_indices(num_frames: int) -> list[int]:
-    """Which frames to send: all of a short animation, four spread over a long one."""
+    """Which frames to send: all of a short animation, else eight evenly spaced, first and last included."""
     if num_frames <= _MAX_FRAMES:
         return list(range(num_frames))
-    return [0, num_frames // 3, 2 * num_frames // 3, num_frames - 1]
+    return [i * (num_frames - 1) // (_MAX_FRAMES - 1) for i in range(_MAX_FRAMES)]
 
 
 def _extract_tgs_frames(tgs_bytes: bytes) -> list[str]:

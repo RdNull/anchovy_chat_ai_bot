@@ -3,8 +3,10 @@
 description: "Sticker describer eval: does the meaning come through"
 
 prompts:
-  - id: file://chat_prompt.json
+  - id: file://chat_prompt.js:prodPrompts
     label: "prod-prompts"
+  - id: file://chat_prompt.js:stickerV1
+    label: "sticker-v1"
 
 providers:
   - file://../models/image_describe/v2.yaml

@@ -68,3 +68,12 @@ def test_memory_v1_rendering():
     )
     assert 'НОВЫЕ СООБЩЕНИЯ:\nUser: hello' in rendered
     assert 'ТЕКУЩАЯ ПАМЯТЬ:\nMemory content' in rendered
+
+
+def test_sticker_describe_prompt_is_the_file_verbatim():
+    with open('src/prompts/sticker_describe/v1.j2', encoding='utf-8') as f:
+        text = f.read()
+
+    rendered = PromptManager().get_prompt('sticker_describe')
+
+    assert rendered == text.removesuffix('\n')

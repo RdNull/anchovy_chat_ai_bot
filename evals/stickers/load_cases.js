@@ -8,7 +8,6 @@ const yaml = require('js-yaml');
 
 const ROOT = __dirname;
 const FRAMES_DIR = path.join(ROOT, 'frames');
-const PROMPTS_DIR = path.join(ROOT, '..', '..', 'src', 'prompts');
 
 const SETS = [
     { visibility: 'public', cases: path.join(ROOT, 'public', 'cases.yaml') },
@@ -37,7 +36,6 @@ module.exports = function () {
                 throw new Error(`No frames for ${c.id} (${c.file}); run extract_frames.py`);
             }
             const kind = path.extname(c.file) === '.webp' ? 'static' : 'animated';
-            const promptFile = kind === 'static' ? 'image_describe' : 'animation_describe';
             tests.push({
                 description: c.id,
                 metadata: { visibility, kind, note: c.note || '' },
@@ -45,7 +43,6 @@ module.exports = function () {
                     // Scalar vars, not a list: promptfoo expands a list var into one test per item.
                     ...Object.fromEntries(frames.map((frame, i) => [`frame_${i}`, frame])),
                     kind,
-                    prompt: fs.readFileSync(path.join(PROMPTS_DIR, promptFile, 'v1.j2'), 'utf8'),
                     must: c.must,
                     bonus: c.bonus || '',
                     must_not: c.must_not || '',
