@@ -117,3 +117,7 @@ http/
 node_modules
 .DS_Store
 
+
+# Sticker eval fixtures: chat members' photos + hand labels. Private, never commit.
+evals/stickers/fixtures/
+evals/stickers/frames/

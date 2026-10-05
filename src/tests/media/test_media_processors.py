@@ -3,15 +3,19 @@ import io
 import os
 from unittest.mock import AsyncMock, MagicMock, call
 
+import cv2
+import numpy as np
 import pytest
 from PIL import Image
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.media.models import AnimationDetectionData, ImageDetectionData, MediaDescriptionData
 from src.media.processors.animation import (
+    MAX_COUNTED_FRAMES,
     _extract_gif_frames,
     _extract_tgs_frames,
     _extract_video_frames,
+    _frame_indices,
     _image_to_base64,
     _resize_frame_if_needed,
     describe_animation,
@@ -52,6 +56,13 @@ def sample_webm():
         return f.read()
 
 
+@pytest.fixture
+def sample_zero_count_webm():
+    path = os.path.join(MEDIA_DIR, 'zero_count_webm.webm')
+    with open(path, 'rb') as f:
+        return f.read()
+
+
 def test_resize_frame_if_needed():
     # Create a large image
     img = Image.new('RGB', (2000, 2000))
@@ -81,7 +92,7 @@ def test_image_to_base64():
 def test_extract_tgs_frames(sample_tgs):
     frames = _extract_tgs_frames(sample_tgs)
     assert isinstance(frames, list)
-    assert len(frames) == 4
+    assert len(frames) == 8
     for i, frame_b64 in enumerate(frames):
         assert isinstance(frame_b64, str)
         # Compare with reference
@@ -94,7 +105,7 @@ def test_extract_tgs_frames(sample_tgs):
 def test_extract_video_frames_mp4(sample_mp4):
     frames = _extract_video_frames(sample_mp4)
     assert isinstance(frames, list)
-    assert len(frames) == 4
+    assert len(frames) == 8
     for i, frame_b64 in enumerate(frames):
         ref_path = os.path.join(MEDIA_DIR, f'laughing_toothless/frame_{i}.jpg')
         with open(ref_path, 'rb') as f:
@@ -105,7 +116,7 @@ def test_extract_video_frames_mp4(sample_mp4):
 def test_extract_video_frames_webm(sample_webm):
     frames = _extract_video_frames(sample_webm)
     assert isinstance(frames, list)
-    assert len(frames) == 4
+    assert len(frames) == 8
     for i, frame_b64 in enumerate(frames):
         ref_path = os.path.join(MEDIA_DIR, f'fat_horse/frame_{i}.jpg')
         with open(ref_path, 'rb') as f:
@@ -234,6 +245,7 @@ def test_extract_video_frames_no_frames(mocker):
     mock_cap = MagicMock()
     mock_cap.isOpened.return_value = True
     mock_cap.get.return_value = 0
+    mock_cap.grab.return_value = False
     mocker.patch('cv2.VideoCapture', return_value=mock_cap)
     assert _extract_video_frames(b'data') == []
 
@@ -274,12 +286,10 @@ def test_extract_tgs_frames_short(mocker):
     # and avoid its internal unpacking logic if it fails for some reason in mock
     mocker.patch('src.media.processors.animation._resize_frame_if_needed', return_value=mock_img)
 
-    # Should use only start index
-    # animation.py:86: num_frames = animation.out_point - animation.in_point + 1 = 6
-    # animation.py:88: if num_frames < 10: indices = [start] where start = animation.in_point = 0
+    # 6 frames -> every frame
     frames = _extract_tgs_frames(b'data')
 
-    assert len(frames) == 1
+    assert len(frames) == 6
     assert frames[0] == 'b64'
 
 
@@ -324,3 +334,162 @@ async def test_describe_animation_calls_exactly_what_the_stamp_names(mocker):
     prompt_version = get_prompt.call_args.kwargs['version']
     model = model_manager.get_model_settings('animation_describe', model_version)['model']
     assert animation_describer() == f'{prompt_task}/{prompt_version}@{model}'
+
+
+@pytest.mark.parametrize(
+    ('num_frames', 'expected'),
+    [
+        (1, [0]),
+        (2, [0, 1]),
+        (4, [0, 1, 2, 3]),
+        (8, [0, 1, 2, 3, 4, 5, 6, 7]),
+        (9, [0, 1, 2, 3, 4, 5, 6, 8]),
+        (10, [0, 1, 2, 3, 5, 6, 7, 9]),
+        (90, [0, 12, 25, 38, 50, 63, 76, 89]),
+    ],
+)
+def test_frame_indices(num_frames, expected):
+    assert _frame_indices(num_frames) == expected
+
+
+class _FakeCapture:
+    """A `cv2.VideoCapture` stand-in: `decodable` real frames, `declared` claimed ones."""
+
+    instances = []
+
+    def __init__(self, declared, decodable):
+        self.declared = declared
+        self.decodable = decodable
+        self.grabs = 0
+        self.reads = []
+        self.position = 0
+        self.seeks = []
+        _FakeCapture.instances.append(self)
+
+    def isOpened(self):  # noqa: N802
+        return True
+
+    def get(self, _prop):
+        return self.declared
+
+    def set(self, _prop, value):
+        self.seeks.append(value)
+        self.position = value
+        return True
+
+    def grab(self):
+        self.grabs += 1
+        if self.position >= self.decodable:
+            return False
+        self.position += 1
+        return True
+
+    def retrieve(self):
+        frame = np.zeros((2, 2, 3), dtype=np.uint8)
+        self.reads.append(self.position - 1)
+        return True, frame
+
+    def read(self):
+        if not self.grab():
+            return False, None
+        return self.retrieve()
+
+    def release(self):
+        pass
+
+
+def _fake_video(mocker, declared, decodable):
+    _FakeCapture.instances = []
+
+    def factory(path):
+        # each VideoCapture is a fresh decoder at position 0, as with the real one
+        return _FakeCapture(declared, decodable)
+
+    mocker.patch('cv2.VideoCapture', side_effect=factory)
+    return _FakeCapture.instances
+
+
+def _declared_count(video_bytes, tmp_path):
+    path = tmp_path / 'probe.webm'
+    path.write_bytes(video_bytes)
+    cap = cv2.VideoCapture(str(path))
+    try:
+        return int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    finally:
+        cap.release()
+
+
+def test_extract_video_frames_zero_declared_count_still_decodes(sample_zero_count_webm, tmp_path):
+    declared = _declared_count(sample_zero_count_webm, tmp_path)
+    assert declared == 0
+    frames = _extract_video_frames(sample_zero_count_webm)
+    assert len(frames) == 8
+
+
+def test_extract_video_frames_wrong_declared_count_spans_real_length(mocker):
+    # declares 87, decodes 166: indices must come from the real count
+    cams = _fake_video(mocker, declared=87, decodable=166)
+    frames = _extract_video_frames(b'data')
+    assert len(frames) == 8
+    reader = cams[-1]
+    assert reader.reads == [0, 23, 47, 70, 94, 117, 141, 165]
+
+
+def test_extract_video_frames_declared_count_larger_than_real(mocker):
+    # declares 30, decodes 24: last frame must not be dropped
+    cams = _fake_video(mocker, declared=30, decodable=24)
+    frames = _extract_video_frames(b'data')
+    assert len(frames) == 8
+    assert cams[-1].reads == [0, 3, 6, 9, 13, 16, 19, 23]
+
+
+def test_extract_video_frames_short_video_sends_every_frame(mocker):
+    cams = _fake_video(mocker, declared=3, decodable=2)
+    frames = _extract_video_frames(b'data')
+    assert len(frames) == 2
+    assert cams[-1].reads == [0, 1]
+
+
+def test_extract_video_frames_long_video_keeps_declared_count_path(mocker):
+    cams = _fake_video(mocker, declared=400, decodable=400)
+    frames = _extract_video_frames(b'data')
+    assert len(frames) == 8
+    counter = cams[1]
+    assert counter.grabs == MAX_COUNTED_FRAMES + 1
+    seeker = cams[2]
+    assert seeker.seeks == [0, 57, 114, 171, 228, 285, 342, 399]
+
+
+def test_extract_video_frames_long_video_with_zero_declared_returns_nothing(mocker):
+    _fake_video(mocker, declared=0, decodable=400)
+    assert _extract_video_frames(b'data') == []
+
+
+@pytest.mark.parametrize('num_frames', [2, 4, 8, 9])
+def test_extract_gif_frames_short_loop(num_frames):
+    images = [Image.new('RGB', (4, 4), color=(i * 20, 0, 0)) for i in range(num_frames)]
+    gif_io = io.BytesIO()
+    images[0].save(gif_io, format='GIF', save_all=True, append_images=images[1:], duration=50)
+    frames = _extract_gif_frames(gif_io.getvalue())
+    assert len(frames) == min(num_frames, 8)
+
+
+@pytest.mark.parametrize(('out_point', 'expected'), [(1, 2), (3, 4), (8, 8)])
+def test_extract_tgs_frames_short_loop(mocker, out_point, expected):
+    mock_anim = MagicMock()
+    mock_anim.in_point = 0
+    mock_anim.out_point = out_point
+    mocker.patch('src.media.processors.animation.import_tgs', return_value=mock_anim)
+
+    mock_img = MagicMock()
+    mock_img.size = (100, 100)
+    mock_img.convert.return_value = mock_img
+    mock_renderer = MagicMock()
+    mock_renderer.__enter__.return_value = mock_renderer
+    mock_renderer.__exit__.return_value = False
+    mocker.patch('src.media.processors.animation.PngRenderer', return_value=mock_renderer)
+    mocker.patch('src.media.processors.animation.Image.open', return_value=mock_img)
+    mocker.patch('src.media.processors.animation._image_to_base64', return_value='b64')
+    mocker.patch('src.media.processors.animation._resize_frame_if_needed', return_value=mock_img)
+
+    assert len(_extract_tgs_frames(b'data')) == expected
