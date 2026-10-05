@@ -1,0 +1,13 @@
+id: openrouter:z-ai/glm-5.3-flash
+label: glm-5.3-flash
+config:
+  max_tokens: 4000
+  temperature: 0.4
+  # max/high/low - no `medium` on this model; reasoning is mandatory
+  reasoning:
+    effort: low
+  # first-party endpoint only: ~30 hosts, unpinned routing hurt reproducibility in the initiative eval
+  provider:
+    order: ["z-ai"]
+    allow_fallbacks: false
+  showThinking: false

@@ -1,0 +1,8 @@
+id: openrouter:openai/gpt-6-luna
+label: gpt-6-luna
+config:
+  max_tokens: 4000
+  # no temperature: the endpoint does not list it
+  reasoning:
+    effort: low
+  showThinking: false

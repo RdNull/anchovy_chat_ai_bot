@@ -7,8 +7,8 @@ const path = require('path');
 const PROMPTS_DIR = path.join(__dirname, '..', '..', 'src', 'prompts');
 const MAX_FRAMES = 8;
 
-function promptText(task) {
-    return fs.readFileSync(path.join(PROMPTS_DIR, task, 'v1.j2'), 'utf8');
+function promptText(task, version = 'v1') {
+    return fs.readFileSync(path.join(PROMPTS_DIR, task, `${version}.j2`), 'utf8');
 }
 
 function build(system, vars) {
@@ -36,4 +36,9 @@ function stickerV1({ vars }) {
     return build(promptText('sticker_describe'), vars);
 }
 
-module.exports = { prodPrompts, stickerV1 };
+// sticker_describe/v2 for every case.
+function stickerV2({ vars }) {
+    return build(promptText('sticker_describe', 'v2'), vars);
+}
+
+module.exports = { prodPrompts, stickerV1, stickerV2 };
