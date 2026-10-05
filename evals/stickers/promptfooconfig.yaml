@@ -3,13 +3,15 @@
 description: "Sticker describer eval: does the meaning come through"
 
 prompts:
-  - id: file://chat_prompt.js:prodPrompts
-    label: "prod-prompts"
-  - id: file://chat_prompt.js:stickerV1
-    label: "sticker-v1"
+  - id: file://chat_prompt.js:stickerV2
+    label: "sticker-v2"
 
 providers:
   - file://../models/image_describe/v2.yaml
+  - file://../models/image_describe/gemini-3.8-flash.yaml
+  - file://../models/image_describe/gpt-6-luna.yaml
+  - file://../models/image_describe/glm-5.3-flash.yaml
+  - file://../models/image_describe/qwen3.8-flash.yaml
 
 tests: file://load_cases.js
 

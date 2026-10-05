@@ -77,3 +77,12 @@ def test_sticker_describe_prompt_is_the_file_verbatim():
     rendered = PromptManager().get_prompt('sticker_describe')
 
     assert rendered == text.removesuffix('\n')
+
+
+def test_sticker_describe_v2_prompt_is_the_file_verbatim():
+    with open('src/prompts/sticker_describe/v2.j2', encoding='utf-8') as f:
+        text = f.read()
+
+    rendered = PromptManager().get_prompt('sticker_describe', version='v2')
+
+    assert rendered == text.removesuffix('\n')

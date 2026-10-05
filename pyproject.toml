@@ -173,6 +173,7 @@ allow-star-arg-any = true
 "__init__.py" = ["E402", "F401"]
 "**/tests/**" = ["ANN", "SLF001", "ARG001"]
 "scripts/**" = ["INP001"]  # scripts/dns_sync.py runs as `python scripts/dns_sync.py`, not a package
+"evals/stickers/build_report.py" = ["INP001"]  # runs as `python evals/stickers/build_report.py`, not a package
 ".claude/hooks/**" = ["T20"]  # hook protocol writes to stdout
 # deliberately reaches into EmbeddingsClient._get_embedding_vectors to avoid
 # _search's side effect of creating a missing Qdrant collection - see the module docstring
