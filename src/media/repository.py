@@ -98,12 +98,14 @@ async def replace_media_description(
 
     Unlike `update_media_description` this does not skip falsy fields: a new result
     with no OCR must clear the old OCR string, not leave it beside a new description.
-    Status stays READY throughout, so `updated_at` is deliberately not touched.
+    Status stays READY throughout, but `updated_at` is stamped so a legacy row without the
+    field gets one; only a PROCESSING row ever reads it, so a READY row is unaffected.
     """
     update = {
         'description': description,
         'ocr_text': ocr_text or None,
         'describer': describer,
+        'updated_at': datetime.now(UTC).timestamp(),
     }
     if content_hash:
         update['hash'] = content_hash

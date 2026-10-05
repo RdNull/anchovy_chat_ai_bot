@@ -1364,3 +1364,18 @@ async def test_flag_on_a_failed_redescribe_is_retried_after_the_window(
     await handle_media_message(sticker_message(), mock_context)
 
     assert route['sticker'].call_count == 2
+
+
+async def test_flag_on_a_redescribe_stamps_updated_at_on_a_row_that_had_none(
+    redescribe_on, mock_context, mock_download, mock_describe, mock_save_sticker
+):
+    row = await stale_sticker_row(describer=OLD_DESCRIBER)
+    await media_descriptions.update_one({'_id': ObjectId(row.id)}, {'$unset': {'updated_at': ''}})
+    assert 'updated_at' not in await raw_row()
+    before = datetime.now(UTC).timestamp()
+
+    await handle_media_message(sticker_message(), mock_context)
+
+    stored = await raw_row()
+    assert stored['updated_at'] >= before
+    assert stored['status'] == MessageMediaStatus.READY.value
