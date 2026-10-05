@@ -66,6 +66,9 @@ async def claim_redescribe(description_id: str, current_describers: set[str]) ->
     or claimed longer ago than `MEDIA_PROCESSING_STALE_MINUTES` (a crashed attempt).
     A spammed sticker sends many sightings at once; only the one that modifies the row
     proceeds. `describer: {$nin: [...]}` also matches a row with no `describer` key.
+
+    A failed attempt does not release the claim, so the expiry window is also the retry
+    cooldown; only `replace_media_description` clears it.
     """
     now = datetime.now(UTC)
     stale_before = (now - timedelta(minutes=settings.MEDIA_PROCESSING_STALE_MINUTES)).timestamp()
@@ -82,13 +85,6 @@ async def claim_redescribe(description_id: str, current_describers: set[str]) ->
         {'$set': {'redescribe_started_at': now.timestamp()}},
     )
     return result.modified_count == 1
-
-
-async def release_redescribe_claim(description_id: str):
-    await media_descriptions.update_one(
-        {'_id': ObjectId(description_id)},
-        {'$unset': {'redescribe_started_at': ''}},
-    )
 
 
 async def replace_media_description(

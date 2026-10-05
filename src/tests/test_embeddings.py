@@ -312,10 +312,10 @@ async def test_facts_embedding_client_search_facts(mocker):
 # --- sticker_embedding_text ---
 
 
-def test_sticker_embedding_text_puts_emoji_first():
+def test_sticker_embedding_text_has_no_emoji():
     text = sticker_embedding_text(make_description(ocr_text='ЛОЛ'))
 
-    assert text == '🔥 | кот танцует | ЛОЛ'
+    assert text == 'кот танцует | ЛОЛ'
 
 
 def test_sticker_embedding_text_drops_missing_parts():
@@ -347,7 +347,7 @@ async def test_save_sticker_indexes_identity_only(mocker):
     point = qdrant.upsert.call_args[1]['points'][0]
     assert point.payload == {'unique_id': 'sticker_uid'}
     assert 'file_id' not in point.payload
-    assert client._get_embedding_vectors.call_args == call('🔥 | кот танцует')
+    assert client._get_embedding_vectors.call_args == call('кот танцует')
 
 
 async def test_save_sticker_skips_empty_composite(mocker):

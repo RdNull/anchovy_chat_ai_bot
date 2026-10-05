@@ -55,6 +55,7 @@ Facts about individual users are extracted automatically in the same pass as eac
 
 **Async Media Pipeline**
 - Images: downloaded, hashed for deduplication, described by a vision LLM (Gemini 2.5 Flash Lite) with OCR
+- Stickers (static and animated): described by their own prompt on Gemini 3.8 Flash, tuned for what the sticker expresses rather than what it shows; a sticker is re-described with the current describer the next time it is sent (when re-describe is on), and a failing re-describe retries at most once per few minutes
 - Animated stickers (Telegram TGS/Lottie format): key frames extracted via OpenCV and the Lottie renderer, resized, and described in a single batched vision LLM call
 - Descriptions are stored in MongoDB and injected into the conversation context
 - If a character is triggered while a referenced image/sticker is still processing, response generation polls (with a bounded timeout) until the media description is ready before building the prompt
