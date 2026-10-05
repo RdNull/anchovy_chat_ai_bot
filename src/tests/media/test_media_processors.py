@@ -23,6 +23,8 @@ from src.media.processors.animation import (
 from src.media.processors.image import current_describer as image_describer
 from src.media.processors.animation import current_describer as animation_describer
 from src.media.processors.image import describe_image
+from src.media.processors.sticker import current_describer as sticker_describer
+from src.media.processors.sticker import describe_sticker
 from src.model_manager import model_manager
 
 MEDIA_DIR = 'src/tests/media/data'
@@ -493,3 +495,77 @@ def test_extract_tgs_frames_short_loop(mocker, out_point, expected):
     mocker.patch('src.media.processors.animation._resize_frame_if_needed', return_value=mock_img)
 
     assert len(_extract_tgs_frames(b'data')) == expected
+
+
+def _sticker_llm(mocker, result):
+    llm = MagicMock()
+    llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=result)
+    get_model = mocker.patch(
+        'src.media.processors.sticker.ai.get_sticker_descriptor_model', return_value=llm
+    )
+    get_prompt = mocker.patch(
+        'src.media.processors.sticker.prompt_manager.get_prompt', return_value='p'
+    )
+    return llm, get_model, get_prompt
+
+
+async def test_describe_sticker_calls_exactly_what_the_stamp_names(mocker):
+    result = MediaDescriptionData(description='x', ocr_text=None)
+    _, get_model, get_prompt = _sticker_llm(mocker, result)
+
+    await describe_sticker(ImageDetectionData(content='abc', format='webp'))
+
+    model_version = get_model.call_args.kwargs['version']
+    (prompt_task,) = get_prompt.call_args.args
+    prompt_version = get_prompt.call_args.kwargs['version']
+    model = model_manager.get_model_settings('sticker_describe', model_version)['model']
+    assert sticker_describer() == f'{prompt_task}/{prompt_version}@{model}'
+    assert sticker_describer() == 'sticker_describe/v2@google/gemini-3.8-flash'
+
+
+async def test_describe_sticker_sends_one_block_for_an_image(mocker):
+    result = MediaDescriptionData(description='x', ocr_text=None)
+    llm, _, _ = _sticker_llm(mocker, result)
+
+    out = await describe_sticker(ImageDetectionData(content='abc', format='webp'))
+
+    messages = llm.with_structured_output.return_value.ainvoke.call_args.args[0]
+    blocks = messages[1].content_blocks
+    assert out == result
+    assert [b['mime_type'] for b in blocks] == ['image/webp']
+
+
+async def test_describe_sticker_sends_the_frames_of_an_animation(mocker):
+    result = MediaDescriptionData(description='x', ocr_text=None)
+    llm, _, _ = _sticker_llm(mocker, result)
+    mocker.patch(
+        'src.media.processors.sticker._get_animation_key_frames', return_value=['f1', 'f2', 'f3']
+    )
+
+    out = await describe_sticker(AnimationDetectionData(content=b'x', format='webm'))
+
+    messages = llm.with_structured_output.return_value.ainvoke.call_args.args[0]
+    blocks = messages[1].content_blocks
+    assert out == result
+    assert [b['base64'] for b in blocks] == ['f1', 'f2', 'f3']
+
+
+async def test_describe_sticker_animation_without_frames_returns_none(mocker, caplog):
+    _, get_model, _ = _sticker_llm(mocker, None)
+    mocker.patch('src.media.processors.sticker._get_animation_key_frames', return_value=[])
+
+    with caplog.at_level('WARNING'):
+        out = await describe_sticker(AnimationDetectionData(content=b'x', format='webm'))
+
+    assert out is None
+    assert get_model.call_count == 0
+    assert [r.outcome for r in caplog.records if getattr(r, 'event', '') == 'MEDIA_FRAMES'] == [
+        'empty'
+    ]
+
+
+async def test_describe_sticker_error_returns_none(mocker):
+    llm, _, _ = _sticker_llm(mocker, None)
+    llm.with_structured_output.return_value.ainvoke = AsyncMock(side_effect=RuntimeError('boom'))
+
+    assert await describe_sticker(ImageDetectionData(content='abc', format='webp')) is None

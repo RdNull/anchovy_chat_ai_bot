@@ -27,6 +27,10 @@ def get_animation_descriptor_model(version: str = 'v1') -> BaseChatModel:
     return _get_model('animation_describe', version)
 
 
+def get_sticker_descriptor_model(version: str = 'v1') -> BaseChatModel:
+    return _get_model('sticker_describe', version)
+
+
 def get_web_search_model(version: str = 'v1') -> BaseChatModel:
     return _get_model('web_search', version)
 

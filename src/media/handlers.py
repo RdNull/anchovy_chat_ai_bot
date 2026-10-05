@@ -16,15 +16,16 @@ from src.media.models import (
 )
 from src.media.processors import animation as animation_processor
 from src.media.processors import image as image_processor
+from src.media.processors import sticker as sticker_processor
 from src.media.processors.animation import describe_animation
 from src.media.processors.image import describe_image
+from src.media.processors.sticker import describe_sticker
 from src.media.repository import (
     claim_redescribe,
     create_media_description,
     get_media_description_by_media_id,
     get_media_descriptions_by_hash,
     mark_as_sticker,
-    release_redescribe_claim,
     replace_media_description,
     update_media_description,
     update_media_description_status,
@@ -97,7 +98,9 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
         )
 
     await update_media_description_status(media_description.id, MessageMediaStatus.PROCESSING)
-    image_description = await _generate_media_description(message, media_detection_data)
+    image_description = await _generate_media_description(
+        message, media_detection_data, media_description.type
+    )
 
     if not image_description:
         logger.warning(
@@ -113,7 +116,7 @@ async def handle_media_message(message: Message, context: ContextTypes.DEFAULT_T
         description=image_description.description,
         ocr_text=image_description.ocr_text,
         status=MessageMediaStatus.READY,
-        describer=_describer_for(media_detection_data),
+        describer=_describer_for(media_description.type, media_detection_data),
     )
     # Deliberately not gated on ENABLE_STICKER_REPLIES: the flag gates the tools, and
     # the corpus has to accumulate while it is off so there is something there to
@@ -171,30 +174,45 @@ async def _backfill_sticker(
     return retyped
 
 
-def _current_describers() -> set[str]:
+def _current_describers(row_type: MessageMediaTypes) -> set[str]:
+    """The stamps that count as current for a row of this type.
+
+    Keyed by the stored row's type, never the incoming message's: a row found by content
+    hash can have a different type than the message, and the describe call and the
+    staleness check have to agree on which describer the row belongs to.
+    """
+    if row_type == MessageMediaTypes.STICKER:
+        return {sticker_processor.current_describer()}
+
     return {image_processor.current_describer(), animation_processor.current_describer()}
 
 
-def _describer_for(media_detection_data: MediaDetectionData) -> str | None:
+def _describer_for(
+    row_type: MessageMediaTypes,
+    media_detection_data: MediaDetectionData,
+) -> str | None:
+    if not isinstance(media_detection_data, ImageDetectionData | AnimationDetectionData):
+        return None
+
+    if row_type == MessageMediaTypes.STICKER:
+        return sticker_processor.current_describer()
+
     if isinstance(media_detection_data, ImageDetectionData):
         return image_processor.current_describer()
 
-    if isinstance(media_detection_data, AnimationDetectionData):
-        return animation_processor.current_describer()
-
-    return None
+    return animation_processor.current_describer()
 
 
 def _is_describer_stale(description: MediaDescription) -> bool:
     """Only meaningful with the flag on; a row with no stamp counts as stale.
 
-    Membership in the current set rather than a per-kind check, so nobody has to know
-    before the download whether a sticker is static or animated.
+    Membership in the current set for the row's type rather than a per-kind check, so
+    nobody has to know before the download whether a sticker is static or animated.
     """
     if not settings.MEDIA_REDESCRIBE_ON_SIGHTING:
         return False
 
-    return description.describer not in _current_describers()
+    return description.describer not in _current_describers(description.type)
 
 
 async def _redescribe(
@@ -207,8 +225,9 @@ async def _redescribe(
 
     No PROCESSING write: `fetch_last_messages` would make a reply wait on media that
     already has a usable description, and a failure would lose it. A failure at any
-    step leaves the old row as it was and releases the claim, so the next sighting
-    tries again.
+    step leaves the old row as it was and keeps the claim: `claim_redescribe` treats a
+    claim older than `MEDIA_PROCESSING_STALE_MINUTES` as expired, so a failing row is
+    retried at most once per that window instead of on every sighting.
     """
     started = time.monotonic()
     fields = {
@@ -217,7 +236,7 @@ async def _redescribe(
         'old_describer': description.describer,
     }
 
-    if not await claim_redescribe(description.id, _current_describers()):
+    if not await claim_redescribe(description.id, _current_describers(description.type)):
         logger.info(
             'Media re-describe claimed elsewhere',
             extra=event(
@@ -238,10 +257,12 @@ async def _redescribe(
 
         result = None
         if media_detection_data:
-            result = await _generate_media_description(message, media_detection_data)
+            result = await _generate_media_description(
+                message, media_detection_data, description.type
+            )
 
         if result:
-            new_describer = _describer_for(media_detection_data)
+            new_describer = _describer_for(description.type, media_detection_data)
             updated = await replace_media_description(
                 description_id=description.id,
                 content_hash=media_detection_data.content_hash,
@@ -254,9 +275,6 @@ async def _redescribe(
                 await stickers_embedding_client.save_sticker(updated)
     except Exception:
         logger.error('Media re-describe failed', exc_info=True)
-
-    if outcome != 'ok':
-        await release_redescribe_claim(description.id)
 
     logger.info(
         'Media re-described',
@@ -295,36 +313,31 @@ def _is_processing_stale(updated_at: datetime | None) -> bool:
 async def _generate_media_description(
     message: Message,
     media_detection_data: MediaDetectionData,
+    row_type: MessageMediaTypes,
 ) -> MediaDescriptionData | None:
     started = time.monotonic()
-    if isinstance(media_detection_data, ImageDetectionData):
+    if not isinstance(media_detection_data, ImageDetectionData | AnimationDetectionData):
+        return None
+
+    if row_type == MessageMediaTypes.STICKER:
+        kind = 'sticker'
+        result = await describe_sticker(media_detection_data)
+    elif isinstance(media_detection_data, ImageDetectionData):
+        kind = 'image'
         result = await describe_image(media_detection_data)
-        logger.info(
-            'Media description generated',
-            extra=event(
-                'MEDIA_DESCRIBE',
-                kind='image',
-                media_id=message.media.media_id,
-                describer=_describer_for(media_detection_data),
-                elapsed_ms=elapsed_ms(started),
-                outcome='ok' if result else 'error',
-            ),
-        )
-        return result
-
-    if isinstance(media_detection_data, AnimationDetectionData):
+    else:
+        kind = 'animation'
         result = await describe_animation(media_detection_data)
-        logger.info(
-            'Media description generated',
-            extra=event(
-                'MEDIA_DESCRIBE',
-                kind='animation',
-                media_id=message.media.media_id,
-                describer=_describer_for(media_detection_data),
-                elapsed_ms=elapsed_ms(started),
-                outcome='ok' if result else 'error',
-            ),
-        )
-        return result
 
-    return None
+    logger.info(
+        'Media description generated',
+        extra=event(
+            'MEDIA_DESCRIBE',
+            kind=kind,
+            media_id=message.media.media_id,
+            describer=_describer_for(row_type, media_detection_data),
+            elapsed_ms=elapsed_ms(started),
+            outcome='ok' if result else 'error',
+        ),
+    )
+    return result

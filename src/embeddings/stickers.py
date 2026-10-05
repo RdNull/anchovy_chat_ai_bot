@@ -28,10 +28,10 @@ class StickerSearchResult:
 def sticker_embedding_text(description: MediaDescription) -> str:
     """The text a sticker is retrieved by.
 
-    The emoji comes first because it is a free human-authored sentiment label and a
-    long vision description would otherwise average it away.
+    Description and OCR only. `sticker_emoji` stays on the row but is mostly random, so
+    it does not go into the text the vectors are built from.
     """
-    parts = [description.sticker_emoji, description.description, description.ocr_text]
+    parts = [description.description, description.ocr_text]
     return ' | '.join(part for part in parts if part)
 
 
