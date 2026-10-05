@@ -43,11 +43,19 @@ spec:
               containerPort: 8000
           securityContext:
             allowPrivilegeEscalation: false
-          # Requests only — see deployment-mongo.yaml.
+          # Requests buy Burstable QoS (see deployment-mongo.yaml). Unlike mongo this pod also
+          # carries limits: the reason mongo goes without (WiredTiger sizes its cache from
+          # the cgroup limit) does not apply here, and this is the one internet-facing pod,
+          # driven by outside agents. On the one-CPU node a request burst once starved
+          # kubelet and calico until the node flapped NotReady (2026-10-01), so the CPU
+          # limit caps what a burst can take; steady use is ~150Mi, so 256Mi has headroom.
           resources:
             requests:
               cpu: 20m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           # Liveness touches nothing, so a Mongo hiccup cannot restart the pod. Readiness
           # pings both stores, which is what makes `rollout status` fail on a wrong
           # read-only URI or a NetworkPolicy that blocks them.

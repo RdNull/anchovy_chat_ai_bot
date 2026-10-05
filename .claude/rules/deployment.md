@@ -50,6 +50,7 @@ The collector's own pipeline config is not a `data: |` block scalar inside a Con
 - `automountServiceAccountToken: false`.
 - `enableServiceLinks: false`. The kubelet injects Docker-links env vars for every Service in the namespace, and the `blackbox` Service's `BLACKBOX_PORT=tcp://<ip>:80` shadowed the setting of that name — the first rollout crashed at settings validation. `test_deploy_config.py:test_no_injected_service_variable_shadows_a_setting` computes the injected names for every pod running `${IMAGE_TAG}` and fails on any overlap with `_Settings` fields, so naming a Service after a settings prefix is caught in CI.
 - `maxSurge: 0`, because a surge pod does not fit the node's ~390Mi memory headroom.
+- `limits: cpu 200m, memory 256Mi` — an exception to "no limits" above, whose WiredTiger rationale does not apply here. On 2026-10-01 a burst of blackbox requests starved the one-CPU node (CPU spike on the Linode dashboard, ~15:05 +0500, then the node flapped NotReady and logs stop for ~8 minutes); the CPU limit is what keeps a burst from taking kubelet and calico with it. Traefik's `rate-limit` Middleware (5/s, burst 20) did not prevent it: a 10-request burst fits inside the burst allowance.
 - Liveness is `/healthz`, readiness `/readyz`. Readiness pings both stores, so a bad RO URI or a NetworkPolicy that blocks them fails the CI rollout instead of the first tool call.
 
 The Ingress:
