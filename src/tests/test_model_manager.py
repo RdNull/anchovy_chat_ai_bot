@@ -86,17 +86,17 @@ def test_web_search_settings_keep_plugins():
     """
     manager = ModelManager()
 
-    config = manager.get_model_settings('web_search', 'v1')
+    config = manager.get_model_settings('web_search', 'v2')
 
     plugin = config['plugins'][0]
     assert plugin['id'] == 'web'
     assert plugin['engine'] == 'parallel'
     assert plugin['max_results'] == 3
     # Overrides the plugin's own injected «cite them using markdown links», which
-    # otherwise outranks the extraction prompt and spends the 150-token budget on
+    # otherwise outranks the extraction prompt and spends the token budget on
     # citations the parser then deletes.
     assert 'search_prompt' in plugin
-    assert config['max_tokens'] == 150
+    assert config['max_tokens'] == 2000
 
 
 def test_web_search_model_declares_plugins():
@@ -109,7 +109,7 @@ def test_web_search_model_declares_plugins():
     regression into a red build. No network: construction only.
     """
     manager = ModelManager()
-    model_settings = manager.get_model_settings('web_search', 'v1')
+    model_settings = manager.get_model_settings('web_search', 'v2')
 
     llm = init_chat_model(**model_settings)
 
@@ -132,7 +132,7 @@ def test_web_search_transport_fits_the_tool_budget():
     cancellation.
     """
     manager = ModelManager()
-    config = manager.get_model_settings('web_search', 'v1')
+    config = manager.get_model_settings('web_search', 'v2')
 
     assert config['max_retries'] == 0
     assert config['timeout'] < settings.WEB_SEARCH_TIMEOUT * 1000

@@ -147,7 +147,7 @@ async def search_web(query: str, limit: int = 2) -> list[str]:
 
     started = time.monotonic()
     try:
-        model = ai.get_web_search_model()
+        model = ai.get_web_search_model(version='v2')
         system_prompt = prompt_manager.get_prompt('web_search', version='v1')
         response = await asyncio.wait_for(
             model.ainvoke([SystemMessage(system_prompt), HumanMessage(query)]),

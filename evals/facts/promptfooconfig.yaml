@@ -7,7 +7,6 @@ prompts:
     label: "Facts v2"
 
 providers:
-  - file://../models/facts/v1.yaml
   - file://../models/facts/v2.yaml
 
 defaultTest:
