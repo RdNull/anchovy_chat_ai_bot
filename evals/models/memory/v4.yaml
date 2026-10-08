@@ -1,0 +1,8 @@
+id: openrouter:anthropic/claude-haiku-5.5
+label: memory-v4
+config:
+  max_tokens: 12000
+  reasoning:
+    effort: medium
+  temperature: 0.4
+  showThinking: false

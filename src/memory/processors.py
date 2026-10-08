@@ -27,7 +27,7 @@ from src.utils import format_ts
 # Read once at import rather than per call. `memory/handlers.py` reuses both for
 # the terminal `MEMORY_EXTRACT` event, since the handler is the one that knows
 # whether the `save_memory` that follows this call actually landed.
-MEMORY_MODEL_VERSION = 'v3-cheap'
+MEMORY_MODEL_VERSION = 'v4'
 MEMORY_MODEL_NAME = model_manager.get_model_settings('memory', MEMORY_MODEL_VERSION).get('model')
 
 
