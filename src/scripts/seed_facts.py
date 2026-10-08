@@ -23,7 +23,7 @@ from pydantic import TypeAdapter, field_validator
 from src import mongo
 from src.embeddings.facts import facts_embedding_client
 from src.facts.models import FactKind, FactStatus
-from src.facts.repository import create_fact, ensure_indexes
+from src.facts.repository import create_fact
 from src.log_context import push_log_context
 from src.logs import elapsed_ms, event, logger
 from src.models import BaseModel
@@ -68,7 +68,7 @@ async def seed_facts(seed: list[SeedFact], dry_run: bool) -> None:
     if await client.qdrant_client.collection_exists(client.collection_name):
         await client.qdrant_client.delete_collection(client.collection_name)
 
-    await ensure_indexes()
+    await mongo.ensure_indexes()
     today = datetime.now(UTC).date()
     for item in seed:
         fact = await create_fact(item.nickname, item.kind, item.text, FactStatus.CONFIRMED, today)

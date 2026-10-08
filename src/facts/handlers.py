@@ -4,7 +4,7 @@ from datetime import date, datetime, UTC
 
 from src import settings
 from src.embeddings.facts import facts_embedding_client
-from src.facts.models import FactKind, FactOp, FactStatus, UserFact
+from src.facts.models import FactKind, FactOp, FactOpType, FactOutcome, FactStatus, UserFact
 from src.facts.processors import extract_facts, number_facts
 from src.facts.repository import (
     add_sighting,
@@ -19,12 +19,9 @@ from src.logs import elapsed_ms, event, logger
 from src.messages.models import Message
 
 _MENTION = re.compile(r'@(\w+)')
+_VECTOR_FALLBACK = 'vector'
 _VECTOR_FALLBACK_THRESHOLD = 0.6
 _OWN_TEXT_MAX_CHARS = 2000
-
-
-def _today() -> date:
-    return datetime.now(UTC).date()
 
 
 def is_bot_nickname(nickname: str) -> bool:
@@ -34,17 +31,16 @@ def is_bot_nickname(nickname: str) -> bool:
 
 
 def window_participants(messages: list[Message]) -> list[str]:
-    """Authors, reply targets and @mentions of the window, bare, bot excluded, in first-seen order."""
-    seen: dict[str, None] = {}
+    """Authors, reply targets and @mentions of the window, bare, bot excluded, sorted."""
+    seen = set()
     for message in messages:
-        seen[message.nickname] = None
+        seen.add(message.nickname)
         if message.reply:
-            seen[message.reply.nickname] = None
+            seen.add(message.reply.nickname)
 
-        for mention in _MENTION.findall(message.text or ''):
-            seen[mention] = None
+        seen.update(_MENTION.findall(message.text or ''))
 
-    return [n for n in seen if n and not is_bot_nickname(n)]
+    return sorted(n for n in seen if n and not is_bot_nickname(n))
 
 
 async def load_existing(messages: list[Message]) -> dict[str, list[UserFact]]:
@@ -84,83 +80,84 @@ def _status_for(kind: FactKind, self_stated: bool, sightings: int) -> FactStatus
     return FactStatus.CONFIRMED if promoted else FactStatus.CANDIDATE
 
 
-def _log_op(op: FactOp, nickname: str, outcome: str, fallback: str | None = None) -> None:
+def _log_op(op: FactOp, nickname: str, outcome: FactOutcome, fallback: str | None = None) -> None:
     logger.info(
         'Fact op',
         extra=event(
             'FACT_OP',
-            op=op.op,
+            op=op.op.value,
             kind=op.kind.value,
             nickname=nickname,
-            outcome=outcome,
+            outcome=outcome.value,
             reason=op.reason,
             fallback=fallback,
         ),
     )
 
 
-async def _confirm(fact: UserFact, op: FactOp, today: date) -> str:
+async def _confirm(fact: UserFact, op: FactOp, today: date) -> FactOutcome:
     updated = await add_sighting(fact.id, today)
     if updated is None:
-        return 'invalid_target'
+        return FactOutcome.INVALID_TARGET
 
     is_candidate = updated.status == FactStatus.CANDIDATE
     if is_candidate and _is_promoted(updated.kind, op.self_stated, len(updated.sightings)):
         await set_status(updated.id, FactStatus.CONFIRMED)
         promoted = updated.model_copy(update={'status': FactStatus.CONFIRMED})
         await facts_embedding_client.save_fact(promoted)
-        return 'promoted'
+        return FactOutcome.PROMOTED
 
-    return 'confirmed'
+    return FactOutcome.CONFIRMED
 
 
-async def _add(op: FactOp, nickname: str, today: date) -> tuple[str, str | None]:
+async def _add(op: FactOp, nickname: str, today: date) -> tuple[FactOutcome, str | None]:
     similar = await facts_embedding_client.search_facts(
         nickname, op.text, limit=1, score_threshold=_VECTOR_FALLBACK_THRESHOLD
     )
     if similar:
-        return await _confirm(similar[0].fact, op, today), 'vector'
+        return await _confirm(similar[0].fact, op, today), _VECTOR_FALLBACK
 
     status = _status_for(op.kind, op.self_stated, 1)
     fact = await create_fact(nickname, op.kind, op.text, status, today)
     await facts_embedding_client.save_fact(fact)
-    return 'created', None
+    return FactOutcome.CREATED, None
 
 
-async def _replace(fact: UserFact, op: FactOp, today: date) -> str:
+async def _replace(fact: UserFact, op: FactOp, today: date) -> FactOutcome:
     status = _status_for(op.kind, op.self_stated, 1)
     updated = await replace_fact(fact.id, op.kind, op.text, status, today)
     if updated is None:
-        return 'invalid_target'
+        return FactOutcome.INVALID_TARGET
 
     await facts_embedding_client.save_fact(updated)
-    return 'replaced'
+    return FactOutcome.REPLACED
 
 
 async def apply_op(op: FactOp, fact_map: dict[str, UserFact], today: date) -> str | None:
     """Applies one op; returns the bare nickname it touched, or None when it was dropped."""
     nickname = op.nickname.replace('@', '')
     if is_bot_nickname(nickname):
-        _log_op(op, nickname, 'bot_dropped')
+        _log_op(op, nickname, FactOutcome.BOT_DROPPED)
         return None
 
     fact = None
-    if op.op != 'add':
+    if op.op != FactOpType.ADD:
         fact = fact_map.get(op.target) if op.target else None
         if fact is None or fact.nickname != nickname:
-            _log_op(op, nickname, 'invalid_target')
+            _log_op(op, nickname, FactOutcome.INVALID_TARGET)
             return None
 
     fallback = None
-    if op.op == 'add':
-        outcome, fallback = await _add(op, nickname, today)
-    elif op.op == 'confirm':
-        outcome = await _confirm(fact, op, today)
-    else:
-        outcome = await _replace(fact, op, today)
+    match op.op:
+        case FactOpType.ADD:
+            outcome, fallback = await _add(op, nickname, today)
+        case FactOpType.CONFIRM:
+            outcome = await _confirm(fact, op, today)
+        case FactOpType.REPLACE:
+            outcome = await _replace(fact, op, today)
 
     _log_op(op, nickname, outcome, fallback)
-    return None if outcome == 'invalid_target' else nickname
+    return None if outcome == FactOutcome.INVALID_TARGET else nickname
 
 
 async def _drop(fact: UserFact, reason: str) -> None:
@@ -190,7 +187,7 @@ async def update_user_facts(new_messages: list[Message]) -> None:
         fact_map = number_facts(existing)
         ops = await extract_facts(new_messages, existing)
 
-        today = _today()
+        today = datetime.now(UTC).date()
         touched = set()
         for op in ops:
             if nickname := await apply_op(op, fact_map, today):

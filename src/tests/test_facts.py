@@ -14,13 +14,14 @@ from src.facts.handlers import (
     update_user_facts,
     window_participants,
 )
-from src.facts.models import FactKind, FactOp, FactOps, FactStatus, UserFact
+from freezegun import freeze_time
+
+from src.facts.models import FactKind, FactOp, FactOpType, FactOps, FactStatus, UserFact
 from src.facts.processors import extract_facts, number_facts, render_existing_facts
 from src.facts.repository import (
     add_sighting,
     create_fact,
     delete_fact,
-    ensure_indexes,
     find_expired_candidates,
     get_fact_by_id,
     get_facts,
@@ -38,7 +39,7 @@ DAY3 = date(2026, 10, 3)
 def make_op(**overrides):
     fields = {
         'reason': 'r',
-        'op': 'add',
+        'op': FactOpType.ADD,
         'target': None,
         'nickname': '@alice',
         'kind': FactKind.HABIT,
@@ -85,11 +86,6 @@ def embeddings(mocker):
     client.save_fact = AsyncMock()
     client.delete_fact = AsyncMock()
     return client
-
-
-@pytest.fixture
-def today(mocker):
-    return mocker.patch('src.facts.handlers._today', return_value=DAY1)
 
 
 # --- repository ---
@@ -212,7 +208,7 @@ async def test_find_expired_candidates_only_returns_old_candidates():
 
 
 async def test_ensure_indexes_creates_nickname_status_index():
-    await ensure_indexes()
+    await mongo.ensure_indexes()
 
     indexes = await mongo.facts.index_information()
     keys = [tuple(i['key']) for i in indexes.values()]
@@ -340,7 +336,7 @@ def test_window_participants_collects_authors_replies_mentions_without_bot():
 
     participants = window_participants(messages)
 
-    assert participants == ['alice', 'carol', 'bob', 'erin', 'dave']
+    assert participants == ['alice', 'bob', 'carol', 'dave', 'erin']
 
 
 def test_window_participants_drops_bot_mentions_and_replies():
@@ -380,7 +376,7 @@ async def test_load_existing_skips_candidate_search_without_own_messages(embeddi
 # --- apply_op ---
 
 
-async def test_add_creates_candidate(today, embeddings):
+async def test_add_creates_candidate(embeddings):
     nick = await apply_op(make_op(), {}, DAY1)
 
     facts = await get_facts('alice')
@@ -432,7 +428,7 @@ async def test_add_vector_match_becomes_confirm(embeddings, mocker):
 async def test_confirm_same_day_does_not_add_sighting():
     fact = await insert_fact(sightings=(DAY1,))
 
-    await apply_op(make_op(op='confirm', target='f1'), {'f1': fact}, DAY1)
+    await apply_op(make_op(op=FactOpType.CONFIRM, target='f1'), {'f1': fact}, DAY1)
 
     stored = await get_fact_by_id(fact.id)
     assert stored.sightings == [DAY1]
@@ -443,8 +439,10 @@ async def test_confirm_on_second_day_promotes_habit_but_not_joke(embeddings):
     habit = await insert_fact(text='habit', sightings=(DAY1,))
     joke = await insert_fact(text='joke', kind=FactKind.JOKE, sightings=(DAY1,))
 
-    await apply_op(make_op(op='confirm', target='f1'), {'f1': habit}, DAY2)
-    await apply_op(make_op(op='confirm', target='f1', kind=FactKind.JOKE), {'f1': joke}, DAY2)
+    await apply_op(make_op(op=FactOpType.CONFIRM, target='f1'), {'f1': habit}, DAY2)
+    await apply_op(
+        make_op(op=FactOpType.CONFIRM, target='f1', kind=FactKind.JOKE), {'f1': joke}, DAY2
+    )
 
     assert (await get_fact_by_id(habit.id)).status == FactStatus.CONFIRMED
     assert (await get_fact_by_id(joke.id)).status == FactStatus.CANDIDATE
@@ -456,14 +454,16 @@ async def test_confirm_on_second_day_promotes_habit_but_not_joke(embeddings):
 async def test_confirm_joke_promotes_on_third_day():
     joke = await insert_fact(kind=FactKind.JOKE, sightings=(DAY1, DAY2))
 
-    await apply_op(make_op(op='confirm', target='f1', kind=FactKind.JOKE), {'f1': joke}, DAY3)
+    await apply_op(
+        make_op(op=FactOpType.CONFIRM, target='f1', kind=FactKind.JOKE), {'f1': joke}, DAY3
+    )
 
     assert (await get_fact_by_id(joke.id)).status == FactStatus.CONFIRMED
 
 
 async def test_confirm_self_stated_bio_promotes_immediately():
     fact = await insert_fact(kind=FactKind.BIO, sightings=(DAY1,))
-    op = make_op(op='confirm', target='f1', kind=FactKind.BIO, self_stated=True)
+    op = make_op(op=FactOpType.CONFIRM, target='f1', kind=FactKind.BIO, self_stated=True)
 
     await apply_op(op, {'f1': fact}, DAY1)
 
@@ -477,7 +477,7 @@ async def test_replace_resets_sightings_and_reembeds(embeddings):
         text='живёт в Алматы',
         sightings=(DAY1, DAY2),
     )
-    op = make_op(op='replace', target='f1', kind=FactKind.BIO, text='живёт в Астане')
+    op = make_op(op=FactOpType.REPLACE, target='f1', kind=FactKind.BIO, text='живёт в Астане')
 
     await apply_op(op, {'f1': fact}, DAY3)
 
@@ -492,14 +492,16 @@ async def test_replace_resets_sightings_and_reembeds(embeddings):
 
 async def test_replace_self_stated_bio_stays_confirmed():
     fact = await insert_fact(kind=FactKind.BIO, status=FactStatus.CONFIRMED)
-    op = make_op(op='replace', target='f1', kind=FactKind.BIO, self_stated=True, text='новое')
+    op = make_op(
+        op=FactOpType.REPLACE, target='f1', kind=FactKind.BIO, self_stated=True, text='новое'
+    )
 
     await apply_op(op, {'f1': fact}, DAY2)
 
     assert (await get_fact_by_id(fact.id)).status == FactStatus.CONFIRMED
 
 
-@pytest.mark.parametrize('operation', ['confirm', 'replace'])
+@pytest.mark.parametrize('operation', [FactOpType.CONFIRM, FactOpType.REPLACE])
 async def test_unknown_target_is_dropped_and_logged(operation, mocker, embeddings):
     logger = mocker.patch('src.facts.handlers.logger')
 
@@ -517,7 +519,9 @@ async def test_target_belonging_to_another_nickname_is_dropped(mocker):
     bobs = await insert_fact(nickname='bob', sightings=(DAY1,))
     logger = mocker.patch('src.facts.handlers.logger')
 
-    nick = await apply_op(make_op(op='confirm', target='f1', nickname='@alice'), {'f1': bobs}, DAY2)
+    nick = await apply_op(
+        make_op(op=FactOpType.CONFIRM, target='f1', nickname='@alice'), {'f1': bobs}, DAY2
+    )
 
     assert nick is None
     assert (await get_fact_by_id(bobs.id)).sightings == [DAY1]
@@ -527,7 +531,7 @@ async def test_target_belonging_to_another_nickname_is_dropped(mocker):
 async def test_confirm_without_target_is_invalid(mocker):
     logger = mocker.patch('src.facts.handlers.logger')
 
-    nick = await apply_op(make_op(op='confirm', target=None), {}, DAY1)
+    nick = await apply_op(make_op(op=FactOpType.CONFIRM, target=None), {}, DAY1)
 
     assert nick is None
     assert logger.info.call_args.kwargs['extra']['outcome'] == 'invalid_target'
@@ -596,16 +600,16 @@ async def test_caps_evict_least_recently_seen_and_delete_points(monkeypatch, emb
 # --- update_user_facts (handler) ---
 
 
-async def test_update_user_facts_applies_ops_and_logs_run(mocker, today, embeddings):
+@freeze_time('2026-10-02 12:00')
+async def test_update_user_facts_applies_ops_and_logs_run(mocker, embeddings):
     existing = await insert_fact(nickname='alice', sightings=(DAY1,), text='играет в CS')
     mock_facts_llm(
         mocker,
         ops=[
-            make_op(op='add', nickname='@bob', text='любит кофе'),
-            make_op(op='confirm', target='f1', nickname='@alice'),
+            make_op(op=FactOpType.ADD, nickname='@bob', text='любит кофе'),
+            make_op(op=FactOpType.CONFIRM, target='f1', nickname='@alice'),
         ],
     )
-    today.return_value = DAY2
     logger = mocker.patch('src.facts.handlers.logger')
     messages = [
         make_message(nickname='alice', text='кс?'),

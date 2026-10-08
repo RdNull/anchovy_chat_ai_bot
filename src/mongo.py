@@ -9,6 +9,7 @@ __all__ = (
     'chat_settings',
     'chats',
     'embedding_tasks',
+    'ensure_indexes',
     'facts',
     'initiative_runs',
     'media_descriptions',
@@ -29,3 +30,8 @@ embedding_tasks: AsyncCollection = db.embedding_tasks
 initiative_runs: AsyncCollection = db.initiative_runs
 facts: AsyncCollection = db.facts
 chat_settings: AsyncCollection = db.chat_settings
+
+
+async def ensure_indexes() -> None:
+    """Every index the bot relies on. `create_index` is a no-op when the index already exists."""
+    await facts.create_index([('nickname', 1), ('status', 1)])

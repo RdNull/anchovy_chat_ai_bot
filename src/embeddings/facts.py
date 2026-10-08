@@ -6,12 +6,10 @@ from src.embeddings.client import ChunkData, EmbeddingsClient
 from src.facts.models import FactStatus, UserFact
 from src.facts.repository import get_fact_by_id
 
-_FACTS_NAMESPACE = uuid.UUID('6f1b1c0e-5a43-4c5e-9d1e-3f0a8c2b7a11')
-
 
 def fact_point_id(fact_id: str) -> uuid.UUID:
     """One point per fact: a re-save overwrites it instead of duplicating."""
-    return uuid.uuid5(_FACTS_NAMESPACE, str(fact_id))
+    return uuid.uuid5(uuid.NAMESPACE_OID, str(fact_id))
 
 
 @dataclass

@@ -4,7 +4,7 @@ Loaded automatically when Claude reads a file under `src/facts/`. The root `CLAU
 
 ## Record
 
-`UserFact` (`models.py`): `nickname` (bare, no `@`), `kind` (`bio` / `habit` / `joke`), `status` (`candidate` / `confirmed`), `text`, `sightings` (distinct UTC days the fact was added or confirmed — stored in Mongo as ISO strings, since BSON has no date-only type), `created_at`, `last_seen_at`. There is no `confidence`: a fact is promoted by distinct-day sightings, and a confirmed fact is never touched by a scheduled job. Index `{nickname: 1, status: 1}` is created by `repository.py:ensure_indexes` from `bot.py:post_init` and by the seed script.
+`UserFact` (`models.py`): `nickname` (bare, no `@`), `kind` (`bio` / `habit` / `joke`), `status` (`candidate` / `confirmed`), `text`, `sightings` (distinct UTC days the fact was added or confirmed — stored in Mongo as ISO strings, since BSON has no date-only type), `created_at`, `last_seen_at`. There is no `confidence`: a fact is promoted by distinct-day sightings, and a confirmed fact is never touched by a scheduled job. Index `{nickname: 1, status: 1}` is created by `mongo.py:ensure_indexes` (the one place for index creation; idempotent) from `bot.py:post_init` and by the seed script.
 
 ## Extraction
 
@@ -14,7 +14,7 @@ Loaded automatically when Claude reads a file under `src/facts/`. The root `CLAU
 
 ## Applying ops
 
-`apply_op`, with `today` = UTC date of the run (`handlers.py:_today`; patch it in tests):
+`apply_op`, with `today` = UTC date of the run (`update_user_facts` reads it from the clock; freeze it with `freezegun` in tests):
 
 - bot nickname → dropped (`bot_dropped`); `confirm`/`replace` with a missing target or another nickname's fact → dropped (`invalid_target`)
 - `add` → first a vector search over the nickname's facts at 0.6; a hit becomes a `confirm` (`fallback=vector`), otherwise a new fact, `confirmed` only if `kind == bio` and `self_stated`

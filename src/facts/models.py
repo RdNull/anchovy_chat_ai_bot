@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Literal
-
 from pydantic import Field
 
 from src.models import BaseModel, MongoId
@@ -18,6 +16,21 @@ class FactKind(str, Enum):
 class FactStatus(str, Enum):
     CANDIDATE = 'candidate'
     CONFIRMED = 'confirmed'
+
+
+class FactOpType(str, Enum):
+    ADD = 'add'
+    CONFIRM = 'confirm'
+    REPLACE = 'replace'
+
+
+class FactOutcome(str, Enum):
+    CREATED = 'created'
+    CONFIRMED = 'confirmed'
+    PROMOTED = 'promoted'
+    REPLACED = 'replaced'
+    INVALID_TARGET = 'invalid_target'
+    BOT_DROPPED = 'bot_dropped'
 
 
 class UserFact(BaseModel):
@@ -35,7 +48,7 @@ class UserFact(BaseModel):
 
 class FactOp(BaseModel):
     reason: str
-    op: Literal['add', 'confirm', 'replace']
+    op: FactOpType
     target: str | None = None
     nickname: str
     kind: FactKind

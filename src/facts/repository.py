@@ -7,14 +7,6 @@ from src.facts.models import FactKind, FactStatus, UserFact
 from src.logs import event, logger
 
 
-async def ensure_indexes() -> None:
-    await mongo.facts.create_index([('nickname', 1), ('status', 1)])
-
-
-def _validate(doc: dict) -> UserFact:
-    return UserFact.model_validate(doc)
-
-
 async def get_facts(
     nickname: str,
     status: FactStatus | None = None,
@@ -31,13 +23,13 @@ async def get_facts(
     if limit is not None:
         cursor = cursor.limit(limit)
     docs = await cursor.to_list(length=limit)
-    return [_validate(d) for d in docs]
+    return [UserFact.model_validate(d) for d in docs]
 
 
 async def get_fact_by_id(fact_id: str) -> UserFact | None:
     logger.debug('Fetching fact by id', extra=event('DB_FACT_FETCH', fact_id=fact_id))
     fact = await mongo.facts.find_one({'_id': ObjectId(fact_id)})
-    return _validate(fact) if fact else None
+    return UserFact.model_validate(fact) if fact else None
 
 
 async def create_fact(
@@ -60,7 +52,7 @@ async def create_fact(
     }
     result = await mongo.facts.insert_one(data)
     data['_id'] = result.inserted_id
-    return _validate(data)
+    return UserFact.model_validate(data)
 
 
 async def add_sighting(fact_id: str, day: date) -> UserFact | None:
@@ -72,7 +64,7 @@ async def add_sighting(fact_id: str, day: date) -> UserFact | None:
     doc = await mongo.facts.find_one_and_update(
         {'_id': ObjectId(fact_id)}, update, return_document=True
     )
-    return _validate(doc) if doc else None
+    return UserFact.model_validate(doc) if doc else None
 
 
 async def set_status(fact_id: str, status: FactStatus) -> None:
@@ -96,7 +88,7 @@ async def replace_fact(
     doc = await mongo.facts.find_one_and_update(
         {'_id': ObjectId(fact_id)}, {'$set': update}, return_document=True
     )
-    return _validate(doc) if doc else None
+    return UserFact.model_validate(doc) if doc else None
 
 
 async def delete_fact(fact_id: str) -> None:
@@ -108,10 +100,10 @@ async def list_overflow(nickname: str, status: FactStatus, keep: int) -> list[Us
     query = {'nickname': nickname, 'status': status.value}
     cursor = mongo.facts.find(query).sort('last_seen_at', -1).skip(keep)
     docs = await cursor.to_list(length=None)
-    return [_validate(d) for d in docs]
+    return [UserFact.model_validate(d) for d in docs]
 
 
 async def find_expired_candidates(cutoff: datetime) -> list[UserFact]:
     query = {'status': FactStatus.CANDIDATE.value, 'last_seen_at': {'$lt': cutoff}}
     docs = await mongo.facts.find(query).to_list(length=None)
-    return [_validate(d) for d in docs]
+    return [UserFact.model_validate(d) for d in docs]
