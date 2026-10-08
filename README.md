@@ -53,8 +53,8 @@ Each chat accumulates a `StructuredMemory` snapshot in MongoDB — per-participa
 
 A daily job prunes snapshots older than 90 days, always preserving the most recent one per chat. The window is long on purpose: snapshots are a few kilobytes each, and 90 days of them is enough history to tell how long a trait survives, how long a running joke lasts, and whether an open question ever closes.
 
-**User Fact Tracking with Confidence Scoring**
-Facts about individual users are extracted automatically in the same pass as each memory update: a dedicated LLM pass reads new messages and emits a list of stable facts per `@username`, each scored with a confidence value (0.5–1.0). Facts are upserted into MongoDB — if a semantically similar fact already exists (Qdrant cosine search), its confidence is reinforced or updated; otherwise a new record is created. A weekly background job decays the confidence of facts not updated in the past week; facts that reach zero confidence are deleted. The `get_user_facts` tool lets the character LLM retrieve the top facts about a user at inference time.
+**User Fact Tracking with Sightings Instead of Scores**
+Facts about individual users are extracted in the same pass as each memory update. The extraction model is shown what is already stored about the people in the window and answers with operations — add, confirm or replace a specific stored fact — rather than a fresh list, so a restated fact reinforces the old one and a contradiction (a move, a new job) replaces it. A fact starts as a candidate and is promoted to confirmed once it has been seen on enough distinct days (more for running jokes); a user's own serious statement of a biographical fact is confirmed at once. Confirmed facts are never aged out by a job; unconfirmed candidates expire after a month unseen, and per-user caps keep the store small. Facts are typed (biography, habit, chat joke), and group threads, self-irony and insults aimed at the bot are filtered by the prompt and by deterministic checks on the model's output. The `get_user_facts` tool lets the character LLM retrieve confirmed facts about a user at inference time.
 
 **Async Media Pipeline**
 - Images: downloaded, hashed for deduplication, described by a vision LLM (Gemini 3.1 Flash Lite) with OCR
@@ -121,7 +121,7 @@ Two constraints in the manifests are load-bearing and read like frugality: the b
 | Data Validation      | Pydantic v2 / pydantic-settings                 | Models, structured LLM output, settings         |
 | Prompt Templating    | Jinja2                                          | Versioned, task-specific prompt files           |
 | Media Processing     | Pillow, OpenCV, Lottie, CairoSVG                | Image resizing, GIF/sticker frame extraction    |
-| Scheduling           | scheduler                                       | Weekly fact-confidence decay, daily memory cleanup |
+| Scheduling           | scheduler                                       | Daily candidate-fact expiry, daily memory cleanup |
 | Prompt Evaluation    | promptfoo                                       | LLM output quality testing across tasks         |
 | Developer Tooling    | MCP Python SDK v2 (streamable HTTP)             | Read-only data access for Claude Code sessions  |
 | Observability        | LangSmith, OpenTelemetry Collector, Axiom       | LLM call tracing; structured JSON logs shipped and queryable per-request |
@@ -167,7 +167,7 @@ Message Handlers  (handlers.py)
      |            |         -> eviction -> churn log -> save snapshot
      |            |         stamped with the newest message processed, so the surplus
      |            |         and anything that arrived mid-call become the next window
-     |            +---> Fact extraction from new messages (LLM structured output)
+     |            +---> Fact ops from new messages (LLM: add / confirm / replace)
      |            |         upsert into MongoDB (confidence-based merge via Qdrant similarity)
      |          Embeddings update (independent trigger, same oldest-first intake)
      |
@@ -192,10 +192,10 @@ Message Handlers  (handlers.py)
                      |-- tool_call: send_sticker      --> resolve sendable id -> Replier sends
                      |                                   (on refusal: evict, loop continues)
 
-[weekly scheduler]
-     +---> Fact confidence decay
-               Facts not updated in 7 days lose 0.1 confidence
-               Facts at zero confidence are deleted
+[daily scheduler]
+     +---> Candidate fact expiry
+               Candidates unseen for 30 days are deleted
+               Confirmed facts are never touched
 
 [daily scheduler]
      +---> Memory snapshot cleanup
@@ -236,6 +236,16 @@ uv run pre-commit install   # once, to run both on every commit
 ```
 
 ---
+
+## Runbook: replacing the facts store with a seed
+
+`src/scripts/seed_facts.py` drops the `facts` collection and the Qdrant `facts` collection, then inserts a hand-picked JSON list (`[{nickname, kind, text}]`) as confirmed facts. The seed file is git-ignored and never enters the image or the pipeline; it is piped from the laptop into the running pod. Run it right after deploying the facts rework — rows written by the old schema do not load under the new model.
+
+```bash
+kubectl --context anchovy-prod create job --from=cronjob/mongo-backup mongo-backup-pre-facts-seed   # the drop is not reversible otherwise
+kubectl --context anchovy-prod exec -i deploy/anchovy-bot-deployment -- python -m src.scripts.seed_facts --file - --dry-run < docs/specs/facts-seed.json
+kubectl --context anchovy-prod exec -i deploy/anchovy-bot-deployment -- python -m src.scripts.seed_facts --file - < docs/specs/facts-seed.json
+```
 
 ## Blackbox: Data Access for Claude Code
 

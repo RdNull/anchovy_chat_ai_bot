@@ -27,3 +27,4 @@ manifests
 .env.*
 .bash_history
 .python_history
+docs

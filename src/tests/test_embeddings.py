@@ -5,7 +5,7 @@ from uuid import UUID
 from qdrant_client.http.models import QueryResponse, ScoredPoint
 
 from src import settings
-from src.embeddings.facts import FactsEmbeddingClient, FactsSearchResult
+from src.embeddings.facts import FactsEmbeddingClient, FactsSearchResult, fact_point_id
 from src.embeddings.handlers import update_chat_embeddings
 from src.embeddings.messages import MessageEmbeddingsClient, chunk_messages
 from src.embeddings.models import RelatedMessagesData
@@ -15,7 +15,7 @@ from src.embeddings.stickers import (
     _point_id,
     sticker_embedding_text,
 )
-from src.facts.models import UserFact
+from src.facts.models import FactStatus, UserFact
 from src.media.models import MediaDescription
 from src.messages.models import (
     Message,
@@ -246,8 +246,9 @@ async def test_facts_embedding_client_save_fact(mocker):
     fact = UserFact(
         _id='abc123',
         nickname='bob',
+        kind='habit',
+        status='candidate',
         text='likes pizza',
-        confidence=0.8,
         created_at=datetime(2024, 1, 1, tzinfo=UTC),
     )
 
@@ -261,8 +262,58 @@ async def test_facts_embedding_client_save_fact(mocker):
     assert point.vector == [0.1] * 128
     assert point.payload['id'] == 'abc123'
     assert point.payload['nickname'] == 'bob'
-    assert point.payload['confidence'] == 0.8
+    assert point.payload == {
+        'id': 'abc123',
+        'nickname': 'bob',
+        'kind': 'habit',
+        'status': 'candidate',
+    }
     assert client._get_embedding_vectors.call_args == call('likes pizza')
+
+
+async def test_save_fact_twice_upserts_one_point(mocker):
+    mock_qdrant = MagicMock(collection_exists=AsyncMock(return_value=True), upsert=AsyncMock())
+    mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=mock_qdrant)
+    client = FactsEmbeddingClient('facts', 'test_model', 128)
+    client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
+    fact = UserFact(_id='abc123', nickname='bob', kind='bio', status='confirmed', text='x')
+
+    await client.save_fact(fact)
+    await client.save_fact(fact.model_copy(update={'text': 'y'}))
+
+    first = mock_qdrant.upsert.call_args_list[0][1]['points'][0]
+    second = mock_qdrant.upsert.call_args_list[1][1]['points'][0]
+    assert first.id == second.id
+    assert first.id == fact_point_id('abc123')
+
+
+async def test_delete_fact_removes_the_fact_point(mocker):
+    mock_qdrant = MagicMock(collection_exists=AsyncMock(return_value=True), delete=AsyncMock())
+    mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=mock_qdrant)
+    client = FactsEmbeddingClient('facts', 'test_model', 128)
+
+    await client.delete_fact('abc123')
+
+    kwargs = mock_qdrant.delete.call_args.kwargs
+    assert kwargs['collection_name'] == 'facts'
+    assert kwargs['points_selector'] == [str(fact_point_id('abc123'))]
+
+
+async def test_search_facts_status_filter_reaches_qdrant(mocker):
+    mock_qdrant = MagicMock(
+        collection_exists=AsyncMock(return_value=True),
+        query_points=AsyncMock(return_value=QueryResponse(points=[])),
+    )
+    mocker.patch('src.embeddings.client.AsyncQdrantClient', return_value=mock_qdrant)
+    client = FactsEmbeddingClient('facts', 'test_model', 128)
+    client._get_embedding_vectors = AsyncMock(return_value=[0.1] * 128)
+
+    await client.search_facts('bob', 'x', status=FactStatus.CANDIDATE, score_threshold=0.0)
+
+    kwargs = mock_qdrant.query_points.call_args.kwargs
+    conditions = {c.key: c.match.value for c in kwargs['query_filter'].must}
+    assert conditions == {'nickname': 'bob', 'status': 'candidate'}
+    assert kwargs['score_threshold'] == 0.0
 
 
 async def test_facts_embedding_client_search_facts_empty(mocker):
@@ -283,13 +334,15 @@ async def test_facts_embedding_client_search_facts_empty(mocker):
 
 
 async def test_facts_embedding_client_search_facts(mocker):
-    fact = UserFact(_id='abc123', nickname='bob', text='likes pizza', confidence=0.8)
+    fact = UserFact(
+        _id='abc123', nickname='bob', kind='habit', status='candidate', text='likes pizza'
+    )
 
     mock_scored_point = ScoredPoint(
         id='abc123',
         version=1,
         score=0.85,
-        payload={'id': 'abc123', 'nickname': 'bob', 'confidence': 0.8},
+        payload={'id': 'abc123', 'nickname': 'bob', 'kind': 'habit', 'status': 'candidate'},
     )
     mock_qdrant = MagicMock()
     mock_qdrant.collection_exists = AsyncMock(return_value=True)
@@ -371,7 +424,6 @@ async def test_save_sticker_skips_non_ready_row(mocker):
 
 
 async def test_save_sticker_twice_upserts_one_point(mocker):
-    # `facts.py` uses uuid4() here and duplicates every point on a backfill re-run.
     qdrant = MagicMock(collection_exists=AsyncMock(return_value=True), upsert=AsyncMock())
     client = make_sticker_client(mocker, qdrant)
 

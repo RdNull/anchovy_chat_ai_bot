@@ -2,7 +2,6 @@ import asyncio
 import datetime as dt
 
 from scheduler.asyncio import Scheduler
-from scheduler.trigger import Monday
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -14,7 +13,7 @@ from telegram.ext import (
     filters,
 )
 
-from src import const, settings, tasks
+from src import const, mongo, settings, tasks
 from src.characters.registry import CHARACTERS, check_default_character
 from src.log_context import log_context, push_log_context
 from src.logs import event, logger
@@ -61,9 +60,9 @@ async def log_sticker_corpus():
 
 async def setup_scheduler():
     schedule = Scheduler(tzinfo=const.TIMEZONE_ALMATY)
-    schedule.weekly(
-        Monday(dt.time(3, 0, tzinfo=const.TIMEZONE_ALMATY)),
-        tasks.facts.run_fact_decay,
+    schedule.daily(
+        dt.time(3, 0, tzinfo=const.TIMEZONE_ALMATY),
+        tasks.facts.run_candidate_expiry,
     )
     schedule.daily(
         dt.time(4, 0, tzinfo=const.TIMEZONE_ALMATY),
@@ -76,6 +75,7 @@ async def setup_scheduler():
 
 async def post_init(application: Application) -> None:
     set_running_app(application)
+    await mongo.ensure_indexes()
 
 
 def main() -> None:

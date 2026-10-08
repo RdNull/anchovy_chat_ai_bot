@@ -53,8 +53,7 @@ async def test_setup_scheduler(mocker):
         await asyncio.wait_for(setup_scheduler(), timeout=0.05)
 
     assert mock_scheduler.call_count == 1
-    assert mock_scheduler.return_value.weekly.call_count == 1
-    assert mock_scheduler.return_value.daily.call_count == 1
+    assert mock_scheduler.return_value.daily.call_count == 2
 
 
 async def test_log_sticker_corpus_reports_size_and_flag(mocker):

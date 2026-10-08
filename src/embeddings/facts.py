@@ -3,8 +3,13 @@ from dataclasses import dataclass
 
 from src import settings
 from src.embeddings.client import ChunkData, EmbeddingsClient
+from src.facts.models import FactStatus, UserFact
 from src.facts.repository import get_fact_by_id
-from src.facts.models import UserFact
+
+
+def fact_point_id(fact_id: str) -> uuid.UUID:
+    """One point per fact: a re-save overwrites it instead of duplicating."""
+    return uuid.uuid5(uuid.NAMESPACE_OID, str(fact_id))
 
 
 @dataclass
@@ -17,21 +22,39 @@ class FactsEmbeddingClient(EmbeddingsClient):
     async def save_fact(self, fact: UserFact):
         chunks = [
             ChunkData(
-                chunk_id=uuid.uuid4(),
+                chunk_id=fact_point_id(fact.id),
                 payload=fact.text,
                 metadata={
                     'id': str(fact.id),
                     'nickname': fact.nickname,
-                    'confidence': fact.confidence,
-                    'timestamp': fact.created_at.timestamp() if fact.created_at else None,
+                    'kind': fact.kind.value,
+                    'status': fact.status.value,
                 },
             )
         ]
         await self._save(chunks)
 
-    async def search_facts(self, nickname: str, text, limit=5) -> list[FactsSearchResult]:
+    async def delete_fact(self, fact_id: str):
+        await self._check_collection()
+        await self.qdrant_client.delete(
+            collection_name=self.collection_name,
+            points_selector=[str(fact_point_id(fact_id))],
+        )
+
+    async def search_facts(
+        self,
+        nickname: str,
+        text,
+        limit=5,
+        status: FactStatus | None = None,
+        score_threshold=0.6,
+    ) -> list[FactsSearchResult]:
+        filters = {'nickname': nickname}
+        if status is not None:
+            filters['status'] = status.value
+
         search_results = await self._search(
-            text, limit=limit, nickname=nickname, score_threshold=0.6
+            text, limit=limit, score_threshold=score_threshold, **filters
         )
         if not search_results:
             return []
