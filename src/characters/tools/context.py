@@ -9,6 +9,7 @@ from src import ai, settings
 from src.characters.tools.registry import ToolContext
 from src.embeddings.messages import messages_embeddings_client
 from src.embeddings.stickers import StickerSearchResult, stickers_embedding_client
+from src.facts.models import FactStatus
 from src.facts.repository import get_facts
 from src.logs import elapsed_ms, event, logger
 from src.media.repository import get_recent_sticker_ids
@@ -84,7 +85,7 @@ async def get_user_facts(nickname: str, limit: int = 5) -> list[dict]:
 
     nickname = nickname.replace('@', '')
     started = time.monotonic()
-    facts = await get_facts(nickname, limit=limit)
+    facts = await get_facts(nickname, status=FactStatus.CONFIRMED, limit=limit)
     logger.info(
         'User facts retrieved',
         extra=event(
@@ -96,7 +97,7 @@ async def get_user_facts(nickname: str, limit: int = 5) -> list[dict]:
             outcome='ok' if facts else 'empty',
         ),
     )
-    return [fact.model_dump(include={'text', 'confidence'}) for fact in facts]
+    return [{'text': fact.text, 'kind': fact.kind.value} for fact in facts]
 
 
 SEARCH_WEB_DESCRIPTION = """

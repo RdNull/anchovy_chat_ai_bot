@@ -1,98 +1,117 @@
-from datetime import datetime, UTC
+from datetime import date, datetime, UTC
 
 from bson import ObjectId
 
 from src import mongo
+from src.facts.models import FactKind, FactStatus, UserFact
 from src.logs import event, logger
-from src.facts.models import UserFact
 
 
-async def get_facts(nickname: str, limit: int = 5) -> list[UserFact]:
+async def ensure_indexes() -> None:
+    await mongo.facts.create_index([('nickname', 1), ('status', 1)])
+
+
+def _validate(doc: dict) -> UserFact:
+    return UserFact.model_validate(doc)
+
+
+async def get_facts(
+    nickname: str,
+    status: FactStatus | None = None,
+    limit: int | None = None,
+) -> list[UserFact]:
+    """A nickname's facts, confirmed first, then the most recently seen."""
     logger.debug('Fetching facts', extra=event('DB_FACTS_FETCH', nickname=nickname))
-    if 'facts' not in await mongo.db.list_collection_names():
-        await mongo.db.create_collection('facts')
-        return []
+    query: dict = {'nickname': nickname}
+    if status is not None:
+        query['status'] = status.value
 
-    cursor = mongo.facts.find({'nickname': nickname}).sort('confidence', -1).limit(limit)
-    facts = await cursor.to_list(length=limit)
-    return [UserFact.model_validate(f) for f in facts]
+    # 'confirmed' sorts after 'candidate', so descending status puts confirmed first.
+    cursor = mongo.facts.find(query).sort([('status', -1), ('last_seen_at', -1)])
+    if limit is not None:
+        cursor = cursor.limit(limit)
+    docs = await cursor.to_list(length=limit)
+    return [_validate(d) for d in docs]
 
 
 async def get_fact_by_id(fact_id: str) -> UserFact | None:
     logger.debug('Fetching fact by id', extra=event('DB_FACT_FETCH', fact_id=fact_id))
     fact = await mongo.facts.find_one({'_id': ObjectId(fact_id)})
-    return UserFact.model_validate(fact) if fact else None
+    return _validate(fact) if fact else None
 
 
-async def update_fact(
-    fact_id: str,
-    confidence: float | None = None,
-    text: str | None = None,
-) -> None:
-    update_data = {}
-    if confidence is not None:
-        update_data['confidence'] = confidence
-
-    if text is not None:
-        update_data['text'] = text
-
-    if not update_data:
-        return
-
-    update_data['updated_at'] = datetime.now(UTC).timestamp()
-    await mongo.facts.update_one({'_id': ObjectId(fact_id)}, {'$set': update_data})
-
-
-async def create_fact(nickname: str, text: str, confidence: float) -> UserFact:
+async def create_fact(
+    nickname: str,
+    kind: FactKind,
+    text: str,
+    status: FactStatus,
+    day: date,
+) -> UserFact:
     logger.debug('Saving fact', extra=event('DB_FACT_WRITE', nickname=nickname))
-    fact = UserFact(nickname=nickname, text=text, confidence=confidence)
-    return await save_fact(fact)
-
-
-async def save_fact(fact: UserFact) -> UserFact:
-    now_ts = datetime.now(UTC).timestamp()
+    now = datetime.now(UTC)
     data = {
-        'nickname': fact.nickname,
-        'text': fact.text,
-        'confidence': fact.confidence,
-        'created_at': now_ts,
-        'updated_at': now_ts,
+        'nickname': nickname,
+        'kind': kind.value,
+        'status': status.value,
+        'text': text,
+        'sightings': [day.isoformat()],
+        'created_at': now,
+        'last_seen_at': now,
     }
     result = await mongo.facts.insert_one(data)
     data['_id'] = result.inserted_id
-    return UserFact.model_validate(data)
+    return _validate(data)
 
 
-async def decay_facts(up_to_date: datetime, decay_amount: float) -> None:
-    up_to_date_ts = up_to_date.timestamp()
-    cursor = mongo.facts.find({
-        '$or': [
-            {'updated_at': {'$lt': up_to_date_ts}},
-            {'updated_at': {'$exists': False}, 'created_at': {'$lt': up_to_date_ts}},
-        ]
-    })
-    facts = await cursor.to_list(length=1000)
-    logger.info('Decaying stale facts', extra=event('FACT_DECAY_RUN', count=len(facts)))
+async def add_sighting(fact_id: str, day: date) -> UserFact | None:
+    """Adds `day` to the sightings (a no-op if already there) and stamps `last_seen_at`."""
+    update = {
+        '$addToSet': {'sightings': day.isoformat()},
+        '$set': {'last_seen_at': datetime.now(UTC)},
+    }
+    doc = await mongo.facts.find_one_and_update(
+        {'_id': ObjectId(fact_id)}, update, return_document=True
+    )
+    return _validate(doc) if doc else None
 
-    for fact_data in facts:
-        fact = UserFact.model_validate(fact_data)
-        new_confidence = round(fact.confidence - decay_amount, 10)
-        if new_confidence <= 0:
-            # TODO: only the Mongo row is deleted here — the matching Qdrant point in
-            # `facts_embedding_client` (src/embeddings/facts.py) is left behind, so a
-            # deleted fact can still surface as a `search_facts` hit and get
-            # reinforced back into existence. Pre-existing, not introduced by this
-            # refactor.
-            await mongo.facts.delete_one({'_id': fact_data['_id']})
-            logger.info(
-                'Fact deleted, confidence decayed to zero',
-                extra=event(
-                    'FACT_DELETED',
-                    fact_id=str(fact_data['_id']),
-                    reason='confidence_zero',
-                ),
-            )
-        else:
-            await mongo.facts.update_one(
-                {'_id': fact_data['_id']}, {'$set': {'confidence': new_confidence}}
-            )
+
+async def set_status(fact_id: str, status: FactStatus) -> None:
+    await mongo.facts.update_one({'_id': ObjectId(fact_id)}, {'$set': {'status': status.value}})
+
+
+async def replace_fact(
+    fact_id: str,
+    kind: FactKind,
+    text: str,
+    status: FactStatus,
+    day: date,
+) -> UserFact | None:
+    update = {
+        'kind': kind.value,
+        'text': text,
+        'status': status.value,
+        'sightings': [day.isoformat()],
+        'last_seen_at': datetime.now(UTC),
+    }
+    doc = await mongo.facts.find_one_and_update(
+        {'_id': ObjectId(fact_id)}, {'$set': update}, return_document=True
+    )
+    return _validate(doc) if doc else None
+
+
+async def delete_fact(fact_id: str) -> None:
+    await mongo.facts.delete_one({'_id': ObjectId(fact_id)})
+
+
+async def list_overflow(nickname: str, status: FactStatus, keep: int) -> list[UserFact]:
+    """The facts beyond the `keep` most recently seen, for one nickname and status."""
+    query = {'nickname': nickname, 'status': status.value}
+    cursor = mongo.facts.find(query).sort('last_seen_at', -1).skip(keep)
+    docs = await cursor.to_list(length=None)
+    return [_validate(d) for d in docs]
+
+
+async def find_expired_candidates(cutoff: datetime) -> list[UserFact]:
+    query = {'status': FactStatus.CANDIDATE.value, 'last_seen_at': {'$lt': cutoff}}
+    docs = await mongo.facts.find(query).to_list(length=None)
+    return [_validate(d) for d in docs]

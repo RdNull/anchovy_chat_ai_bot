@@ -118,6 +118,15 @@ class _Settings(BaseSettings):
     # `blackbox.diff_memory` a horizon long enough to watch a trait or a joke age.
     MEMORY_RETENTION_DAYS: int = 90
 
+    # Facts: a candidate becomes confirmed after this many distinct UTC days of sightings
+    # (jokes need more), confirmed facts are never time-decayed, candidates expire unseen.
+    FACT_CONFIRM_DAYS: int = 2
+    JOKE_CONFIRM_DAYS: int = 3
+    FACTS_CONFIRMED_CAP: int = 15
+    FACTS_CANDIDATE_CAP: int = 30
+    FACTS_CANDIDATE_TTL_DAYS: int = 30
+    FACTS_PROMPT_CANDIDATES: int = 10
+
     # The policy rule (`recent` keeps the newest RECENT_KEEP by `born`, hard-drops
     # past RECENT_MAX_CYCLES) versus the positional baseline used while it's off.
     # `traits` and `state` use the baseline either way — see apply_decay's docstring.
@@ -217,6 +226,12 @@ BLACKBOX_PORT = _s.BLACKBOX_PORT
 BLACKBOX_MCP_ACCESS_TOKEN = _s.BLACKBOX_MCP_ACCESS_TOKEN
 ENABLE_MEMORY_PROCESSING = _s.ENABLE_MEMORY_PROCESSING
 MEMORY_RETENTION_DAYS = _s.MEMORY_RETENTION_DAYS
+FACT_CONFIRM_DAYS = _s.FACT_CONFIRM_DAYS
+JOKE_CONFIRM_DAYS = _s.JOKE_CONFIRM_DAYS
+FACTS_CONFIRMED_CAP = _s.FACTS_CONFIRMED_CAP
+FACTS_CANDIDATE_CAP = _s.FACTS_CANDIDATE_CAP
+FACTS_CANDIDATE_TTL_DAYS = _s.FACTS_CANDIDATE_TTL_DAYS
+FACTS_PROMPT_CANDIDATES = _s.FACTS_PROMPT_CANDIDATES
 ENABLE_MEMORY_DECAY = _s.ENABLE_MEMORY_DECAY
 TRAITS_KEEP = _s.TRAITS_KEEP
 RECENT_KEEP = _s.RECENT_KEEP

@@ -1,13 +1,13 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
 
-description: "Facts extraction eval"
+description: "Facts extraction eval (op-based, facts/v3)"
 
 prompts:
-  - id: file://../../src/prompts/facts/v2.j2
-    label: "Facts v2"
+  - id: file://../../src/prompts/facts/v3.j2
+    label: "Facts v3"
 
 providers:
-  - file://../models/facts/v2.yaml
+  - file://../models/facts/v3.yaml
 
 defaultTest:
   options:
@@ -17,124 +17,195 @@ defaultTest:
         max_tokens: 4000
         temperature: 0.2
 
+  vars:
+    bot_nickname: AnchovyAiBot
+    facts: "(пока нет)"
+
   assert:
     - type: is-json
     - type: javascript
       value: |
         const result = JSON.parse(output);
-        return Array.isArray(result.facts) &&
-          result.facts.every(f =>
-            typeof f.nickname === 'string' &&
-            f.nickname.startsWith('@') &&
-            typeof f.text === 'string' &&
-            typeof f.confidence === 'number' &&
-            f.confidence >= 0.5 &&
-            f.confidence <= 1.0
+        return Array.isArray(result.ops) &&
+          result.ops.every(o =>
+            typeof o.reason === 'string' &&
+            ['add', 'confirm', 'replace'].includes(o.op) &&
+            (o.op === 'add' ? o.target === null : /^f\d+$/.test(o.target)) &&
+            typeof o.nickname === 'string' && o.nickname.startsWith('@') &&
+            ['bio', 'habit', 'joke'].includes(o.kind) &&
+            typeof o.text === 'string' && o.text.length > 0 &&
+            typeof o.self_stated === 'boolean'
           );
-    - type: llm-rubric
-      value: |
-        Evaluate a fact extraction result from a Telegram group chat.
-        The system extracts stable personal facts about users (confidence 0.5–1.0).
-
-        Rules the extraction must follow:
-        - Exclude: facts of users without @ in username
-        - Exclude: temporary states, jokes/sarcasm, facts true for all members (using Telegram, speaking Russian)
-        - Include: stable facts (job, city, skills, preferences, personality traits)
-        - Confidence 1.0 = direct explicit statement; 0.8–0.9 = repeated behavior; 0.5–0.7 = indirect/single mention
-        
-        Scoring:
-        - 1.0 = all correct facts extracted (including correctly returning an empty list when no valid facts exist)
-        - 0.8 = mostly correct, minor omissions or slightly off confidence
-        - 0.5 = some correct, some missing, or one incorrect fact
-        - 0.3 = key facts missed, hallucinations, or wrong confidence
-        - 0.0 = completely wrong, OR returned empty when clear stable facts were present
-
-        Messages:
-        {{messages}}
-
 
 tests:
   - description: "direct_statement"
     vars:
       messages: file://direct_statement/messages.txt
     assert:
-      - type: llm-rubric
+      - type: javascript
+        metric: self_stated_bio
         value: |
-          Messages contain direct self-statements. Expected: @petrov has a fact about being a
-          programmer at Yandex (confidence ~1.0), @ivanova has a fact about being a designer
-          (confidence ~1.0).
+          const ops = JSON.parse(output).ops;
+          const has = (n) => ops.some(o => o.op === 'add' && o.nickname === '@' + n && o.kind === 'bio' && o.self_stated === true);
+          return has('petrov') && has('ivanova');
 
   - description: "behavioral_inference"
     vars:
       messages: file://behavioral_inference/messages.txt
     assert:
-      - type: llm-rubric
+      - type: javascript
+        metric: ops_for_both
         value: |
-          Messages show repeated behavioral patterns. Expected: @alex has a fact about programming
-          in Python (confidence 0.8–0.9), @bob has a fact about going to the gym in the mornings
-          (confidence 0.8–0.9).
+          const ops = JSON.parse(output).ops;
+          const has = (n) => ops.some(o => o.op === 'add' && o.nickname === '@' + n);
+          return has('alex') && has('bob');
 
   - description: "temporal_state"
     vars:
       messages: file://temporal_state/messages.txt
     assert:
       - type: javascript
-        value: JSON.parse(output).facts.length === 0
-      - type: llm-rubric
+        metric: no_ops
         value: |
-          Messages contain only temporary states (fatigue, headache, going to sleep early).
-          Expected: empty facts list. Any extracted fact is incorrect.
+          const ops = JSON.parse(output).ops;
+          return ops.length === 0;
 
   - description: "sarcasm_irony"
     vars:
       messages: file://sarcasm_irony/messages.txt
     assert:
       - type: javascript
-        value: JSON.parse(output).facts.length === 0
-      - type: llm-rubric
+        metric: no_ops
         value: |
-          Messages contain obvious sarcasm — @dima jokingly calls himself a great athlete walking
-          from the couch to the fridge. Expected: empty facts list. Extracting any sport-related
-          fact for @dima is incorrect.
+          const ops = JSON.parse(output).ops;
+          return ops.length === 0;
 
-  - description: "anonymous_users"
+  - description: "unlinked_first_name"
     vars:
-      messages: file://anonymous_users/messages.txt
+      messages: file://unlinked_first_name/messages.txt
     assert:
-      - type: llm-rubric
+      - type: javascript
+        metric: no_ops
         value: |
-          Messages include users without @usernames (Андрей, Маша) who clearly state their
-          professions. Expected: no facts for Андрей or Маша (no @username). @kirill says only
-          "интересно" — no extractable fact. Result should be an empty list.
+          const ops = JSON.parse(output).ops;
+          return ops.length === 0;
 
   - description: "multiple_users"
     vars:
       messages: file://multiple_users/messages.txt
     assert:
+      - type: javascript
+        metric: bio_for_three
+        value: |
+          const ops = JSON.parse(output).ops;
+          const has = (n) => ops.some(o => o.op === 'add' && o.nickname === '@' + n && o.kind === 'bio' && o.self_stated === true);
+          return has('sasha') && has('tanya') && has('maks');
       - type: llm-rubric
         value: |
-          Three users state their locations directly. Expected: location facts for @sasha (lives in
-          Питер, originally from Волгоград), @tanya (Москва), and @maks (Берлин, originally from
-          Киева). All confidence ~1.0.
+          Fact texts for @sasha, @tanya and @maks tie each person to the cities from their messages:
+          Питер and Волгоград for @sasha, Москва for @tanya, Киев and Берлин for @maks.
+          For @tanya, "родом из Москвы", "москвичка" and "живёт в Москве" are all acceptable.
+          Texts are in Russian, third person, without @ and without a trailing period.
+          Score 1 if every person is tied to the right cities, 0.5 if one city is missing or misattributed, 0 otherwise.
 
   - description: "common_facts_excluded"
     vars:
       messages: file://common_facts_excluded/messages.txt
     assert:
       - type: javascript
-        value: JSON.parse(output).facts.length === 0
-      - type: llm-rubric
+        metric: no_ops
         value: |
-          Messages only discuss using Telegram — a universal fact for all chat members by default.
-          Expected: empty facts list. Extracting "использует Telegram" for any user is incorrect.
+          const ops = JSON.parse(output).ops;
+          return ops.length === 0;
 
   - description: "no_extractable_facts"
     vars:
       messages: file://no_extractable_facts/messages.txt
     assert:
       - type: javascript
-        value: JSON.parse(output).facts.length === 0
+        metric: no_ops
+        value: |
+          const ops = JSON.parse(output).ops;
+          return ops.length === 0;
+
+  - description: "confirm_existing"
+    vars:
+      messages: file://confirm_existing/messages.txt
+      facts: file://confirm_existing/existing_facts.txt
+    assert:
+      - type: javascript
+        metric: confirm_f1_no_add
+        value: |
+          const ops = JSON.parse(output).ops;
+          const forKolya = ops.filter(o => o.nickname === '@kolya');
+          const confirmed = forKolya.some(o => o.op === 'confirm' && o.target === 'f1');
+          const duplicated = forKolya.some(o => o.op === 'add' && /cs|кс|контр/i.test(o.text));
+          return confirmed && !duplicated;
+
+  - description: "replace_contradiction"
+    vars:
+      messages: file://replace_contradiction/messages.txt
+      facts: file://replace_contradiction/existing_facts.txt
+    assert:
+      - type: javascript
+        metric: replace_f1
+        value: |
+          const ops = JSON.parse(output).ops;
+          return ops.some(o => o.op === 'replace' && o.target === 'f1' && o.nickname === '@kolya' && o.kind === 'bio');
       - type: llm-rubric
         value: |
-          Messages are pure small talk with no personal information whatsoever.
-          Expected: empty facts list.
+          The replacing fact's text says that @kolya lives in Астана (Астане), as a single short Russian statement.
+          Score 1 if so, 0 otherwise.
+
+  - description: "group_thread"
+    vars:
+      messages: file://group_thread/messages.txt
+    assert:
+      - type: javascript
+        metric: only_misha
+        value: |
+          const ops = JSON.parse(output).ops;
+          const nicks = [...new Set(ops.map(o => o.nickname))];
+          const misha = ops.some(o => o.nickname === '@misha' && o.op === 'add');
+          return misha && nicks.every(n => n === '@misha');
+
+  - description: "self_irony"
+    vars:
+      messages: file://self_irony/messages.txt
+    assert:
+      - type: javascript
+        metric: no_bio_no_self_stated
+        value: |
+          const ops = JSON.parse(output).ops;
+          return ops.every(o => o.kind === 'habit' && o.self_stated === false);
+
+  - description: "running_joke"
+    vars:
+      messages: file://running_joke/messages.txt
+    assert:
+      - type: javascript
+        metric: joke_for_gena
+        value: |
+          const ops = JSON.parse(output).ops;
+          return ops.some(o => o.op === 'add' && o.nickname === '@gena' && o.kind === 'joke' && o.self_stated === false);
+
+  - description: "single_jab"
+    vars:
+      messages: file://single_jab/messages.txt
+    assert:
+      - type: javascript
+        metric: no_ops
+        value: |
+          const ops = JSON.parse(output).ops;
+          return ops.length === 0;
+
+  - description: "bot_excluded"
+    vars:
+      messages: file://bot_excluded/messages.txt
+    assert:
+      - type: javascript
+        metric: no_bot_ops
+        value: |
+          const ops = JSON.parse(output).ops;
+          return ops.every(o => !o.nickname.includes('AnchovyAiBot'));
+

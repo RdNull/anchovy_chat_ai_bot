@@ -24,6 +24,7 @@ from qdrant_client.http.models import FieldCondition, Filter, MatchValue, Range
 from src import mongo, settings
 from src.embeddings.facts import facts_embedding_client
 from src.embeddings.messages import messages_embeddings_client
+from src.facts.models import UserFact
 from src.facts.repository import get_fact_by_id
 from src.memory.keys import RECENT_FIELD, TRAITS_FIELD, normalize
 from src.messages.repository import get_messages, get_messages_by_ids
@@ -677,17 +678,27 @@ async def diff_memory(
     return diff
 
 
+def _fact_view(fact: UserFact) -> dict[str, Any]:
+    return {
+        'text': fact.text,
+        'kind': fact.kind.value,
+        'status': fact.status.value,
+        'sightings': [day.isoformat() for day in fact.sightings],
+        'last_seen_at': fact.last_seen_at.isoformat() if fact.last_seen_at else None,
+    }
+
+
 async def get_user_facts(
     nick: str,
     query: str | None = None,
     limit: int = 5,
 ) -> dict[str, Any]:
-    """Returns a user's facts: the closest to `query`, or the most confident.
+    """Returns a user's facts: the closest to `query`, or confirmed first, then most recently seen.
 
     `totals.matched` is every fact stored for the nick, regardless of `query` or `limit`;
     with `query`, it is the population `query` searched, not a count of matches.
     """
-    # Facts are stored bare — `facts/handlers.py:upsert_fact` strips `@` on write and the
+    # Facts are stored bare — `facts/handlers.py:apply_op` strips `@` on write and the
     # character's own `get_user_facts` tool strips it on read — while memory keys
     # participants as `@nick`, which is where a caller usually copies the nick from.
     nick = nick.replace('@', '')
@@ -695,12 +706,10 @@ async def get_user_facts(
     matched = await mongo.facts.count_documents({'nickname': nick})
     totals = {'matched': matched}
     if not query:
-        cursor = mongo.facts.find({'nickname': nick}).sort('confidence', -1).limit(limit)
-        facts = [
-            {'text': doc['text'], 'confidence': doc['confidence']}
-            for doc in await cursor.to_list(length=limit)
-        ]
-        return _listing(facts, totals)
+        cursor = mongo.facts.find({'nickname': nick})
+        ordered = cursor.sort([('status', -1), ('last_seen_at', -1)]).limit(limit)
+        docs = await ordered.to_list(length=limit)
+        return _listing([_fact_view(UserFact.model_validate(doc)) for doc in docs], totals)
 
     client = facts_embedding_client
     vector = await client._get_embedding_vectors(query)
@@ -711,7 +720,8 @@ async def get_user_facts(
         query_filter=Filter(must=[FieldCondition(key='nickname', match=MatchValue(value=nick))]),
     )
 
-    # `save_fact` keys points by `uuid4()`, so every re-embedding duplicated the fact.
+    # Points are keyed by `uuid5(fact_id)` now, but facts embedded before that may still
+    # have duplicates, so dedupe on the payload id.
     seen: set[str] = set()
     facts = []
     for point in sorted(response.points, key=lambda p: p.score, reverse=True):
@@ -720,11 +730,7 @@ async def get_user_facts(
             continue
         seen.add(fact_id)
         if fact := await get_fact_by_id(fact_id):
-            facts.append({
-                'text': fact.text,
-                'confidence': fact.confidence,
-                'score': round(point.score, 4),
-            })
+            facts.append({**_fact_view(fact), 'score': round(point.score, 4)})
         if len(facts) == limit:
             break
     return _listing(facts, totals)

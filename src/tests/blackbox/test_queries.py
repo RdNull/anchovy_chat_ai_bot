@@ -786,64 +786,79 @@ async def test_diff_memory_before_any_snapshot_raises():
 # --- get_user_facts ---
 
 
-async def test_get_user_facts_without_query_orders_by_confidence(facts_qdrant):
-    await mongo.facts.insert_many([
-        {'nickname': 'alice', 'text': 'low', 'confidence': 0.5},
-        {'nickname': 'alice', 'text': 'high', 'confidence': 0.9},
-        {'nickname': 'bob', 'text': 'other', 'confidence': 1.0},
-    ])
+async def _insert_fact(nickname='alice', text='x', status='confirmed', kind='habit', days_ago=0):
+    seen = T0 - timedelta(days=days_ago)
+    result = await mongo.facts.insert_one({
+        'nickname': nickname,
+        'kind': kind,
+        'status': status,
+        'text': text,
+        'sightings': ['2026-09-01', '2026-09-02'],
+        'created_at': seen,
+        'last_seen_at': seen,
+    })
+    return str(result.inserted_id)
+
+
+def _view(text, status='confirmed', kind='habit', days_ago=0):
+    return {
+        'text': text,
+        'kind': kind,
+        'status': status,
+        'sightings': ['2026-09-01', '2026-09-02'],
+        'last_seen_at': (T0 - timedelta(days=days_ago)).replace(tzinfo=None).isoformat(),
+    }
+
+
+async def test_get_user_facts_without_query_lists_confirmed_first_then_recent(facts_qdrant):
+    await _insert_fact(text='old confirmed', days_ago=9)
+    await _insert_fact(text='new candidate', status='candidate', days_ago=0)
+    await _insert_fact(text='new confirmed', days_ago=1)
+    await _insert_fact(nickname='bob', text='other')
 
     result = await queries.get_user_facts('alice')
 
     assert result['rows'] == [
-        {'text': 'high', 'confidence': 0.9},
-        {'text': 'low', 'confidence': 0.5},
+        _view('new confirmed', days_ago=1),
+        _view('old confirmed', days_ago=9),
+        _view('new candidate', status='candidate'),
     ]
-    assert result['totals'] == {'matched': 2}
+    assert result['totals'] == {'matched': 3}
     assert facts_qdrant.query_points.call_count == 0
 
 
 async def test_get_user_facts_accepts_the_memory_form_of_a_nick(facts_qdrant):
-    """Memory keys participants as `@nick`; facts are stored bare, since `upsert_fact` strips it."""
-    result = await mongo.facts.insert_one({
-        'nickname': 'alice',
-        'text': 'likes coffee',
-        'confidence': 0.8,
-    })
-    facts_qdrant.query_points.return_value = _points((0.9, {'id': str(result.inserted_id)}))
+    """Memory keys participants as `@nick`; facts are stored bare, since `apply_op` strips it."""
+    fact_id = await _insert_fact(text='likes coffee')
+    facts_qdrant.query_points.return_value = _points((0.9, {'id': fact_id}))
 
-    by_confidence = await queries.get_user_facts('@alice')
+    by_listing = await queries.get_user_facts('@alice')
     by_query = await queries.get_user_facts('@alice', query='coffee')
 
-    assert by_confidence['rows'] == [{'text': 'likes coffee', 'confidence': 0.8}]
-    assert by_query['rows'] == [{'text': 'likes coffee', 'confidence': 0.8, 'score': 0.9}]
+    assert by_listing['rows'] == [_view('likes coffee')]
+    assert by_query['rows'] == [{**_view('likes coffee'), 'score': 0.9}]
     assert facts_qdrant.query_points.call_args.kwargs['query_filter'].must[0].match.value == 'alice'
 
 
 async def test_get_user_facts_totals_matched_is_population_size_in_both_branches(facts_qdrant):
     """With `query`, `matched` is the population searched, not the number of hits returned."""
-    await mongo.facts.insert_many([
-        {'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8},
-        {'nickname': 'alice', 'text': 'owns a bike', 'confidence': 0.6},
-    ])
+    await _insert_fact(text='likes coffee')
+    await _insert_fact(text='owns a bike')
     facts_qdrant.query_points.return_value = _points()
 
-    by_confidence = await queries.get_user_facts('alice', limit=1)
+    by_listing = await queries.get_user_facts('alice', limit=1)
     by_query = await queries.get_user_facts('alice', query='coffee', limit=1)
 
-    assert by_confidence['totals'] == {'matched': 2}
+    assert by_listing['totals'] == {'matched': 2}
     assert by_query['totals'] == {'matched': 2}
 
 
 async def test_get_user_facts_with_query_dedupes_duplicated_points(facts_qdrant):
-    result = await mongo.facts.insert_many([
-        {'nickname': 'alice', 'text': 'likes coffee', 'confidence': 0.8},
-        {'nickname': 'alice', 'text': 'owns a bike', 'confidence': 0.6},
-    ])
-    coffee, bike = (str(i) for i in result.inserted_ids)
+    coffee = await _insert_fact(text='likes coffee')
+    bike = await _insert_fact(text='owns a bike')
     facts_qdrant.query_points.return_value = _points(
         (0.9, {'id': coffee}),
-        (0.85, {'id': coffee}),  # a re-embedding under a fresh uuid4
+        (0.85, {'id': coffee}),  # a legacy re-embedding under a fresh uuid4
         (0.8, {'id': str(ObjectId())}),  # point outlived its fact
         (0.7, {'id': bike}),
     )
@@ -851,8 +866,8 @@ async def test_get_user_facts_with_query_dedupes_duplicated_points(facts_qdrant)
     facts = await queries.get_user_facts('alice', query='coffee')
 
     assert facts['rows'] == [
-        {'text': 'likes coffee', 'confidence': 0.8, 'score': 0.9},
-        {'text': 'owns a bike', 'confidence': 0.6, 'score': 0.7},
+        {**_view('likes coffee'), 'score': 0.9},
+        {**_view('owns a bike'), 'score': 0.7},
     ]
     assert facts_qdrant.query_points.call_args.kwargs['query_filter'].must[0].match.value == 'alice'
     assert facts_qdrant.check_collection.call_count == 0
