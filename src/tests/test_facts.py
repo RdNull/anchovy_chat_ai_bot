@@ -9,8 +9,11 @@ from src.embeddings.facts import FactsSearchResult
 from src.facts.handlers import (
     apply_op,
     enforce_caps,
+    facts_for_reply,
+    format_facts,
     is_bot_nickname,
     load_existing,
+    select_fact_users,
     update_user_facts,
     window_participants,
 )
@@ -663,3 +666,116 @@ async def test_update_user_facts_logs_error_on_exception(mocker):
 
     assert mock_logger.error.call_count == 1
     assert 'Error extracting facts from messages' in mock_logger.error.call_args[0][0]
+
+
+# --- facts_for_reply ---
+
+
+def test_select_fact_users_orders_author_reply_to_then_mentions():
+    target = make_message(nickname='alice', text='эй @carol и @bob')
+    target.reply = MessageReply(nickname='bob', text='x')
+
+    assert select_fact_users(target, []) == ['alice', 'bob', 'carol']
+
+
+def test_select_fact_users_excludes_bot_in_both_forms():
+    target = make_message(
+        nickname='alice', text=f'@{settings.BOT_NICKNAME} @{settings.BOT_NICKNAME}[cat]'
+    )
+    target.reply = MessageReply(nickname=f'{settings.BOT_NICKNAME}[cat]', text='x')
+
+    assert select_fact_users(target, []) == ['alice']
+
+
+def test_select_fact_users_without_target_takes_recent_user_authors_newest_first():
+    messages = [
+        make_message(nickname='alice'),
+        make_message(nickname='bob'),
+        make_message(nickname=f'{settings.BOT_NICKNAME}[cat]', role=UserRole.AI),
+        make_message(nickname='alice'),
+        make_message(nickname='carol'),
+    ]
+
+    assert select_fact_users(None, messages) == ['carol', 'alice', 'bob']
+
+
+async def test_facts_for_reply_returns_only_confirmed_facts():
+    await insert_fact('alice', text='живёт в Алматы', status=FactStatus.CONFIRMED)
+    await insert_fact('alice', text='может быть врёт', status=FactStatus.CANDIDATE)
+
+    result = await facts_for_reply(make_message(nickname='alice'), [])
+
+    assert [f.text for f in result['alice']] == ['живёт в Алматы']
+
+
+async def test_facts_for_reply_skips_people_without_facts_and_does_not_spend_the_cap(mocker):
+    mocker.patch.object(settings, 'FACTS_INJECT_MAX_USERS', 1)
+    await insert_fact('carol', status=FactStatus.CONFIRMED)
+    target = make_message(nickname='alice', text='@bob @carol')
+
+    result = await facts_for_reply(target, [])
+
+    assert list(result) == ['carol']
+
+
+async def test_facts_for_reply_respects_the_cap(mocker):
+    mocker.patch.object(settings, 'FACTS_INJECT_MAX_USERS', 2)
+    for nickname in ('alice', 'bob', 'carol'):
+        await insert_fact(nickname, status=FactStatus.CONFIRMED)
+    target = make_message(nickname='alice', text='@bob @carol')
+
+    result = await facts_for_reply(target, [])
+
+    assert list(result) == ['alice', 'bob']
+
+
+async def test_facts_for_reply_orders_by_kind_then_last_seen_desc():
+    old = datetime.now(UTC) - timedelta(days=5)
+    new = datetime.now(UTC)
+    confirmed = FactStatus.CONFIRMED
+    await insert_fact('alice', FactKind.JOKE, confirmed, 'шутка', last_seen_at=new)
+    await insert_fact('alice', FactKind.HABIT, confirmed, 'привычка старая', last_seen_at=old)
+    await insert_fact('alice', FactKind.BIO, confirmed, 'био', last_seen_at=old)
+    await insert_fact('alice', FactKind.HABIT, confirmed, 'привычка новая', last_seen_at=new)
+
+    result = await facts_for_reply(make_message(nickname='alice'), [])
+
+    texts = [f.text for f in result['alice']]
+    assert texts == ['био', 'привычка новая', 'привычка старая', 'шутка']
+
+
+async def test_facts_for_reply_empty_when_nobody_has_confirmed_facts():
+    await insert_fact('alice', status=FactStatus.CANDIDATE)
+
+    assert await facts_for_reply(make_message(nickname='alice'), []) == {}
+
+
+def test_format_facts_one_line_per_person_with_joke_prefix():
+    facts = {
+        'alice': [
+            UserFact(
+                nickname='alice',
+                kind=FactKind.BIO,
+                status=FactStatus.CONFIRMED,
+                text='живёт в Алматы',
+            ),
+            UserFact(
+                nickname='alice',
+                kind=FactKind.JOKE,
+                status=FactStatus.CONFIRMED,
+                text='встречается с bob',
+            ),
+        ],
+        'bob': [
+            UserFact(
+                nickname='bob', kind=FactKind.HABIT, status=FactStatus.CONFIRMED, text='бегает'
+            )
+        ],
+    }
+
+    assert format_facts(facts) == ('@alice: живёт в Алматы; шутка: встречается с bob\n@bob: бегает')
+
+
+def test_format_facts_is_none_when_empty():
+    assert format_facts({}) is None
+    assert format_facts(None) is None

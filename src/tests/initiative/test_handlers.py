@@ -391,6 +391,30 @@ async def test_run_initiative_reply_builds_replier_targeting_the_evaluated_messa
     assert respond_messages == last_messages
 
 
+async def test_run_initiative_reply_passes_facts_for_the_target_into_respond(mocker, make_bot):
+    mocker.patch('src.initiative.handlers.get_bot', return_value=make_bot())
+    mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
+    last_messages = [make_message(text='fresh')]
+    mocker.patch(
+        'src.initiative.handlers.fetch_last_messages', AsyncMock(return_value=last_messages)
+    )
+    facts = {'user1': ['fact']}
+    mock_facts = mocker.patch(
+        'src.initiative.handlers.facts_for_reply', AsyncMock(return_value=facts)
+    )
+    character = MagicMock()
+    character.respond = AsyncMock()
+    target = make_message(text='target')
+    evaluation = InitiativeVerdict(target_message=target, score=0.9, reason='r')
+
+    await handlers._run_initiative_reply(
+        chat_id=222, character=character, evaluation=evaluation, run_id='run-id'
+    )
+
+    assert mock_facts.call_args[0][0] is target
+    assert character.respond.call_args.kwargs == {'facts': facts}
+
+
 async def test_run_initiative_reply_targets_the_chat_when_no_target_message(mocker, make_bot):
     mocker.patch('src.initiative.handlers.get_bot', return_value=make_bot())
     mocker.patch('src.initiative.handlers.send_chat_action', new_callable=AsyncMock)
@@ -493,7 +517,7 @@ def _mock_slow_judge_and_respond(mocker, make_bot, send_kind, run_seconds=0.4):
 
     mocker.patch('src.initiative.handlers.evaluate_initiative', slow_judge)
 
-    async def slow_respond(replier, _messages):
+    async def slow_respond(replier, _messages, facts=None):
         await asyncio.sleep(run_seconds)
         if send_kind:
             replier.delivered.append(send_kind)

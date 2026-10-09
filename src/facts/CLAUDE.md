@@ -31,4 +31,6 @@ Observability: one `FACT_OP` per op (`op`, `kind`, `nickname`, `outcome` ∈ `cr
 
 `src/scripts/seed_facts.py` replaces the store with a JSON list of `{nickname, kind, text}` read from `--file` (`-` is stdin), all `confirmed`; `--dry-run` only validates and reports. The seed data is git-ignored (`docs/specs/` is, and `docs` is in `.dockerignore`) and must not enter the repo, the image or the workflow — it is piped into the running pod.
 
-The character tool `get_user_facts` reads confirmed facts only (`{text, kind}`).
+## Injection into the reply
+
+The character has no facts tool (`get_user_facts` was called 0 times in 25 days; blackbox keeps its own). `handlers.py:select_fact_users` returns who the reply is about, most relevant first: with a target message its author, `target.reply.nickname`, then `@mentions` in its text; without one, the authors of the `USER` messages in the window, newest first. Bare nicknames, deduped, bot (bare and tagged) excluded. `facts_for_reply` walks that list, reads `confirmed` facts only (candidates never), skips people with none — a fact-less author does not spend a slot — and stops at `FACTS_INJECT_MAX_USERS` (default 3). Within a person: `bio`, `habit`, `joke`, then `last_seen_at` descending. `format_facts` renders one line per person (`@nick: a; b; шутка: c`) — jokes carry the `шутка: ` prefix so the model does not read them as real — and returns `None` when empty, which drops the block from `character_setup/v11.j2`. Call sites and the log fields are in the root `CLAUDE.md` (**Facts**).

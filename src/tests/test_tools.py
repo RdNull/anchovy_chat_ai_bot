@@ -8,14 +8,13 @@ from telegram.error import BadRequest
 
 from src import settings
 
-from src.characters.tools import find_stickers, get_user_facts, search_messages, search_web
+from src.characters.tools import find_stickers, search_messages, search_web
 from src.characters.tools.answer import answer_text, send_sticker, set_reaction
 from src.characters.tools.context import _web_search_limiter
 from src.characters.tools.context import search_messages as search_messages_direct
 from src.embeddings.stickers import StickerSearchResult
 from src.characters.tools.registry import ToolContext, ToolFailure, ToolRegistry
 from src.embeddings.models import RelatedMessagesData
-from src.facts.models import FactStatus, UserFact
 from src.messages.models import Message, UserRole
 
 
@@ -82,33 +81,6 @@ async def test_search_messages_tool_limit_validation(mocker):
 
     await search_messages.ainvoke({'search_query': 'test', 'limit': -1})
     assert mock_search.call_args == call(123, 'test', limit=3)
-
-
-async def test_get_user_facts_tool(mocker):
-    facts = [
-        UserFact(nickname='bob', kind='habit', status='confirmed', text='likes pizza'),
-        UserFact(nickname='bob', kind='bio', status='confirmed', text='is tall'),
-    ]
-    mock_get = mocker.patch('src.characters.tools.context.get_facts', AsyncMock(return_value=facts))
-
-    result = await get_user_facts.ainvoke({'nickname': '@bob', 'limit': 10})
-
-    assert result == [
-        {'text': 'likes pizza', 'kind': 'habit'},
-        {'text': 'is tall', 'kind': 'bio'},
-    ]
-    assert mock_get.call_count == 1
-    assert mock_get.call_args == call('bob', status=FactStatus.CONFIRMED, limit=10)
-
-
-async def test_get_user_facts_tool_limit_validation(mocker):
-    mock_get = mocker.patch('src.characters.tools.context.get_facts', AsyncMock(return_value=[]))
-
-    await get_user_facts.ainvoke({'nickname': 'bob', 'limit': 25})
-    assert mock_get.call_args == call('bob', status=FactStatus.CONFIRMED, limit=5)
-
-    await get_user_facts.ainvoke({'nickname': 'bob', 'limit': -1})
-    assert mock_get.call_args == call('bob', status=FactStatus.CONFIRMED, limit=5)
 
 
 async def test_tool_registry_execute_success(mocker):

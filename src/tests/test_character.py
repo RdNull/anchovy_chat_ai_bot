@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from src import settings
 from src.characters.character import _MAX_LOOP_DEPTH, Character, _format_previous_messages
 from src.characters.tools.registry import ToolFailure, ToolRegistry
+from src.facts.models import FactKind, FactStatus, UserFact
 from src.memory.models import ChatState, MemoryData, StructuredMemory
 from src.messages.models import Message, UserRole
 
@@ -442,7 +443,6 @@ async def test_base_tools_are_always_bound(mocker):
 
     assert tool_names(registry) == {
         'search_messages',
-        'get_user_facts',
         'search_web',
         'answer_text',
         'set_reaction',
@@ -576,7 +576,7 @@ async def test_context_tool_result_is_unaffected_by_the_tuple_return(mocker):
 
 def test_system_message_contains_style_prompt():
     character = make_character()
-    msg = character.system_message
+    msg = character.system_message()
 
     assert isinstance(msg, SystemMessage)
     assert 'Говори только по-русски и коротко.' in msg.content
@@ -586,7 +586,7 @@ def test_system_message_carries_the_sticker_mechanics():
     # v8 is a copy of v7 plus this block; the version pin and the file must agree.
     # Mechanics only — when to reach for a sticker is voice and lives in the
     # character YAML's TOOLS: block.
-    content = make_character().system_message.content
+    content = make_character().system_message().content
 
     assert 'СТИКЕРЫ:' in content
     assert 'find_stickers' in content
@@ -599,14 +599,14 @@ def test_system_message_names_the_bot_nickname():
     character = make_character()
 
     assert character.nickname == f'{settings.BOT_NICKNAME}[test]'
-    assert character.nickname in character.system_message.content
+    assert character.nickname in character.system_message().content
 
 
 def test_system_message_without_memory_has_no_memory_section():
     character = make_character()
     character.memory = None
 
-    assert 'ПАМЯТЬ' not in character.system_message.content
+    assert 'ПАМЯТЬ' not in character.system_message().content
 
 
 def test_system_message_with_memory_includes_memory_section():
@@ -617,5 +617,65 @@ def test_system_message_with_memory_includes_memory_section():
         content=StructuredMemory(state=ChatState(open_questions=['oppa'])),
     )
 
-    assert 'ПАМЯТЬ' in character.system_message.content
-    assert 'oppa' in character.system_message.content
+    assert 'ПАМЯТЬ' in character.system_message().content
+    assert 'oppa' in character.system_message().content
+
+
+def make_facts():
+    return {
+        'alice': [
+            UserFact(
+                nickname='alice',
+                kind=FactKind.BIO,
+                status=FactStatus.CONFIRMED,
+                text='живёт в Алматы',
+            ),
+            UserFact(
+                nickname='alice',
+                kind=FactKind.JOKE,
+                status=FactStatus.CONFIRMED,
+                text='женат на коте',
+            ),
+        ]
+    }
+
+
+def test_system_message_renders_the_facts_block():
+    content = make_character().system_message(make_facts()).content
+
+    assert 'ЛЮДИ' in content
+    assert '@alice: живёт в Алматы; шутка: женат на коте' in content
+
+
+def test_system_message_without_facts_has_no_facts_block():
+    character = make_character()
+
+    assert 'ЛЮДИ' not in character.system_message().content
+    assert 'ЛЮДИ' not in character.system_message({}).content
+
+
+def test_facts_block_follows_the_memory_block():
+    character = make_character()
+    character.memory = MemoryData(
+        chat_id=1,
+        created_at=datetime.now(UTC),
+        content=StructuredMemory(state=ChatState(open_questions=['oppa'])),
+    )
+
+    content = character.system_message(make_facts()).content
+
+    assert content.index('ПАМЯТЬ') < content.index('ЛЮДИ')
+
+
+async def test_respond_puts_facts_in_the_prompt_and_logs_their_size(mocker, caplog):
+    llm = mock_chat_llm(mocker, [answer_tool_call()])
+    mocker.patch.object(ToolRegistry, 'execute', new=execute_returning(None))
+    caplog.set_level('INFO')
+
+    await make_character().respond(make_replier(), last_messages=[], facts=make_facts())
+
+    system = llm.ainvoke.call_args[0][0][0]
+    assert '@alice: живёт в Алматы' in system.content
+    record = next(r for r in caplog.records if getattr(r, 'event', None) == 'LLM_INVOKE')
+    assert record.facts_users == ['alice']
+    assert record.facts_count == 2

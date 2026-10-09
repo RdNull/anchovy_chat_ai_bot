@@ -261,6 +261,29 @@ async def test_generate_answer_full_flow(make_update, make_context, make_bot, mo
     assert bot.send_message.call_args.kwargs['text'] == 'мок ответ'
 
 
+async def test_generate_answer_passes_facts_for_the_user_message_into_respond(
+    make_update, make_context, make_bot, mocker
+):
+    mocker.patch('src.messages.response.run_followups', new_callable=AsyncMock)
+    mocker.patch('src.messages.response.get_bot', return_value=make_bot())
+    facts = {'user1': ['fact']}
+    mock_facts = mocker.patch(
+        'src.messages.response.facts_for_reply', AsyncMock(return_value=facts)
+    )
+    character = MagicMock()
+    character.respond = AsyncMock()
+    mocker.patch('src.messages.response.get_chat_character', AsyncMock(return_value=character))
+    mocker.patch('src.messages.response.Replier')
+    update = make_update(text='question', chat_id=222)
+
+    await handlers.generate_answer(update, make_context)
+
+    target, last_messages = mock_facts.call_args[0]
+    assert target.text == 'question'
+    assert character.respond.call_args.args[1] == last_messages
+    assert character.respond.call_args.kwargs == {'facts': facts}
+
+
 async def test_error_handler(mocker):
     update = MagicMock()
     context = MagicMock()

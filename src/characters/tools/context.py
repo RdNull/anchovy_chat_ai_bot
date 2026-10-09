@@ -9,8 +9,6 @@ from src import ai, settings
 from src.characters.tools.registry import ToolContext
 from src.embeddings.messages import messages_embeddings_client
 from src.embeddings.stickers import StickerSearchResult, stickers_embedding_client
-from src.facts.models import FactStatus
-from src.facts.repository import get_facts
 from src.logs import elapsed_ms, event, logger
 from src.media.repository import get_recent_sticker_ids
 from src.prompt_manager import prompt_manager
@@ -62,42 +60,6 @@ async def search_messages(search_query: str, limit: int = 3) -> list[dict]:
         }
         for rm in related_messages
     ]
-
-
-GET_USER_FACT_TOOL_DESCRIPTION = """
-[context]: Получить КЛЮЧЕВЫЕ факты о пользователе
-Args:
-- nickname: Никнейм пользователя
-- limit: Количество фактов для получения
-"""
-
-
-@tool(description=GET_USER_FACT_TOOL_DESCRIPTION)
-async def get_user_facts(nickname: str, limit: int = 5) -> list[dict]:
-    if limit < 0 or limit > 20:  # dumb check, but I don't trust AI
-        logger.warning(
-            'Clamping tool argument',
-            extra=event(
-                'TOOL_ARG_CLAMPED', tool='get_user_facts', arg='limit', given=limit, used=5
-            ),
-        )
-        limit = 5
-
-    nickname = nickname.replace('@', '')
-    started = time.monotonic()
-    facts = await get_facts(nickname, status=FactStatus.CONFIRMED, limit=limit)
-    logger.info(
-        'User facts retrieved',
-        extra=event(
-            'TOOL_USER_FACTS',
-            nickname=nickname,
-            results=len(facts),
-            limit=limit,
-            elapsed_ms=elapsed_ms(started),
-            outcome='ok' if facts else 'empty',
-        ),
-    )
-    return [{'text': fact.text, 'kind': fact.kind.value} for fact in facts]
 
 
 SEARCH_WEB_DESCRIPTION = """

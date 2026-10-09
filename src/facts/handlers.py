@@ -16,7 +16,7 @@ from src.facts.repository import (
     set_status,
 )
 from src.logs import elapsed_ms, event, logger
-from src.messages.models import Message
+from src.messages.models import Message, UserRole
 
 _MENTION = re.compile(r'@(\w+)')
 _VECTOR_FALLBACK = 'vector'
@@ -62,6 +62,67 @@ async def load_existing(messages: list[Message]) -> dict[str, list[UserFact]]:
         existing[nickname] = facts
 
     return existing
+
+
+_KIND_ORDER = {FactKind.BIO: 0, FactKind.HABIT: 1, FactKind.JOKE: 2}
+_JOKE_PREFIX = 'шутка: '
+
+
+def select_fact_users(target: Message | None, last_messages: list[Message]) -> list[str]:
+    """Who a reply is about, most relevant first: bare nicknames, bot excluded, deduped."""
+    if target:
+        candidates = [target.nickname]
+        if target.reply:
+            candidates.append(target.reply.nickname)
+
+        candidates.extend(_MENTION.findall(target.text or ''))
+    else:
+        users = [m for m in last_messages if m.role == UserRole.USER]
+        candidates = [m.nickname for m in reversed(users)]
+
+    selected = []
+    for candidate in candidates:
+        nickname = (candidate or '').replace('@', '')
+        if nickname and not is_bot_nickname(nickname) and nickname not in selected:
+            selected.append(nickname)
+
+    return selected
+
+
+def _fact_sort_key(fact: UserFact) -> tuple[int, float]:
+    seen = fact.last_seen_at.timestamp() if fact.last_seen_at else 0.0
+    return _KIND_ORDER[fact.kind], -seen
+
+
+async def facts_for_reply(
+    target: Message | None, last_messages: list[Message]
+) -> dict[str, list[UserFact]]:
+    """Confirmed facts of up to `FACTS_INJECT_MAX_USERS` people the reply is about."""
+    result = {}
+    for nickname in select_fact_users(target, last_messages):
+        if len(result) >= settings.FACTS_INJECT_MAX_USERS:
+            break
+
+        facts = await get_facts(nickname, status=FactStatus.CONFIRMED)
+        if facts:
+            result[nickname] = sorted(facts, key=_fact_sort_key)
+
+    return result
+
+
+def format_facts(facts: dict[str, list[UserFact]] | None) -> str | None:
+    """One line per person; jokes are marked so the model doesn't take them as real."""
+    lines = []
+    for nickname, person_facts in (facts or {}).items():
+        parts = []
+        for fact in person_facts:
+            prefix = _JOKE_PREFIX if fact.kind == FactKind.JOKE else ''
+            parts.append(f'{prefix}{fact.text}')
+
+        if parts:
+            lines.append(f'@{nickname}: {"; ".join(parts)}')
+
+    return '\n'.join(lines) or None
 
 
 def _confirm_days(kind: FactKind) -> int:
