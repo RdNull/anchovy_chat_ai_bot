@@ -13,20 +13,6 @@ config:
   tools:
     - type: function
       function:
-        name: get_user_facts
-        description: |-
-          [context]: Получить КЛЮЧЕВЫЕ факты о пользователе
-          Args:
-          - nickname: Никнейм пользователя
-          - limit: Количество фактов для получения
-        parameters:
-          type: object
-          properties:
-            nickname: { type: string }
-            limit: { type: integer }
-          required: [ nickname ]
-    - type: function
-      function:
         name: search_messages
         description: |-
           [context]: Поиск сообщений чата по запросу

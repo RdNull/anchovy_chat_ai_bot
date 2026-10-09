@@ -3,8 +3,8 @@
 description: "Character response eval"
 
 prompts:
-  - id: file://../prompts/v10.js
-    label: "Character v10"
+  - id: file://../prompts/v11.js
+    label: "Character v11"
 
 providers:
   - id: file://../../models/chat/v8-gemini.yaml
@@ -13,6 +13,7 @@ defaultTest:
   vars:
     character_description: file://character.js
     bot_nickname: AnchovyAiBot
+    facts: ''
   assert:
     # response must be 1..N words long, N depends on the character (see max_words.js)
     - type: word-count
@@ -294,3 +295,30 @@ tests:
       - type: javascript
         metric: channel-choice
         value: "(context.metadata?.toolsCalled || []).includes('answer_text')"
+
+  # Injected facts must stay background. The target is about a game; the facts are about
+  # the author's life. Any fact keyword in the reply is stapling.
+  - description: "facts_lift"
+    vars:
+      messages: file://facts_lift/messages.json
+      facts: file://facts_lift/facts.txt
+    assert:
+      - type: not-icontains-any
+        metric: facts-not-stapled
+        value:
+          - Алматы
+          - Алмат
+          - кальян
+          - дочк
+          - кофе
+          - женат
+          - жена
+          - бегает
+          - бег
+          - ночью
+
+  # Informational, not a gate: a fact fits the jab. Read the output, don't count the pass.
+  - description: "facts_fit"
+    vars:
+      messages: file://facts_fit/messages.json
+      facts: file://facts_fit/facts.txt

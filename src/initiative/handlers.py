@@ -9,6 +9,7 @@ from src import settings
 from src.characters.character import Character
 from src.characters.registry import get_chat_character
 from src.characters.reply import Replier, ReplyKind
+from src.facts.handlers import facts_for_reply
 from src.initiative.models import InitiativeVerdict
 from src.initiative.policies import collapse_repeats, decide, pre_check, split_at_gap
 from src.initiative.processors import evaluate_initiative
@@ -288,7 +289,9 @@ async def _run_initiative_reply(
         try:
             # reload messages to fetch messages that might be sent in-between evaluation
             last_messages = await fetch_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
-            await character.respond(replier, _with_target(last_messages, evaluation.target_message))
+            window = _with_target(last_messages, evaluation.target_message)
+            facts = await facts_for_reply(evaluation.target_message, window)
+            await character.respond(replier, window, facts=facts)
         except Exception:
             outcome = 'error'
             logger.error(

@@ -54,7 +54,7 @@ Each chat accumulates a `StructuredMemory` snapshot in MongoDB — per-participa
 A daily job prunes snapshots older than 90 days, always preserving the most recent one per chat. The window is long on purpose: snapshots are a few kilobytes each, and 90 days of them is enough history to tell how long a trait survives, how long a running joke lasts, and whether an open question ever closes.
 
 **User Fact Tracking with Sightings Instead of Scores**
-Facts about individual users are extracted in the same pass as each memory update. The extraction model is shown what is already stored about the people in the window and answers with operations — add, confirm or replace a specific stored fact — rather than a fresh list, so a restated fact reinforces the old one and a contradiction (a move, a new job) replaces it. A fact starts as a candidate and is promoted to confirmed once it has been seen on enough distinct days (more for running jokes); a user's own serious statement of a biographical fact is confirmed at once. Confirmed facts are never aged out by a job; unconfirmed candidates expire after a month unseen, and per-user caps keep the store small. Facts are typed (biography, habit, chat joke), and group threads, self-irony and insults aimed at the bot are filtered by the prompt and by deterministic checks on the model's output. The `get_user_facts` tool lets the character LLM retrieve confirmed facts about a user at inference time.
+Facts about individual users are extracted in the same pass as each memory update. The extraction model is shown what is already stored about the people in the window and answers with operations — add, confirm or replace a specific stored fact — rather than a fresh list, so a restated fact reinforces the old one and a contradiction (a move, a new job) replaces it. A fact starts as a candidate and is promoted to confirmed once it has been seen on enough distinct days (more for running jokes); a user's own serious statement of a biographical fact is confirmed at once. Confirmed facts are never aged out by a job; unconfirmed candidates expire after a month unseen, and per-user caps keep the store small. Facts are typed (biography, habit, chat joke), and group threads, self-irony and insults aimed at the bot are filtered by the prompt and by deterministic checks on the model's output. Confirmed facts of the people a reply is about (the author, who they replied to, anyone mentioned) are injected into the character prompt as background, framed as «use only if it fits the moment» — the character no longer has to decide to look them up.
 
 **Async Media Pipeline**
 - Images: downloaded, hashed for deduplication, described by a vision LLM (Gemini 3.1 Flash Lite) with OCR
@@ -181,7 +181,6 @@ Message Handlers  (handlers.py)
                Agentic loop (context-tool depth 5, hard cap 8):
                    LLM call
                      |-- tool_call: search_messages  --> Qdrant vector search
-                     |-- tool_call: get_user_facts   --> MongoDB fact lookup
                      |-- tool_call: search_web       --> extractor LLM + OpenRouter web plugin
                      |                                   (rate-limited per chat, own timeout)
                      |-- tool_call: find_stickers    --> 1-3 Qdrant searches over sticker

@@ -9,6 +9,7 @@ from src import settings
 from src.characters.character import Character
 from src.characters.registry import get_chat_character
 from src.characters.reply import Replier
+from src.facts.handlers import facts_for_reply
 from src.logs import elapsed_ms, event, logger
 from src.memory.repository import get_last_memory
 from src.running_app import get_bot
@@ -44,7 +45,8 @@ async def generate_answer(update: Update, _context: ContextTypes.DEFAULT_TYPE):
         replier = Replier(bot=bot, character=character, chat_id=chat_id, target=user_message)
 
         last_messages = await fetch_last_messages(chat_id, size=settings.LAST_MESSAGES_SIZE)
-        await character.respond(replier, last_messages)
+        facts = await facts_for_reply(user_message, last_messages)
+        await character.respond(replier, last_messages, facts=facts)
 
         asyncio.create_task(run_followups(chat_id))
         outcome = 'ok'

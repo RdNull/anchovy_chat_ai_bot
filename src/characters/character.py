@@ -19,6 +19,8 @@ from src import ai, settings
 from src.characters import tools
 from src.characters.reply import Replier
 from src.characters.tools.registry import ToolContext, ToolFailure, ToolRegistry
+from src.facts.handlers import format_facts
+from src.facts.models import UserFact
 from src.logs import elapsed_ms, event, logger
 from src.memory.models import MemoryData
 from src.messages.models import Message, UserRole
@@ -84,7 +86,7 @@ def _format_previous_messages(
 
 
 def _get_tools_registry(replier: Replier) -> ToolRegistry:
-    context_tools = [tools.search_messages, tools.get_user_facts, tools.search_web]
+    context_tools = [tools.search_messages, tools.search_web]
     direct_tools = [tools.answer_text]
 
     if replier.target_message:
@@ -128,13 +130,13 @@ class Character:
     def nickname(self) -> str:
         return bot_nickname_for(self.code)
 
-    @property
-    def system_message(self):
+    def system_message(self, facts: dict[str, list[UserFact]] | None = None):
         setup_prompt = prompt_manager.get_prompt(
             'character_setup',
-            version='v10',
+            version='v11',
             character_description=self.style_prompt,
             memory=self.memory.prompt_format() if self.memory else None,
+            facts=format_facts(facts),
             bot_nickname=self.nickname,
         )
         return SystemMessage(setup_prompt)
@@ -144,6 +146,7 @@ class Character:
         self,
         replier: Replier,
         last_messages: list[Message] = None,
+        facts: dict[str, list[UserFact]] | None = None,
     ) -> None:
         chat_id = replier.chat_id
         if self.rate_limiter.is_exceeded(chat_id):
@@ -151,7 +154,7 @@ class Character:
 
         llm, version, model_name = self._get_llm(versions=('v8',))
         messages = [
-            self.system_message,
+            self.system_message(facts),
             *_format_previous_messages(replier, last_messages or []),
         ]
 
@@ -161,6 +164,10 @@ class Character:
             extra=event('LLM_INVOKE_START', character=self.name, messages=len(messages)),
         )
         stats = _LoopStats()
+        facts_fields = {
+            'facts_users': list(facts or {}),
+            'facts_count': sum(len(f) for f in (facts or {}).values()),
+        }
         started = time.monotonic()
         try:
             await asyncio.wait_for(
@@ -180,6 +187,7 @@ class Character:
                     tokens_in=stats.tokens_in,
                     tokens_out=stats.tokens_out,
                     outcome='ok',
+                    **facts_fields,
                 ),
             )
         except TimeoutError:
@@ -190,6 +198,7 @@ class Character:
                     outcome='timeout',
                     timeout_s=settings.AI_TIMEOUT,
                     elapsed_ms=elapsed_ms(started),
+                    **facts_fields,
                 ),
             )
             await replier.reply_message('Чё-то я призадумался и забыл, че хотел сказать...')
@@ -197,7 +206,7 @@ class Character:
             logger.error(
                 'Error invoking LLM',
                 exc_info=True,
-                extra=event('LLM_INVOKE', outcome='error'),
+                extra=event('LLM_INVOKE', outcome='error', **facts_fields),
             )
             await replier.reply_message('Голова чё-то разболелась, давай потом...')
 
