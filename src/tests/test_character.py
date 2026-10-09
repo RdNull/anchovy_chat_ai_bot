@@ -664,7 +664,7 @@ def test_facts_block_follows_the_memory_block():
 
     content = character.system_message(make_facts()).content
 
-    assert content.index('ПАМЯТЬ') < content.index('ЛЮДИ')
+    assert content.index('ЛЮДИ') < content.index('ПАМЯТЬ')
 
 
 async def test_respond_puts_facts_in_the_prompt_and_logs_their_size(mocker, caplog):
