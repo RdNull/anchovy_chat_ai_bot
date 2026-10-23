@@ -58,7 +58,7 @@ spec:
               resources:
                 requests:
                   # The dump is a few MB and finishes in seconds; 128Mi was oversized enough
-                  # that it rarely fit the node's ~100-140Mi steady-state headroom (see
+                  # that it rarely fit the old 2Gi node's ~100-140Mi steady-state headroom (see
                   # deployment.md's node arithmetic), so the pod sat Pending at its 03:17 UTC
                   # schedule until a deploy transiently freed memory (bot Recreate, or the
                   # unconditional otel-collector restart) — that's what made the Linode

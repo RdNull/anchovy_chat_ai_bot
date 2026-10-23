@@ -64,7 +64,7 @@ accessLog:
   enabled: false
 
 # Requests only, like every other container here: Burstable QoS without a limit that could
-# OOM-kill the edge proxy. The node's spare headroom is ~390Mi.
+# OOM-kill the edge proxy. The old 2Gi node's spare headroom was ~390Mi.
 resources:
   requests:
     cpu: 25m

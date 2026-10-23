@@ -47,8 +47,8 @@ spec:
             - containerPort: 6334
               name: grpc
           # Memory request trimmed from the original 128Mi to what qdrant actually uses
-          # (measured ~38Mi) to free headroom for manifests/otel-collector.yaml on this
-          # 1-CPU/2Gi node, where memory requests were already at 92% of allocatable.
+          # (measured ~38Mi) to free headroom for manifests/otel-collector.yaml on the then
+          # 1-CPU/2Gi node (since replaced), where memory requests were already at 92% of allocatable.
           resources:
             requests:
               cpu: 25m
