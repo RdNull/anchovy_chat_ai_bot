@@ -17,17 +17,12 @@ from src.facts.repository import (
 )
 from src.logs import elapsed_ms, event, logger
 from src.messages.models import Message, UserRole
+from src.utils import is_bot_nickname
 
 _MENTION = re.compile(r'@(\w+)')
 _VECTOR_FALLBACK = 'vector'
 _VECTOR_FALLBACK_THRESHOLD = 0.6
 _OWN_TEXT_MAX_CHARS = 2000
-
-
-def is_bot_nickname(nickname: str) -> bool:
-    """The bare bot nickname or any tagged form of it (`AnchovyAiBot[<code>]`)."""
-    bot = settings.BOT_NICKNAME
-    return nickname == bot or nickname.startswith(f'{bot}[')
 
 
 def window_participants(messages: list[Message]) -> list[str]:
@@ -141,7 +136,13 @@ def _status_for(kind: FactKind, self_stated: bool, sightings: int) -> FactStatus
     return FactStatus.CONFIRMED if promoted else FactStatus.CANDIDATE
 
 
-def _log_op(op: FactOp, nickname: str, outcome: FactOutcome, fallback: str | None = None) -> None:
+def _log_op(
+    op: FactOp,
+    nickname: str,
+    outcome: FactOutcome,
+    fallback: str | None = None,
+    reason: str | None = None,
+) -> None:
     logger.info(
         'Fact op',
         extra=event(
@@ -150,7 +151,7 @@ def _log_op(op: FactOp, nickname: str, outcome: FactOutcome, fallback: str | Non
             kind=op.kind.value,
             nickname=nickname,
             outcome=outcome.value,
-            reason=op.reason,
+            reason=reason or op.reason,
             fallback=fallback,
         ),
     )
@@ -198,7 +199,7 @@ async def apply_op(op: FactOp, fact_map: dict[str, UserFact], today: date) -> st
     """Applies one op; returns the bare nickname it touched, or None when it was dropped."""
     nickname = op.nickname.replace('@', '')
     if is_bot_nickname(nickname):
-        _log_op(op, nickname, FactOutcome.BOT_DROPPED)
+        _log_op(op, nickname, FactOutcome.BOT_DROPPED, reason='bot')
         return None
 
     fact = None

@@ -10,13 +10,13 @@ Loaded automatically when Claude reads a file under `src/facts/`. The root `CLAU
 
 `processors.py:extract_facts(new_messages, existing)` runs `facts/v3` (prompt `facts/v3.j2`) and returns `list[FactOp]` (`reason`, `op` add|confirm|replace, `target`, `nickname`, `kind`, `text`, `self_stated`; `reason` first on purpose). It never writes and raises on failure. `existing` is what the model sees: `number_facts` gives every stored fact a positional id (`f1`…, across the whole block) and `render_existing_facts` prints it grouped by `@nick` — status is not shown. The handler resolves `target` through the same `number_facts` map, so the numbering the model saw is the one checked.
 
-`handlers.py:load_existing` builds `existing` for the window participants (`window_participants`: authors, `reply.nickname`, `@mentions`, minus `settings.BOT_NICKNAME` and every `BOT_NICKNAME[...]` form via `is_bot_nickname`): all confirmed facts plus up to `FACTS_PROMPT_CANDIDATES` candidates nearest, by vector, to that participant's own messages.
+`handlers.py:load_existing` builds `existing` for the window participants (`window_participants`: authors, `reply.nickname`, `@mentions`, minus the bot in every form via `src/utils.py:is_bot_nickname` — plain, tagged `[...]` or legacy `(...)`, with or without `@`; memory uses the same helper): all confirmed facts plus up to `FACTS_PROMPT_CANDIDATES` candidates nearest, by vector, to that participant's own messages.
 
 ## Applying ops
 
 `apply_op`, with `today` = UTC date of the run (`update_user_facts` reads it from the clock; freeze it with `freezegun` in tests):
 
-- bot nickname → dropped (`bot_dropped`); `confirm`/`replace` with a missing target or another nickname's fact → dropped (`invalid_target`)
+- bot nickname → dropped (`bot_dropped`, logged with `reason=bot` in place of the model's reason); `confirm`/`replace` with a missing target or another nickname's fact → dropped (`invalid_target`)
 - `add` → first a vector search over the nickname's facts at 0.6; a hit becomes a `confirm` (`fallback=vector`), otherwise a new fact, `confirmed` only if `kind == bio` and `self_stated`
 - `confirm` → add `today` to `sightings` (no-op for a day already there), stamp `last_seen_at`, promote when `len(sightings) >= FACT_CONFIRM_DAYS` (`JOKE_CONFIRM_DAYS` for `joke`), or at once for a self-stated `bio`
 - `replace` → overwrite `text` and `kind`, `sightings=[today]`, status recomputed as for `add`, Qdrant point re-embedded

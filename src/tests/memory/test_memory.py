@@ -1,15 +1,17 @@
 from datetime import datetime, timedelta, UTC
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src import mongo
+from src import mongo, settings
 from src.const import TIMEZONE_ALMATY
 from src.memory.handlers import delete_old_memories
+from src.memory.processors import _prompt_memory, extract_memory
 from src.memory.models import ChatState, DecayRecord, MemoryData, ParticipantInfo, StructuredMemory
 from src.memory.repository import get_last_memory, save_memory
 from src.messages.repository import get_messages, save_message
 from src.messages.models import Message, UserRole
+from src.tests.test_utils import make_message
 
 TS = '2026-05-01 10:00'
 NOW = datetime(2026, 5, 1, 18, 0, tzinfo=TIMEZONE_ALMATY)
@@ -284,3 +286,112 @@ async def test_delete_old_memories_respects_custom_retention_days():
     remaining = await mongo.memory.find({'chat_id': 4}).to_list(length=10)
     assert len(remaining) == 1
     assert remaining[0]['created_at'] == one_day_ago
+
+
+# --- bot and empty participant filters ---
+
+BOT_NICKS = [
+    f'@{settings.BOT_NICKNAME}',
+    f'@{settings.BOT_NICKNAME}[cat]',
+    f'@{settings.BOT_NICKNAME}(cat)',
+    settings.BOT_NICKNAME,
+]
+
+
+def mock_extraction(mocker, result: StructuredMemory):
+    llm = MagicMock()
+    llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=result)
+    mocker.patch('src.memory.processors.ai.get_memory_model', return_value=llm)
+
+
+def dropped_events(logger) -> list[dict]:
+    extras = [c.kwargs['extra'] for c in logger.info.call_args_list]
+    return [e for e in extras if e['event'] == 'MEMORY_PARTICIPANT_DROPPED']
+
+
+@pytest.mark.parametrize('bot', BOT_NICKS)
+async def test_extract_memory_drops_bot_participant(bot, mocker):
+    logger = mocker.patch('src.memory.processors.logger')
+    emitted = StructuredMemory(
+        participants={
+            bot: ParticipantInfo(traits=['в Лондоне', 'дочка'], recent=['про DirectX']),
+            '@alice': ParticipantInfo(traits=['любит чай']),
+        },
+        state=ChatState(running_jokes=['про дроны'], open_questions=['кто прав?']),
+    )
+    mock_extraction(mocker, emitted)
+
+    result = await extract_memory(1, None, [make_message(text='привет')])
+
+    assert list(result.content.participants) == ['@alice']
+    assert list(result.decay) == ['@alice']
+    assert result.content.state.running_jokes == ['про дроны']
+    assert result.content.state.open_questions == ['кто прав?']
+    events = dropped_events(logger)
+    assert len(events) == 1
+    assert events[0]['nick'] == bot
+    assert events[0]['reason'] == 'bot'
+    assert events[0]['traits'] == 2
+    assert events[0]['recent'] == 1
+
+
+async def test_extract_memory_drops_empty_participant(mocker):
+    logger = mocker.patch('src.memory.processors.logger')
+    emitted = StructuredMemory(
+        participants={
+            '@ghost': ParticipantInfo(),
+            '@alice': ParticipantInfo(traits=['любит чай'], recent=['пил чай']),
+        },
+    )
+    mock_extraction(mocker, emitted)
+
+    result = await extract_memory(1, None, [make_message(text='привет')])
+
+    assert list(result.content.participants) == ['@alice']
+    assert list(result.decay) == ['@alice']
+    assert result.content.participants['@alice'].traits == ['любит чай']
+    assert result.content.participants['@alice'].recent == ['пил чай']
+    assert sorted(result.decay['@alice']) == ['любит чай', 'пил чай']
+    events = dropped_events(logger)
+    assert [(e['nick'], e['reason']) for e in events] == [('@ghost', 'empty')]
+
+
+async def test_extract_memory_drops_participant_emptied_by_eviction(mocker):
+    logger = mocker.patch('src.memory.processors.logger')
+    mocker.patch.object(settings, 'ENABLE_MEMORY_DECAY', False)
+    mocker.patch.object(settings, 'RECENT_KEEP', 0)
+    emitted = StructuredMemory(
+        participants={
+            '@bob': ParticipantInfo(recent=['один раз сходил']),
+            '@alice': ParticipantInfo(traits=['любит чай']),
+        },
+    )
+    mock_extraction(mocker, emitted)
+
+    result = await extract_memory(1, None, [make_message(text='привет')])
+
+    assert list(result.content.participants) == ['@alice']
+    assert list(result.decay) == ['@alice']
+    events = dropped_events(logger)
+    assert [(e['nick'], e['reason']) for e in events] == [('@bob', 'empty')]
+
+
+def test_prompt_memory_strips_bot_without_mutating_current():
+    bot = f'@{settings.BOT_NICKNAME}[cat]'
+    current = make_memory_data(
+        StructuredMemory(
+            participants={
+                bot: ParticipantInfo(traits=['в Лондоне']),
+                '@alice': ParticipantInfo(traits=['любит чай']),
+            },
+            state=ChatState(running_jokes=['про дроны']),
+        )
+    )
+
+    rendered = _prompt_memory(current)
+
+    assert bot not in rendered
+    assert 'в Лондоне' not in rendered
+    assert '@alice' in rendered
+    assert 'про дроны' in rendered
+    assert list(current.content.participants) == [bot, '@alice']

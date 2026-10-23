@@ -16,6 +16,7 @@ from src.messages.models import (
     MessageReply,
     UserRole,
 )
+from src.utils import is_bot_nickname
 from src.messages.utils import ReplyToBotFilter, escape_markdown_v2, send_chat_action
 
 
@@ -377,3 +378,25 @@ def test_render_reactions_appears_in_ai_format():
 
 def test_render_reactions_not_in_embedding_text():
     assert _msg({'🤡': ['dima']}).embedding_text == 'nick: hi'
+
+
+@pytest.mark.parametrize(
+    'nick',
+    [
+        settings.BOT_NICKNAME,
+        f'{settings.BOT_NICKNAME}[cat]',
+        f'{settings.BOT_NICKNAME}(cat)',
+        f'@{settings.BOT_NICKNAME}',
+        f'@{settings.BOT_NICKNAME}[cat]',
+        f'@{settings.BOT_NICKNAME}(cat)',
+    ],
+)
+def test_is_bot_nickname_covers_plain_tagged_and_legacy(nick):
+    assert is_bot_nickname(nick)
+
+
+@pytest.mark.parametrize(
+    'nick', ['alice', '@alice', f'{settings.BOT_NICKNAME}x', f'x{settings.BOT_NICKNAME}', '']
+)
+def test_is_bot_nickname_rejects_other_nicks(nick):
+    assert not is_bot_nickname(nick)
