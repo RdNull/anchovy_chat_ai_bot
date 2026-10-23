@@ -9,7 +9,7 @@ spec:
   replicas: 1
   # Unlike the bot there is no single-poller constraint, so RollingUpdate is fine in
   # principle. But a surge pod would need a second memory request the node does not have
-  # spare (~390Mi headroom), so the old pod goes first and the one user absorbs the gap.
+  # spare (~390Mi headroom on the old 2Gi node), so the old pod goes first and the one user absorbs the gap.
   strategy:
     type: RollingUpdate
     rollingUpdate:

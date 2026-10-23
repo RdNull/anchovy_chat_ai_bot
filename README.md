@@ -101,7 +101,7 @@ A GitHub Actions workflow builds and pushes a multi-stage Docker image to GHCR o
 
 Template substitution renders an unexported variable as an empty string rather than failing, which makes a missing config value a silent write of a blank into the cluster — and one that stays dormant until the next time a pod happens to be recreated. The test suite enforces the link instead: every value the deploy substitutes must be exported by the deploy job, and the deploy script itself refuses to run with a required value empty. A config gap fails in CI, where it is a red test rather than an outage months later.
 
-The one public endpoint — the data-access server below — costs nothing beyond the node. An edge proxy runs on the node's own ports instead of behind a cloud load balancer, which would have cost two thirds of current spend to buy a stable IP that a single node cannot make highly available anyway. Certificates come from Let's Encrypt, held in the cluster rather than on a volume the proxy owns. The price of skipping the load balancer is an IP that changes when the node is replaced, so a ten-minute job re-points the DNS record, selecting the node's public IPv4 explicitly and refusing to ever write a private one: pointing the record at the internal address resolves fine and fails silently.
+The one public endpoint — the data-access server below — costs nothing beyond the node. An edge proxy runs on the node's own ports instead of behind a cloud load balancer, which would have cost ~$10/month extra to buy a stable IP that a single node cannot make highly available anyway. Certificates come from Let's Encrypt, held in the cluster rather than on a volume the proxy owns. The price of skipping the load balancer is an IP that changes when the node is replaced, so a ten-minute job re-points the DNS record, selecting the node's public IPv4 explicitly and refusing to ever write a private one: pointing the record at the internal address resolves fine and fails silently.
 
 Two constraints in the manifests are load-bearing and read like frugality: the bot runs a single replica with a `Recreate` rollout, because Telegram permits exactly one long-polling caller per token and the default rolling update briefly ran two. Store images are pinned to the versions the cluster is actually running rather than `latest`, so a pod recreation cannot pull a new major over an existing volume. Both stores declare readiness probes and the deploy blocks on them before the bot rolls, and a nightly `mongodump` CronJob writes to a separate volume — the single-replica MongoDB previously had no backup of any kind.
 
@@ -289,7 +289,7 @@ To move to the production issuer, change the `cert-manager.io/cluster-issuer` an
 2. Re-run the deploy workflow, then restart the server: `kubectl --context anchovy-prod -n blackbox rollout restart deployment/blackbox`.
 3. Update the header in your local Claude Code and Claude Desktop config.
 
-**After a node recycle.** A replacement node gets a new public IP.
+**After a node recycle or replacement.** A replacement node may get a new public IP (the 2026-10-23 replacement was handed the old one back). The node name is pool-based: an in-place recycle keeps it, a new pool changes it.
 - Confirm the `dns-sync` CronJob in `default` updated the record. Its log line reads `action=updated`.
 - Confirm the Cloud Firewall is attached to the new node.
 - Confirm the block-storage volumes reattached (they are CSI-managed and normally do).

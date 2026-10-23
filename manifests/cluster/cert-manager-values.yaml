@@ -7,7 +7,7 @@ crds:
   # Keep the CRDs, and with them every Certificate, if the release is ever uninstalled.
   keep: true
 
-# Requests only, sized for a node with ~390Mi of spare headroom.
+# Requests only, sized for the old 2Gi node's ~390Mi of spare headroom (the node is 4Gi now; these are small enough to stay as they are).
 resources:
   requests:
     cpu: 10m

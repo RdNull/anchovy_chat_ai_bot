@@ -50,7 +50,7 @@ spec:
             - containerPort: 27017
               name: mongo
           # Requests only, deliberately no limits: WiredTiger sizes its cache from the
-          # cgroup memory limit, so on a 2Gi node any limit tight enough to be worth
+          # cgroup memory limit, so on a node this small (2Gi until 2026-10-23) any limit tight enough to be worth
           # setting is one that OOM-kills mongod. The request is what buys Burstable QoS —
           # a BestEffort pod is the first thing kubelet evicts under node pressure.
           resources:
@@ -58,7 +58,7 @@ spec:
               cpu: 50m
               memory: 256Mi
           # TCP rather than `mongosh --eval "db.adminCommand('ping')"`: mongosh is a full
-          # Node.js runtime and this node has one CPU, so an exec probe every few seconds
+          # Node.js runtime and this node has two CPUs (one until 2026-10-23), so an exec probe every few seconds
           # costs more than the extra signal is worth. A listening socket is what the bot
           # needs to connect, and it is what gates the rollout wait in deploy-k8s.sh.
           readinessProbe:
