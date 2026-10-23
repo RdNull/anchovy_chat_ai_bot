@@ -11,7 +11,6 @@ from src.facts.handlers import (
     enforce_caps,
     facts_for_reply,
     format_facts,
-    is_bot_nickname,
     load_existing,
     select_fact_users,
     update_user_facts,
@@ -318,13 +317,6 @@ def test_v3_prompt_renders_with_real_template():
 # --- participants ---
 
 
-def test_is_bot_nickname_covers_bare_and_tagged_forms():
-    assert is_bot_nickname(settings.BOT_NICKNAME)
-    assert is_bot_nickname(f'{settings.BOT_NICKNAME}[whyzzzy]')
-    assert not is_bot_nickname('alice')
-    assert not is_bot_nickname(f'{settings.BOT_NICKNAME}x')
-
-
 def test_window_participants_collects_authors_replies_mentions_without_bot():
     messages = [
         make_message(nickname='alice', text='привет @carol'),
@@ -540,16 +532,29 @@ async def test_confirm_without_target_is_invalid(mocker):
     assert logger.info.call_args.kwargs['extra']['outcome'] == 'invalid_target'
 
 
-@pytest.mark.parametrize('bot', [settings.BOT_NICKNAME, f'{settings.BOT_NICKNAME}[cat]'])
-async def test_bot_ops_are_dropped(bot, mocker, embeddings):
+@pytest.mark.parametrize(
+    'bot',
+    [
+        settings.BOT_NICKNAME,
+        f'{settings.BOT_NICKNAME}[cat]',
+        f'{settings.BOT_NICKNAME}(cat)',
+        f'@{settings.BOT_NICKNAME}',
+        f'@{settings.BOT_NICKNAME}[cat]',
+    ],
+)
+@pytest.mark.parametrize('op_type', list(FactOpType))
+async def test_bot_ops_are_dropped(bot, op_type, mocker, embeddings):
     logger = mocker.patch('src.facts.handlers.logger')
 
-    nick = await apply_op(make_op(nickname=f'@{bot}'), {}, DAY1)
+    nick = await apply_op(make_op(op=op_type, nickname=bot, target='1'), {}, DAY1)
 
+    extra = logger.info.call_args.kwargs['extra']
     assert nick is None
     assert await mongo.facts.count_documents({}) == 0
     assert embeddings.search_facts.call_count == 0
-    assert logger.info.call_args.kwargs['extra']['outcome'] == 'bot_dropped'
+    assert logger.info.call_count == 1
+    assert extra['outcome'] == 'bot_dropped'
+    assert extra['reason'] == 'bot'
 
 
 async def test_fact_op_event_carries_all_fields(mocker):

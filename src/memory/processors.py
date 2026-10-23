@@ -22,7 +22,7 @@ from src.memory.dedup import resolve_attribution_conflicts
 from src.memory.keys import RECENT_FIELD
 from src.memory.models import MemoryData, StructuredMemory
 from src.prompt_manager import prompt_manager
-from src.utils import format_ts
+from src.utils import format_ts, is_bot_nickname
 
 # Read once at import rather than per call. `memory/handlers.py` reuses both for
 # the terminal `MEMORY_EXTRACT` event, since the handler is the one that knows
@@ -34,6 +34,7 @@ MEMORY_MODEL_NAME = model_manager.get_model_settings('memory', MEMORY_MODEL_VERS
 def _prompt_memory(current: MemoryData | None) -> str:
     """Renders the current memory as the model should see it.
 
+    Bot participants are stripped too, so the model never reads the bot's own entry back.
     `active_topics` is stripped. The prompt used to carry a rule telling the model
     to drop topics nobody had touched in 30 minutes; deleting them from the input
     enforces the same thing with zero compliance required — the model cannot carry
@@ -47,6 +48,9 @@ def _prompt_memory(current: MemoryData | None) -> str:
 
     for_prompt = current.content.model_copy(deep=True)
     for_prompt.state.active_topics = []
+    for nick in [n for n in for_prompt.participants if is_bot_nickname(n)]:
+        del for_prompt.participants[nick]
+
     return for_prompt.model_dump_json()
 
 
@@ -125,6 +129,29 @@ def _log_trait_overflow(memory: StructuredMemory, traits_keep: int) -> None:
             )
 
 
+def _log_participant_dropped(nick: str, reason: str, **counts: int) -> None:
+    logger.info(
+        'Memory participant dropped',
+        extra=event('MEMORY_PARTICIPANT_DROPPED', nick=nick, reason=reason, **counts),
+    )
+
+
+def _drop_bot_participants(memory: StructuredMemory) -> None:
+    """The bot has no participant entry: its traits would be read back as facts about itself."""
+    for nick in [n for n in memory.participants if is_bot_nickname(n)]:
+        info = memory.participants.pop(nick)
+        _log_participant_dropped(nick, 'bot', traits=len(info.traits), recent=len(info.recent))
+
+
+def _drop_empty_participants(memory: StructuredMemory, decay: dict) -> None:
+    """Drops participants left with nothing in them, and their sidecar keys."""
+    empty = [n for n, info in memory.participants.items() if not info.traits and not info.recent]
+    for nick in empty:
+        del memory.participants[nick]
+        decay.pop(nick, None)
+        _log_participant_dropped(nick, 'empty')
+
+
 @traceable
 async def extract_memory(
     chat_id: int,
@@ -161,6 +188,8 @@ async def extract_memory(
         logger.error('No memory extracted', extra=event('MEMORY_EXTRACT', outcome='empty'))
         return None
 
+    _drop_bot_participants(updated_memory)
+
     guard_records = resolve_attribution_conflicts(
         updated_memory, current_memory.content if current_memory else None
     )
@@ -194,6 +223,7 @@ async def extract_memory(
 
     evictions = apply_decay(updated_memory, decay, caps)
     _log_evictions(evictions)
+    _drop_empty_participants(updated_memory, decay)
 
     # Churn last, so it describes the memory that is actually saved rather than the
     # one the model emitted. `prior_content` is what still holds a vanished entry's
