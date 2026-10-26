@@ -24,6 +24,8 @@ const STICKERS = [
     {sticker_id:'AgADy1AAAvAayUh', emoji:'😌', description:'Шоколадный лабрадор с закрытыми глазами наслаждается солнечным светом.', text:''},
     {sticker_id:'AgADz1AAAwBbyEg', emoji:'🎧', description:'Человек в наушниках Logitech G. Вид сбоку.', text:'G'},
     {sticker_id:'AgAD01AAAxCcyUh', emoji:'👍', description:'Черно-белый рисунок в стиле аниме: девочка показывает большой палец вверх.', text:''},
+    // sticker_rant's real hit (production's search found 10 candidates for that window)
+    {sticker_id:'AgADq1AAAp9QyUh', emoji:'😤', description:'Мем с надписью «По хуйне не беспокойте»: грубый отказ, чтобы отстали.', text:'По хуйне не беспокойте'},
 ];
 
 // One reserved branch that always misses, so the empty-result path («пустой список →
@@ -48,6 +50,8 @@ const MATCHERS = [
     {re: /устал|недовольн/i, ids: ['AgADwU8AAupbyEg', 'AgADw1AAAt7YyUh']},
     // "думай" - шлепанцы с надписью «думайте»
     {re: /think|думай/i, ids: ['AgADu1AAAr7WyUh']},
+    // грубый отстань - «По хуйне не беспокойте»
+    {re: /беспоко|успоко|трясись|не ори|истер|игнор|отстан|отвал/i, ids: ['AgADq1AAAp9QyUh']},
 ];
 
 // A nonsense query should still see candidates in production (the search always

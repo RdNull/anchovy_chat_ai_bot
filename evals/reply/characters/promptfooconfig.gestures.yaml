@@ -5,13 +5,13 @@
 # the production rubrics in promptfooconfig.yaml do. Distinct filename on purpose
 # (see evals/CLAUDE.md "When the production rubrics can't answer the question") -
 # invisible to `-c ./reply/characters`, no unwiring needed. Kept in the repo
-# because stage 2 (stickers) reuses it.
+# because stage 2 (stickers, spec 020) reuses it.
 
 description: "Elzhan gesture probe (no asserts)"
 
 prompts:
-  - id: file://../prompts/v10.js
-    label: "Character v10"
+  - id: file://../prompts/v11.js
+    label: "Character v11"
 
 providers:
   - id: file://../../models/chat/v8-gemini.yaml
@@ -47,3 +47,17 @@ tests:
   - description: "factual_fitness_pushback"
     vars:
       messages: file://factual_fitness_pushback/messages.json
+
+  # sticker-class
+  - description: "sticker_obvious_punchline"
+    vars:
+      messages: file://sticker_obvious_punchline/messages.json
+
+  - description: "sticker_rant"
+    vars:
+      messages: file://sticker_rant/messages.json
+
+  # sticker-negative: a search is fine, a send is not (the corpus returns [])
+  - description: "sticker_no_match"
+    vars:
+      messages: file://sticker_no_match/messages.json
