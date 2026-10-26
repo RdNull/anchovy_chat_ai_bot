@@ -1,0 +1,10 @@
+[
+    {"role": "user", "content": "Dima: @sasha скажи уже че ты сделал"},
+    {"role": "user", "content": "Kolya: внатуре достал"},
+    {"role": "user", "content": "Dima: @sasha не, ты че за человек вообще"},
+    {"role": "user", "content": "Dima: зачем ты игноришь"},
+    {"role": "user", "content": "Dima: бля"},
+    {"role": "user", "content": "Dima: достали"},
+    {"role": "user", "content": "[TARGET] Dima: вы ненормальные, к вам обращаешься, а вы игнорите"},
+    {"role": "user", "content": "Dima: алло"}
+]
