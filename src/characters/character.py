@@ -29,10 +29,13 @@ from src.prompt_manager import prompt_manager
 from src.rate_limit import SlidingWindowRateLimiter
 from src.settings import CHAT_RATE_LIMIT
 
-# The `_depth > 5` branch below terminates only because a direct tool always returned.
-# Now that one can fail and hand the model another turn, a send that fails every time
-# would recurse forever without an absolute stop.
-_MAX_LOOP_DEPTH = 8
+# Context-tool turns the model gets before the loop re-binds only direct tools.
+_CONTEXT_DEPTH_LIMIT = 10
+# The `_depth > _CONTEXT_DEPTH_LIMIT` branch below terminates only because a direct tool
+# always returned. Now that one can fail and hand the model another turn, a send that
+# fails every time would recurse forever without an absolute stop: three failing
+# direct-tool retries above the forced-direct branch.
+_MAX_LOOP_DEPTH = _CONTEXT_DEPTH_LIMIT + 3
 
 
 @dataclass
@@ -133,11 +136,12 @@ class Character:
     def system_message(self, facts: dict[str, list[UserFact]] | None = None):
         setup_prompt = prompt_manager.get_prompt(
             'character_setup',
-            version='v11',
+            version='v12',
             character_description=self.style_prompt,
             memory=self.memory.prompt_format() if self.memory else None,
             facts=format_facts(facts),
             bot_nickname=self.nickname,
+            bot_nickname_base=settings.BOT_NICKNAME,
         )
         return SystemMessage(setup_prompt)
 
@@ -234,7 +238,7 @@ class Character:
             )
             return
 
-        if _depth > 5:
+        if _depth > _CONTEXT_DEPTH_LIMIT:
             logger.warning(
                 'LLM loop depth exceeded, returning response',
                 extra=event('LLM_LOOP_DEPTH_EXCEEDED', depth=_depth),
