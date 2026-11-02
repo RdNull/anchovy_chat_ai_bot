@@ -250,7 +250,7 @@ async def test_delivered_skips_a_reaction_telegram_refused(make_bot):
 
 # --- blockquote ---
 
-QUOTE_TEXT = 'ну да\n> я больше не пью 🍺\n— imdemur, 12.03.2026'
+QUOTE_TEXT = 'ну да\n> я больше не пью 🍺\n— user1, 12.03.2026'
 
 
 def reply_sent_records(caplog):
@@ -265,7 +265,7 @@ async def test_quote_run_is_sent_as_one_blockquote_entity(make_bot, caplog):
 
     kwargs = replier.bot.send_message.call_args.kwargs
     sent = kwargs['text']
-    assert sent == 'ну да\nя больше не пью 🍺\n— imdemur, 12.03.2026'
+    assert sent == 'ну да\nя больше не пью 🍺\n— user1, 12.03.2026'
     assert len(kwargs['entities']) == 1
     entity = kwargs['entities'][0]
     assert entity.type == MessageEntity.BLOCKQUOTE
