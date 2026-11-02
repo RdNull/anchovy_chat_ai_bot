@@ -1,0 +1,30 @@
+[
+    {
+        "role": "user",
+        "content": "Kolya: я сам туда не хожу"
+    },
+    {
+        "role": "user",
+        "content": "Dima: ну нас позови"
+    },
+    {
+        "role": "user",
+        "content": "Dima: сходим"
+    },
+    {
+        "role": "user",
+        "content": "Dima: тоже по идее футбик скатал бы"
+    },
+    {
+        "role": "user",
+        "content": "Dima: колесатовских бы разнес всухую"
+    },
+    {
+        "role": "user",
+        "content": "Dima: лошков этих"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Dima: контора блин"
+    }
+]

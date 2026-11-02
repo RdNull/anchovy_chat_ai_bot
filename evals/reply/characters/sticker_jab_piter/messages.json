@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Kolya: здесь кажется не видел такого"
+    },
+    {
+        "role": "assistant",
+        "content": "в питере я их шугал"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Pasha: питерские развлечения, да?"
+    }
+]

@@ -26,6 +26,15 @@ const STICKERS = [
     {sticker_id:'AgAD01AAAxCcyUh', emoji:'👍', description:'Черно-белый рисунок в стиле аниме: девочка показывает большой палец вверх.', text:''},
     // sticker_rant's real hit (production's search found 10 candidates for that window)
     {sticker_id:'AgADq1AAAp9QyUh', emoji:'😤', description:'Мем с надписью «По хуйне не беспокойте»: грубый отказ, чтобы отстали.', text:'По хуйне не беспокойте'},
+    // spec 021: real stickers from mined main-chat moments (attitude stickers: mock sympathy,
+    // condescension, exhaustion, bafflement). Ids are made up; captions are the stickers' own text.
+    {sticker_id:'AgADa1BAAq1RyEg', emoji:'😏', description:'Мужчина с огромным подбородком и хитрой ухмылкой кладёт руку на плечо собеседнику. Злорадное сочувствие.', text:''},
+    {sticker_id:'AgADb1BAAr2SyUh', emoji:'😾', description:'Кот развалился на спинке стула и недовольно щурится. Раздражение от чужого вранья или болтовни.', text:'все никак не напиздишься'},
+    {sticker_id:'AgADc1BAAs3TyEg', emoji:'😒', description:'Котёнок лежит на спине, лапы за головой. Снисходительное осуждение глупости.', text:'эх ребятки ну вы и долбаебы'},
+    {sticker_id:'AgADd1BAAt4UyUh', emoji:'🤥', description:'Скриншот сообщения «Димка тракторист: я пиздабол». Признание во лжи.', text:'Димка тракторист\nя пиздабол'},
+    {sticker_id:'AgADe1BAAu5VyEg', emoji:'🦁', description:'Пузатый лев сурово смотрит вперёд. Грубое недоумение от глупости собеседника.', text:'ты ебень да уцы?'},
+    {sticker_id:'AgADf1BAAv6WyUh', emoji:'🧐', description:'Парень в шёлковом наряде стоит в важной позе. Комичная важность, пафос.', text:''},
+    {sticker_id:'AgADg1BAAw7XyEg', emoji:'😩', description:'Парень на траве запрокинул голову и раскинул руки. Крайняя усталость, бессилие.', text:''},
 ];
 
 // One reserved branch that always misses, so the empty-result path («пустой список →
@@ -52,6 +61,14 @@ const MATCHERS = [
     {re: /think|думай/i, ids: ['AgADu1AAAr7WyUh']},
     // грубый отстань - «По хуйне не беспокойте»
     {re: /беспоко|успоко|трясись|не ори|истер|игнор|отстан|отвал/i, ids: ['AgADq1AAAp9QyUh']},
+    // spec 021: attitude stickers (matchers are case-insensitive)
+    {re: /сочувств|поддерж|ухмыл|злорад|плеч/i, ids: ['AgADa1BAAq1RyEg']},
+    {re: /врёт|врет|вран|врун|сказк|болтов|балабол|напизд/i, ids: ['AgADb1BAAr2SyUh']},
+    {re: /глуп|ребятк|идиот|тупы|долба/i, ids: ['AgADc1BAAs3TyEg']},
+    {re: /пиздабол|спалил|признал|наврал|лжец/i, ids: ['AgADd1BAAt4UyUh']},
+    {re: /недоум|бред|несешь|несёшь|чего|странн/i, ids: ['AgADe1BAAu5VyEg']},
+    {re: /пафос|важн|гордо|напыщ|лицо|понт/i, ids: ['AgADf1BAAv6WyUh']},
+    {re: /устал|бессил|сдаюсь|нет сил|выгор/i, ids: ['AgADg1BAAw7XyEg']},
 ];
 
 // A nonsense query should still see candidates in production (the search always

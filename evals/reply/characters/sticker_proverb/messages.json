@@ -1,0 +1,18 @@
+[
+    {
+        "role": "user",
+        "content": "Kolya: @sasha не обессудь если че, родной"
+    },
+    {
+        "role": "user",
+        "content": "Misha: @sasha сорри братик"
+    },
+    {
+        "role": "user",
+        "content": "Kolya: чисто попал под горячую руку"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Misha: Как говорил Ин Су Лин:\n七転び八起き"
+    }
+]

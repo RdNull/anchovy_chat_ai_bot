@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Sasha: кто что берет, пс или хбокс"
+    },
+    {
+        "role": "assistant",
+        "content": "делай пс за 285"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Kolya: а это с каким лицом печатал"
+    }
+]

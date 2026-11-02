@@ -1,0 +1,26 @@
+[
+    {
+        "role": "user",
+        "content": "Dima: для стопы будет лучше в них ходить"
+    },
+    {
+        "role": "user",
+        "content": "Dima: в них ходить не оч повседневно"
+    },
+    {
+        "role": "user",
+        "content": "Misha: бля они чистые"
+    },
+    {
+        "role": "user",
+        "content": "Misha: а земля щас грязная"
+    },
+    {
+        "role": "user",
+        "content": "Dima: а когда чистая"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Misha: в магазине в дубае"
+    }
+]

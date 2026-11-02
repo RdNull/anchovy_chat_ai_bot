@@ -61,3 +61,37 @@ tests:
   - description: "sticker_no_match"
     vars:
       messages: file://sticker_no_match/messages.json
+
+  # sticker-dev: the shapes the 021 wording was written against (reported, not decisive)
+  - description: "sticker_smug"
+    vars:
+      messages: file://sticker_smug/messages.json
+
+  - description: "sticker_tall_tale"
+    vars:
+      messages: file://sticker_tall_tale/messages.json
+
+  - description: "sticker_jab_face"
+    vars:
+      messages: file://sticker_jab_face/messages.json
+
+  - description: "sticker_jab_office"
+    vars:
+      messages: file://sticker_jab_office/messages.json
+
+  # sticker-held-out: the decision is made on these only
+  - description: "sticker_bravado"
+    vars:
+      messages: file://sticker_bravado/messages.json
+
+  - description: "sticker_proverb"
+    vars:
+      messages: file://sticker_proverb/messages.json
+
+  - description: "sticker_caught_lying"
+    vars:
+      messages: file://sticker_caught_lying/messages.json
+
+  - description: "sticker_jab_piter"
+    vars:
+      messages: file://sticker_jab_piter/messages.json

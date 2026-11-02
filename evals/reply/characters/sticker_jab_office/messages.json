@@ -1,0 +1,18 @@
+[
+    {
+        "role": "user",
+        "content": "Kolya: эпл тв и аркейд добавили в подписку айклауда"
+    },
+    {
+        "role": "user",
+        "content": "Sasha: эппл тв это стриминг?"
+    },
+    {
+        "role": "assistant",
+        "content": "сюда роднулю, в семейную"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Sasha: офисный?"
+    }
+]

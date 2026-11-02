@@ -1,0 +1,30 @@
+[
+    {
+        "role": "user",
+        "content": "Kolya: с какого по какое число"
+    },
+    {
+        "role": "user",
+        "content": "Dima: с 12 по 25"
+    },
+    {
+        "role": "user",
+        "content": "Dima: еще вопросы?"
+    },
+    {
+        "role": "user",
+        "content": "Kolya: ща проверю"
+    },
+    {
+        "role": "user",
+        "content": "Dima: с 12 по 22 сори"
+    },
+    {
+        "role": "user",
+        "content": "Dima: [image: Скриншот сообщения в рабочем чате: коллега сообщает об отпуске с 12 по 22 октября. | текст: Я буду в отпуске с 12 по 22 октября включительно]"
+    },
+    {
+        "role": "user",
+        "content": "[TARGET] Kolya: все равно наврал"
+    }
+]
