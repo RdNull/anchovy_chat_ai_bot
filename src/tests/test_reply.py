@@ -2,6 +2,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
+from telegram import MessageEntity
 
 from src import settings
 from src.characters.reply import Replier, ReplyKind
@@ -245,3 +246,72 @@ async def test_delivered_skips_a_reaction_telegram_refused(make_bot):
     await replier.reply_reaction('👍')
 
     assert replier.delivered == []
+
+
+# --- blockquote ---
+
+QUOTE_TEXT = 'ну да\n> я больше не пью 🍺\n— imdemur, 12.03.2026'
+
+
+def reply_sent_records(caplog):
+    return [r for r in caplog.records if getattr(r, 'event', None) == 'REPLY_SENT']
+
+
+async def test_quote_run_is_sent_as_one_blockquote_entity(make_bot, caplog):
+    replier = make_replier(make_bot)
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await replier.reply_message(QUOTE_TEXT)
+
+    kwargs = replier.bot.send_message.call_args.kwargs
+    sent = kwargs['text']
+    assert sent == 'ну да\nя больше не пью 🍺\n— imdemur, 12.03.2026'
+    assert len(kwargs['entities']) == 1
+    entity = kwargs['entities'][0]
+    assert entity.type == MessageEntity.BLOCKQUOTE
+    utf16 = sent.encode('utf-16-le')
+    quoted = utf16[entity.offset * 2 : (entity.offset + entity.length) * 2].decode('utf-16-le')
+    assert quoted == 'я больше не пью 🍺'
+    assert reply_sent_records(caplog)[0].quote_like is True
+
+
+async def test_two_line_quote_run_is_one_entity(make_bot):
+    replier = make_replier(make_bot)
+
+    await replier.reply_message('> первая\n> вторая\n— ник, дата')
+
+    kwargs = replier.bot.send_message.call_args.kwargs
+    assert kwargs['text'] == 'первая\nвторая\n— ник, дата'
+    assert len(kwargs['entities']) == 1
+    assert kwargs['entities'][0].offset == 0
+    assert kwargs['entities'][0].length == len('первая\nвторая')
+
+
+@pytest.mark.parametrize('text', ['просто текст', '>без пробела', 'a > b'])
+async def test_text_without_quote_run_goes_out_unchanged(make_bot, caplog, text):
+    replier = make_replier(make_bot)
+
+    with caplog.at_level(logging.INFO, logger='bot'):
+        await replier.reply_message(text)
+
+    assert replier.bot.send_message.call_args == call(chat_id=222, reply_parameters=None, text=text)
+    assert reply_sent_records(caplog)[0].quote_like is False
+
+
+async def test_only_first_quote_run_becomes_a_blockquote(make_bot):
+    replier = make_replier(make_bot)
+
+    await replier.reply_message('> раз\nмежду\n> два')
+
+    kwargs = replier.bot.send_message.call_args.kwargs
+    assert kwargs['text'] == 'раз\nмежду\n> два'
+    assert len(kwargs['entities']) == 1
+
+
+async def test_saved_message_text_is_the_sent_text(make_bot):
+    replier = make_replier(make_bot)
+
+    await replier.reply_message(QUOTE_TEXT)
+
+    history = await get_messages(222)
+    assert history[0].text == replier.bot.send_message.call_args.kwargs['text']

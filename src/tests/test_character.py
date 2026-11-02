@@ -514,7 +514,7 @@ async def test_direct_tool_failure_then_success_terminates(mocker):
 
 
 async def test_direct_tool_failing_every_turn_stops_at_the_depth_cap(mocker):
-    # Without _MAX_LOOP_DEPTH this recurses forever: the depth>5 branch only terminated
+    # Without _MAX_LOOP_DEPTH this recurses forever: the forced-direct branch only terminated
     # because a direct tool always returned.
     llm = mock_chat_llm(mocker, [answer_tool_call() for _ in range(50)])
     mocker.patch.object(
@@ -679,3 +679,36 @@ async def test_respond_puts_facts_in_the_prompt_and_logs_their_size(mocker, capl
     record = next(r for r in caplog.records if getattr(r, 'event', None) == 'LLM_INVOKE')
     assert record.facts_users == ['alice']
     assert record.facts_count == 2
+
+
+# --- context depth and system prompt ---
+
+
+async def test_context_tools_stay_bound_through_depth_ten_then_only_direct(mocker):
+    responses = [search_tool_call(tc_id=f'tc{i}') for i in range(10)] + [answer_tool_call()]
+    llm = mock_chat_llm(mocker, responses)
+    mocker.patch.object(
+        ToolRegistry,
+        'execute',
+        new=AsyncMock(
+            side_effect=[(ToolMessage(tool_call_id=f'tc{i}', content='r'), None) for i in range(10)]
+            + [(ToolMessage(tool_call_id='tc10', content=''), None)]
+        ),
+    )
+    # search_messages is a context tool: execute returning None would end the turn only
+    # for direct tools, so the loop keeps going until the answer.
+
+    await make_character().respond(make_replier(), last_messages=[])
+
+    bound = [c.args[0] for c in llm.bind_tools.call_args_list]
+    assert len(bound) == 11
+    assert all(len(tools) > len(bound[10]) for tools in bound[:10])
+    assert len(set(map(id, bound[:10]))) == 1
+    assert bound[10] != bound[0]
+
+
+def test_system_message_uses_v12_with_ten_calls_and_real_bot_nickname():
+    content = make_character().system_message().content
+
+    assert 'максимум 10 вызовов' in content
+    assert f'начинаются с {settings.BOT_NICKNAME}, - это бот' in content

@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from telegram import Bot, ReplyParameters
+from telegram import Bot, MessageEntity, ReplyParameters
 
 from src.logs import event, logger
 from src.messages.repository import add_bot_reaction, save_message
@@ -18,6 +18,39 @@ class ReplyKind(StrEnum):
     REACTION = 'reaction'
 
 
+_QUOTE_PREFIX = '> '
+
+
+def _utf16_len(text: str) -> int:
+    return len(text.encode('utf-16-le')) // 2
+
+
+def build_blockquote(text: str) -> tuple[str, list[MessageEntity]]:
+    """Turns the first run of `> ` lines into one blockquote entity.
+
+    Telegram counts entity offsets and lengths in UTF-16 code units. Only the first run
+    is converted; any later `> ` line goes out as written.
+    """
+    lines = text.split('\n')
+    start = next((i for i, line in enumerate(lines) if line.startswith(_QUOTE_PREFIX)), None)
+    if start is None:
+        return text, []
+
+    end = start
+    while end < len(lines) and lines[end].startswith(_QUOTE_PREFIX):
+        end += 1
+
+    quoted = '\n'.join(line.removeprefix(_QUOTE_PREFIX) for line in lines[start:end])
+    before = ''.join(f'{line}\n' for line in lines[:start])
+    after = ''.join(f'\n{line}' for line in lines[end:])
+    entity = MessageEntity(
+        type=MessageEntity.BLOCKQUOTE,
+        offset=_utf16_len(before),
+        length=_utf16_len(quoted),
+    )
+    return f'{before}{quoted}{after}', [entity]
+
+
 class Replier:
     def __init__(self, bot: Bot, character: Character, chat_id: int, target: Message | None):
         self.bot = bot
@@ -29,18 +62,26 @@ class Replier:
         self.delivered: list[ReplyKind] = []
 
     async def reply_message(self, text: str) -> Message:
+        text, entities = build_blockquote(text)
         # The full text is chat content, not diagnostic metadata -- it moves to its own
         # DEBUG line so an INFO-level stream never carries a reply body.
         logger.info(
             'Replying to user message',
-            extra=event('REPLY_SENT', kind=ReplyKind.TEXT, text_len=len(text)),
+            extra=event(
+                'REPLY_SENT',
+                kind=ReplyKind.TEXT,
+                text_len=len(text),
+                quote_like=bool(entities),
+            ),
         )
         logger.debug('Reply text', extra=event('REPLY_TEXT', text=text))
 
+        kwargs = {'entities': entities} if entities else {}
         reply = await self.bot.send_message(
             chat_id=self.chat_id,
             reply_parameters=self._get_reply_params(),
             text=text,
+            **kwargs,
         )
         self.delivered.append(ReplyKind.TEXT)
         return await self._save_message(reply.message_id, text)

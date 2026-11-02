@@ -25,7 +25,7 @@ class _Settings(BaseSettings):
     # character; `characters/registry.py` refuses to load otherwise.
     DEFAULT_CHARACTER: str = 'anchovy'
 
-    AI_TIMEOUT: int = 90
+    AI_TIMEOUT: int = 150
     CHAT_RATE_LIMIT: int = 5
 
     # A budget of its own, separate from CHAT_RATE_LIMIT: it protects spend, not voice.
